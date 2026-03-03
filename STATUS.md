@@ -36,6 +36,10 @@
 - State: Completed
 - Notes: Documented game logic engine progress, including the canonical game state structure, the state history/rollback manager, and the rollback test coverage (`npm test`).
 
+- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=103)
+- State: Completed
+- Notes: Refreshed progress notes for the game logic engine, confirming the canonical game state model, state history/rollback manager, and rollback test coverage.
+
 # QA Summary (2026-03-03)
 
 ## Commits Reviewed
@@ -94,6 +98,17 @@
 
 ## Acceptance Criteria Verification
 - Implement State Rollback Functionality - PASS (state history snapshot system with rollback and test coverage in `scripts/rollback.test.mjs`)
+
+## Overall Verdict
+- PASS
+
+# QA Summary (2026-03-03)
+
+## Tests
+- `npm test` - PASS (Rollback test passed.)
+
+## Acceptance Criteria Verification
+- Update STATUS.md with Progress - PASS (latest progress entry added for TASK_ID=41, RUN_ID=103)
 
 ## Overall Verdict
 - PASS
