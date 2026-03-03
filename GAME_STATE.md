@@ -89,3 +89,4 @@ Hazard { id: string, name: string, position: { x: number, y: number }, radius: n
   touching unit state.
 - Friendly and enemy units are split for faster turn logic, while each unit still
   stores its `faction` for clarity.
+- The example game state in `src/gameState.js` uses a 10 x 10 board.

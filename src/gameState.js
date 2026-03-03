@@ -13,12 +13,12 @@ export const exampleGameState = {
     phase: "planning",
   },
   grid: {
-    width: 8,
-    height: 8,
+    width: 10,
+    height: 10,
     tileSize: { x: 64, y: 32 },
     origin: { x: 0, y: 0 },
-    tiles: Array.from({ length: 8 }, (_, y) =>
-      Array.from({ length: 8 }, (_, x) => ({
+    tiles: Array.from({ length: 10 }, (_, y) =>
+      Array.from({ length: 10 }, (_, x) => ({
         x,
         y,
         elevation: 0,

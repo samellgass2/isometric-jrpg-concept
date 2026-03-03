@@ -40,6 +40,10 @@
 - State: Completed
 - Notes: Refreshed progress notes for the game logic engine, confirming the canonical game state model, state history/rollback manager, and rollback test coverage.
 
+- Task: Change Board Size to 10 x 10 (TASK_ID=43, RUN_ID=106)
+- State: Completed
+- Notes: Updated the example game state grid to 10 x 10 and documented the new board size in GAME_STATE.md.
+
 # QA Summary (2026-03-03)
 
 ## Commits Reviewed
