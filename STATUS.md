@@ -32,6 +32,10 @@
 - State: Completed
 - Notes: Added state history manager with rollback support and a rollback test script.
 
+- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=99)
+- State: Completed
+- Notes: Documented game logic engine progress, including the canonical game state structure, the state history/rollback manager, and the rollback test coverage (`npm test`).
+
 # QA Summary (2026-03-03)
 
 ## Commits Reviewed
@@ -68,6 +72,17 @@
 - Install NPM and Phaser - PASS (`npm install` completed; `phaser` in `package.json`)
 - Set up minimal game config.JS - PASS (valid minimal Phaser config in `src/gameConfig.js`)
 - Rename config.js to gameConfig.js - PASS (`src/config.js` absent; `src/gameConfig.js` present)
+
+## Overall Verdict
+- PASS
+
+# QA Summary (2026-03-03)
+
+## Tests
+- `npm test` - PASS (Rollback test passed.)
+
+## Acceptance Criteria Verification
+- Update STATUS.md with Progress - PASS (status entry added with game logic engine progress details)
 
 ## Overall Verdict
 - PASS

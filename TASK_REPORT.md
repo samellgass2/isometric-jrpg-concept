@@ -51,3 +51,10 @@
   - Added scripts/rollback.test.mjs to validate rollback behavior.
   - Updated package.json to run rollback test and enable ESM.
 - Tests: Ran `npm test`.
+
+- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=99)
+- Result: Completed
+- Changes:
+  - Added status entry describing game logic engine progress.
+  - Added QA summary for current task verification.
+- Tests: Ran `npm test`.
