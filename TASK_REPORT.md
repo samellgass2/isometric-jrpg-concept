@@ -65,3 +65,10 @@
   - Added preview support to state history for non-destructive future state inspection.
   - Extended rollback tests to validate preview behavior and immutability.
 - Tests: Ran `npm test`.
+
+- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=103)
+- Result: Completed
+- Changes:
+  - Added a fresh STATUS.md entry noting current game logic engine progress.
+  - Added a QA summary covering the latest status update.
+- Tests: Ran `npm test`.
