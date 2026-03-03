@@ -43,3 +43,11 @@
   - Added GAME_STATE.md to document the game state structure.
   - Added src/gameState.js with a concrete example state and factory.
 - Tests: Not run (not provided).
+
+- Task: Implement State Rollback Functionality (TASK_ID=39, RUN_ID=97)
+- Result: Completed
+- Changes:
+  - Added src/stateHistory.js with snapshot history and rollback support.
+  - Added scripts/rollback.test.mjs to validate rollback behavior.
+  - Updated package.json to run rollback test and enable ESM.
+- Tests: Ran `npm test`.
