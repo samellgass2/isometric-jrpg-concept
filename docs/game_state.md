@@ -110,3 +110,7 @@ Status effect fields:
   "turn": {"index": 1, "phase": "player", "activeUnitId": "u-1"}
 }
 ```
+
+## Previewing Future States
+
+Use the `previewGameState` helper to clone the current state, apply a mutator, and obtain a preview without changing the original state.

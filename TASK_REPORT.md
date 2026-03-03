@@ -1,12 +1,12 @@
 # Task Report
 
-- Task: Define Game State Structure (TASK_ID=38, RUN_ID=82)
+- Task: Implement State Preview Functionality (TASK_ID=40, RUN_ID=87)
 - Date: 2026-03-03
 
 ## Summary
-- Documented the canonical game state shape in `docs/game_state.md`.
-- Added a TypeScript representation in `src/game_state.ts`.
-- Updated status in `STATUS.md`.
+- Added deep cloning helpers and `previewGameState` to simulate future states without mutating the live state.
+- Documented preview behavior in `docs/game_state.md`.
+- Updated `STATUS.md` with current task progress.
 
 ## Tests
 - Not run (no automated tests provided).
