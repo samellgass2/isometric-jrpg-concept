@@ -31,6 +31,7 @@
 # QA Summary (2026-03-03)
 
 ## Commits Reviewed
+- 007c98a task/22: Codex automated changes
 - 14d512e task/18: Codex automated changes
 - d47a4df task/16: Codex automated changes
 - 25fc035 task/12: Codex automated changes
@@ -47,13 +48,14 @@
 - d7eddf1 Initialize project structure
 
 ## Tests
+- `npm list phaser` - FAIL (empty tree before install)
 - `npm install` - PASS (added 2 packages, 0 vulnerabilities)
 - `npm list phaser` - PASS (phaser@3.90.0)
 - `npm test` - FAIL (`Error: no test specified`)
 
 ## Acceptance Criteria Verification
 - Initialize Project Structure - PASS (folders src, assets, dist exist; src/index.html and src/main.js present)
-- Install Phaser Dependency - PASS (npm list phaser shows phaser@3.90.0)
+- Install Phaser Dependency - PASS (npm list phaser shows phaser@3.90.0 after install)
 - Set Up Basic Game Configuration - PASS (src/gameConfig.js exists with Phaser config)
 - Update STATUS.md - PASS (updated with current QA summary)
 - Install NPM and Phaser - PASS (npm install completed; phaser in package.json)
