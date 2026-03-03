@@ -46,6 +46,14 @@ export const createStateHistory = (initialState, { maxSnapshots = 100 } = {}) =>
 
   const getCurrent = () => cloneState(snapshots[pointer]);
 
+  const preview = (mutator) => {
+    const nextState = getCurrent();
+    if (typeof mutator === "function") {
+      mutator(nextState);
+    }
+    return nextState;
+  };
+
   const commit = (mutator) => {
     const nextState = getCurrent();
     if (typeof mutator === "function") {
@@ -81,6 +89,7 @@ export const createStateHistory = (initialState, { maxSnapshots = 100 } = {}) =>
     rollback,
     rollbackTo,
     getCurrent,
+    preview,
     size,
     getPointer,
   };

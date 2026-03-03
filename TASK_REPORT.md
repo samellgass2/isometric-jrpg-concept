@@ -58,3 +58,10 @@
   - Added status entry describing game logic engine progress.
   - Added QA summary for current task verification.
 - Tests: Ran `npm test`.
+
+- Task: Implement State Preview Functionality (TASK_ID=40, RUN_ID=101)
+- Result: Completed
+- Changes:
+  - Added preview support to state history for non-destructive future state inspection.
+  - Extended rollback tests to validate preview behavior and immutability.
+- Tests: Ran `npm test`.
