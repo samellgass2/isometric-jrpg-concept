@@ -29,3 +29,10 @@
   - Added src/config.js with a minimal Phaser configuration export.
   - Updated STATUS.md with task completion entry.
 - Tests: Not run (not provided).
+
+- Task: Rename config.js to gameConfig.js (TASK_ID=10, RUN_ID=47)
+- Result: Completed
+- Changes:
+  - Renamed src/config.js to src/gameConfig.js.
+  - Updated the exported config name to gameConfig.
+- Tests: Not run (not provided).

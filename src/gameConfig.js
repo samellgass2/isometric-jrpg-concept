@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-const config = {
+const gameConfig = {
   type: Phaser.AUTO,
   width: 800,
   height: 600,
@@ -8,4 +8,4 @@ const config = {
   scene: [],
 };
 
-export default config;
+export default gameConfig;
