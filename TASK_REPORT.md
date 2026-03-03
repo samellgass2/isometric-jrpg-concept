@@ -36,3 +36,47 @@
   - Renamed src/config.js to src/gameConfig.js.
   - Updated the exported config name to gameConfig.
 - Tests: Not run (not provided).
+
+- Task: Define Game State Structure (TASK_ID=38, RUN_ID=92)
+- Result: Completed
+- Changes:
+  - Added GAME_STATE.md to document the game state structure.
+  - Added src/gameState.js with a concrete example state and factory.
+- Tests: Not run (not provided).
+
+- Task: Implement State Rollback Functionality (TASK_ID=39, RUN_ID=97)
+- Result: Completed
+- Changes:
+  - Added src/stateHistory.js with snapshot history and rollback support.
+  - Added scripts/rollback.test.mjs to validate rollback behavior.
+  - Updated package.json to run rollback test and enable ESM.
+- Tests: Ran `npm test`.
+
+- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=99)
+- Result: Completed
+- Changes:
+  - Added status entry describing game logic engine progress.
+  - Added QA summary for current task verification.
+- Tests: Ran `npm test`.
+
+- Task: Implement State Preview Functionality (TASK_ID=40, RUN_ID=101)
+- Result: Completed
+- Changes:
+  - Added preview support to state history for non-destructive future state inspection.
+  - Extended rollback tests to validate preview behavior and immutability.
+- Tests: Ran `npm test`.
+
+- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=103)
+- Result: Completed
+- Changes:
+  - Added a fresh STATUS.md entry noting current game logic engine progress.
+  - Added a QA summary covering the latest status update.
+- Tests: Ran `npm test`.
+
+- Task: Change Board Size to 10 x 10 (TASK_ID=43, RUN_ID=106)
+- Result: Completed
+- Changes:
+  - Updated the example game state grid to 10 x 10 in src/gameState.js.
+  - Documented the 10 x 10 board size in GAME_STATE.md.
+  - Added a STATUS.md entry for the board size update.
+- Tests: Ran `npm test`.

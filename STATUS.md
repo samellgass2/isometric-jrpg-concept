@@ -28,6 +28,22 @@
 - State: Completed
 - Notes: QA summary updated on 2026-03-03.
 
+- Task: Implement State Rollback Functionality (TASK_ID=39, RUN_ID=97)
+- State: Completed
+- Notes: Added state history manager with rollback support and a rollback test script.
+
+- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=99)
+- State: Completed
+- Notes: Documented game logic engine progress, including the canonical game state structure, the state history/rollback manager, and the rollback test coverage (`npm test`).
+
+- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=103)
+- State: Completed
+- Notes: Refreshed progress notes for the game logic engine, confirming the canonical game state model, state history/rollback manager, and rollback test coverage.
+
+- Task: Change Board Size to 10 x 10 (TASK_ID=43, RUN_ID=106)
+- State: Completed
+- Notes: Updated the example game state grid to 10 x 10 and documented the new board size in GAME_STATE.md.
+
 # QA Summary (2026-03-03)
 
 ## Commits Reviewed
@@ -64,6 +80,65 @@
 - Install NPM and Phaser - PASS (`npm install` completed; `phaser` in `package.json`)
 - Set up minimal game config.JS - PASS (valid minimal Phaser config in `src/gameConfig.js`)
 - Rename config.js to gameConfig.js - PASS (`src/config.js` absent; `src/gameConfig.js` present)
+
+## Overall Verdict
+- PASS
+
+# QA Summary (2026-03-03)
+
+## Tests
+- `npm test` - PASS (Rollback test passed.)
+
+## Acceptance Criteria Verification
+- Update STATUS.md with Progress - PASS (status entry added with game logic engine progress details)
+
+## Overall Verdict
+- PASS
+
+# QA Summary (2026-03-03)
+
+## Tests
+- `npm test` - PASS
+
+## Acceptance Criteria Verification
+- Implement State Rollback Functionality - PASS (state history snapshot system with rollback and test coverage in `scripts/rollback.test.mjs`)
+
+## Overall Verdict
+- PASS
+
+# QA Summary (2026-03-03)
+
+## Tests
+- `npm test` - PASS (Rollback test passed.)
+
+## Acceptance Criteria Verification
+- Update STATUS.md with Progress - PASS (latest progress entry added for TASK_ID=41, RUN_ID=103)
+
+## Overall Verdict
+- PASS
+
+# QA Summary (2026-03-03)
+
+## Commits Reviewed
+- 6f97303 task/43: update task report
+- f2c661a task/43: change example board to 10x10
+- c03acf9 task/41: record status update report
+- 5dbc4fb task/41: update status progress entry
+- e298cc6 task/40: add preview state functionality
+- 98d2135 task/41: Codex automated changes
+- b340a70 task/39: Codex automated changes
+- 6c44692 Define game state structure
+
+## Tests
+- `npm install` - PASS (added 2 packages, 0 vulnerabilities)
+- `npm test` - PASS (Rollback test passed.)
+
+## Acceptance Criteria Verification
+- Define Game State Structure - PASS (`GAME_STATE.md` defines structure; `src/gameState.js` provides code representation)
+- Implement State Rollback Functionality - PASS (`src/stateHistory.js` rollback + `scripts/rollback.test.mjs` verifies rollback)
+- Implement State Preview Functionality - PASS (`preview` returns future state without mutating current; test asserts pointer and state unchanged)
+- Update STATUS.md with Progress - PASS (progress entries present plus this QA summary)
+- Change board size to 10 x 10 - PASS (`src/gameState.js` grid 10x10; `GAME_STATE.md` notes 10 x 10)
 
 ## Overall Verdict
 - PASS
