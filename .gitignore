@@ -1,5 +1,6 @@
 # Nestjs specific
-/dist
+/dist/*
+!/dist/.gitkeep
 /node_modules
 /build
 /tmp
