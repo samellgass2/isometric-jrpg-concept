@@ -5,6 +5,8 @@ class MainMenuScene extends Phaser.Scene {
     super("MainMenuScene");
     this.startButton = null;
     this.startButtonLabel = null;
+    this.droneTestButton = null;
+    this.droneTestButtonLabel = null;
     this.startTriggered = false;
   }
 
@@ -30,44 +32,71 @@ class MainMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.startButton = this.add
-      .rectangle(centerX, height / 2, 260, 64, 0x2f6fff, 0.95)
-      .setStrokeStyle(3, 0xaec8ff, 1)
-      .setInteractive({ useHandCursor: true });
+    const createMenuButton = ({ y, label, fillColor, strokeColor, hoverColor, textColor = "#ffffff", onClick }) => {
+      const button = this.add
+        .rectangle(centerX, y, 300, 58, fillColor, 0.95)
+        .setStrokeStyle(3, strokeColor, 1)
+        .setInteractive({ useHandCursor: true });
 
-    this.startButtonLabel = this.add
-      .text(centerX, height / 2, "Start Game", {
-        color: "#ffffff",
-        fontFamily: "monospace",
-        fontSize: "24px",
-      })
-      .setOrigin(0.5);
+      const buttonLabel = this.add
+        .text(centerX, y, label, {
+          color: textColor,
+          fontFamily: "monospace",
+          fontSize: "21px",
+        })
+        .setOrigin(0.5);
 
-    this.startButton.on("pointerover", () => {
-      this.startButton.setFillStyle(0x3e7bff, 1);
-      this.startButtonLabel.setColor("#f8fbff");
+      button.on("pointerover", () => {
+        button.setFillStyle(hoverColor, 1);
+        buttonLabel.setColor("#f8fbff");
+      });
+
+      button.on("pointerout", () => {
+        button.setFillStyle(fillColor, 0.95);
+        buttonLabel.setColor(textColor);
+      });
+
+      button.on("pointerdown", onClick);
+
+      return { button, buttonLabel };
+    };
+
+    const mainStart = createMenuButton({
+      y: height / 2 - 8,
+      label: "Start Game",
+      fillColor: 0x2f6fff,
+      strokeColor: 0xaec8ff,
+      hoverColor: 0x3e7bff,
+      onClick: () => this.startGame(),
     });
+    this.startButton = mainStart.button;
+    this.startButtonLabel = mainStart.buttonLabel;
 
-    this.startButton.on("pointerout", () => {
-      this.startButton.setFillStyle(0x2f6fff, 0.95);
-      this.startButtonLabel.setColor("#ffffff");
+    const droneTestStart = createMenuButton({
+      y: height / 2 + 72,
+      label: "Drone Test Battle",
+      fillColor: 0x7a3240,
+      strokeColor: 0xffb4c4,
+      hoverColor: 0x8f3c4d,
+      onClick: () => this.startDroneTestBattle(),
     });
-
-    this.startButton.on("pointerdown", () => this.startGame());
+    this.droneTestButton = droneTestStart.button;
+    this.droneTestButtonLabel = droneTestStart.buttonLabel;
 
     this.input.keyboard.on("keydown-ENTER", () => this.startGame());
     this.input.keyboard.on("keydown-SPACE", () => this.startGame());
+    this.input.keyboard.on("keydown-T", () => this.startDroneTestBattle());
 
     this.add
-      .text(centerX, height / 2 + 80, "Press Enter / Space or click Start Game", {
+      .text(centerX, height / 2 + 114, "Press Enter/Space to Start Game or T for Drone Test Battle", {
         color: "#b8cae6",
         fontFamily: "monospace",
-        fontSize: "14px",
+        fontSize: "13px",
       })
       .setOrigin(0.5);
 
     this.add
-      .text(centerX, height - 120, "Available Routes", {
+      .text(centerX, height - 138, "Available Routes", {
         color: "#dce8ff",
         fontFamily: "monospace",
         fontSize: "18px",
@@ -75,7 +104,7 @@ class MainMenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(centerX, height - 88, "Level 1  -  Frontier Pass", {
+      .text(centerX, height - 108, "Level 1  -  Frontier Pass", {
         color: "#dce8ff",
         fontFamily: "monospace",
         fontSize: "16px",
@@ -83,12 +112,35 @@ class MainMenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(centerX, height - 62, "Level 2  -  Ironwood Outpost", {
+      .text(centerX, height - 84, "Level 2  -  Ironwood Outpost", {
         color: "#dce8ff",
         fontFamily: "monospace",
         fontSize: "16px",
       })
       .setOrigin(0.5);
+
+    this.add
+      .text(centerX, height - 58, "Debug  -  Drone Test Battle", {
+        color: "#ffd2dc",
+        fontFamily: "monospace",
+        fontSize: "15px",
+      })
+      .setOrigin(0.5);
+  }
+
+  startDroneTestBattle() {
+    if (this.startTriggered) {
+      return;
+    }
+
+    this.startTriggered = true;
+    this.cameras.main.fadeOut(160, 0, 0, 0);
+    this.time.delayedCall(170, () => {
+      this.scene.start("BattleScene", {
+        encounterId: "drone-test-battle",
+        returnSceneKey: "MainMenuScene",
+      });
+    });
   }
 
   startGame() {

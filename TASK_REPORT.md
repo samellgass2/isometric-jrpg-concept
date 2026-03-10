@@ -1,39 +1,39 @@
 # Task Report
 
-- Task ID: 338
-- Run ID: 579
-- Title: Implement basic zookeeper drone AI decisions
+- Task ID: 339
+- Run ID: 581
+- Title: Integrate drones into battles and add test scenario
 - Status: Completed
 
 ## Summary
-Implemented a dedicated zookeeper drone decision module and wired it into the battle enemy-turn loop so drones automatically decide to attack, move, or wait using existing targeting/range/pathing utilities.
+Integrated a dedicated zookeeper drone battle scenario that is directly launchable from the main menu, and added automated validation for encounter wiring plus drone move-then-attack progression.
 
 ## Changes Made
-- Added `src/battle/ai/droneDecisionController.js`:
-  - Introduced `decideDroneAction(...)` as an encapsulated AI decision function.
-  - Target selection heuristic prefers closest living player units, with vulnerability (HP ratio/HP) tie-breakers.
-  - Attack decisions use `canUnitTarget` (existing range + obstacle logic).
-  - Movement decisions use `getReachableTiles`, `getUnitMovementRange`, and `chooseMovementDestinationTowardTarget`.
-  - Includes safe `wait` fallback when no valid targets or no reachable path exists.
-- Updated `src/scenes/BattleScene.js`:
-  - Enemy turn loop now calls `decideDroneAction` for each enemy actor.
-  - Executes attack actions through existing `attackTarget` damage pipeline.
-  - Executes move actions by applying chosen destination from existing grid/path utilities.
-  - Applies safe hold-position fallback without throwing when decisions cannot be executed.
-- Added `scripts/drone-ai-decision.test.mjs`:
-  - Covers attack-in-range behavior.
-  - Covers move-toward-target behavior when out of range.
-  - Covers wait fallback when targets are unreachable or absent.
-- Updated `package.json` test script to include `scripts/drone-ai-decision.test.mjs`.
-- Updated `STATUS.md` with task #338 implementation summary and modified files.
+- Added new encounter config in `src/battle/encounters.js`:
+  - Encounter ID: `drone-test-battle`
+  - Name: `Drone Test Battle`
+  - Friendly side: protagonist + guardian dog
+  - Enemy side: defender, scout, and controller zookeeper drones
+  - Includes explicit obstacle layout and spawn coordinates for a readable AI behavior showcase.
+- Updated `src/scenes/MainMenuScene.js`:
+  - Added `Drone Test Battle` menu button.
+  - Added keyboard shortcut `T` to launch the test encounter.
+  - Starts `BattleScene` with `encounterId: "drone-test-battle"` and returns to `MainMenuScene` after battle resolution.
+- Added `scripts/drone-test-battle-scenario.test.mjs`:
+  - Verifies the encounter exists and is clearly named.
+  - Verifies at least one friendly unit and multiple drone enemy types are present.
+  - Simulates drone AI decisions to confirm move behavior when out of range and attack behavior once in range.
+  - Confirms attack resolution applies positive damage for visible HP changes.
+- Updated `package.json` test script to include `scripts/drone-test-battle-scenario.test.mjs` in `npm test`.
+- Updated `STATUS.md` with run instructions and behavior walkthrough for the drone encounter.
 
 ## Acceptance Test Check
-1. Drone auto-turn execution on enemy phase: PASS (`BattleScene.runEnemyTurn` now uses autonomous decisions).
-2. Attack in range uses existing damage resolution: PASS (`decideDroneAction` -> `attack` -> `attackTarget` -> `resolveAttack`).
-3. Out-of-range movement toward nearest target uses existing grid/path mechanics: PASS.
-4. No valid targets/unreachable fallback without errors: PASS (`wait` behavior).
-5. Encapsulated reusable AI function exists: PASS (`decideDroneAction` in dedicated module).
-6. STATUS updated with behavior and file references: PASS (`STATUS.md`).
+1. Clearly named battle configuration with player + multiple drone types: PASS (`drone-test-battle`).
+2. Drone placement and visual distinction in the scenario: PASS (fixed spawn positions + per-drone colors).
+3. Autonomous drone actions and visible feedback: PASS (`BattleScene` logs movement/attacks/hold; HP changes shown by existing UI/log flow).
+4. Stable completion on victory/defeat: PASS (existing `BattleScene.evaluateBattleOutcome` + `finishBattle` flow unchanged and exercised by scenario).
+5. Simple documented activation method: PASS (main menu button and `T` shortcut, documented in `STATUS.md`).
+6. STATUS walkthrough of expected drone behaviors: PASS.
 
 ## Validation
 - Ran: `npm test`
@@ -42,6 +42,7 @@ Implemented a dedicated zookeeper drone decision module and wired it into the ba
   - Dog conditional behavior test passed.
   - Battle grid stats test passed.
   - Drone AI decision test passed.
+  - Drone test battle scenario test passed.
   - Player progress state test passed.
   - Save system persistence test passed.
   - Battle party persistence test passed.

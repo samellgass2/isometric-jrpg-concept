@@ -19,6 +19,58 @@ function cloneUnitConfig(config) {
 }
 
 export const encounterDefinitions = {
+  "drone-test-battle": {
+    id: "drone-test-battle",
+    name: "Drone Test Battle",
+    triggerDescription: "Debug encounter for validating zookeeper drone AI behavior.",
+    victoryCondition: "defeat_all_enemies",
+    obstacles: [
+      { x: 5, y: 2 },
+      { x: 6, y: 2 },
+      { x: 6, y: 5 },
+      { x: 7, y: 5 },
+    ],
+    friendlyUnits: [
+      {
+        id: "protagonist",
+        name: "Protagonist",
+        archetype: "hero",
+        movement: { tilesPerTurn: 4 },
+        attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
+        stats: { maxHp: 120, defense: 14 },
+        abilities: [],
+        spawn: { x: 2, y: 4 },
+        color: 0x6aa9ff,
+        currentHp: 120,
+      },
+      {
+        ...cloneUnitConfig(guardianDogUnit),
+        id: "drone-test-guardian-dog",
+        spawn: { x: 3, y: 5 },
+        color: 0xc48e5a,
+      },
+    ],
+    enemyUnits: [
+      {
+        ...cloneUnitConfig(zookeeperDefenderDroneUnit),
+        id: "drone-test-defender-1",
+        spawn: { x: 9, y: 6 },
+        color: 0xc06a6a,
+      },
+      {
+        ...cloneUnitConfig(zookeeperScoutDroneUnit),
+        id: "drone-test-scout-1",
+        spawn: { x: 9, y: 2 },
+        color: 0xde8c8c,
+      },
+      {
+        ...cloneUnitConfig(zookeeperControllerDroneUnit),
+        id: "drone-test-controller-1",
+        spawn: { x: 10, y: 4 },
+        color: 0xa65f9a,
+      },
+    ],
+  },
   "level-1-training-ambush": {
     id: "level-1-training-ambush",
     name: "Training Ambush",

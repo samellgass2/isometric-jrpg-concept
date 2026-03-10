@@ -1,5 +1,46 @@
 # Status
 
+- Task: Integrate drones into battles and add test scenario (TASK_ID=339, RUN_ID=581)
+- State: Completed
+- Notes: Added a dedicated debug encounter path for zookeeper drone combat verification, with both manual playtest flow and automated scenario coverage.
+
+  What changed:
+  - Added a clearly named battle config `drone-test-battle` to `src/battle/encounters.js`.
+    - Encounter name: `Drone Test Battle`
+    - Friendly units: protagonist + guardian dog
+    - Enemy units: defender drone, scout drone, controller drone (distinct drone variants)
+    - Added encounter-specific obstacle layout so drone movement/positioning is visible on the grid.
+  - Updated `src/scenes/MainMenuScene.js` to expose direct debug activation:
+    - New menu button: `Drone Test Battle`
+    - New keyboard shortcut: `T`
+    - Launch target: `BattleScene` with `encounterId: "drone-test-battle"` and return to `MainMenuScene`.
+  - Added `scripts/drone-test-battle-scenario.test.mjs` and wired it into `npm test`.
+    - Verifies the encounter exists and is correctly named.
+    - Verifies the scenario contains at least one friendly unit and multiple drone enemy types.
+    - Simulates drone AI progression (move when out of range, then attack when in range).
+    - Confirms attack resolution produces positive damage (visible HP change path).
+  - Updated `package.json` test script chain to include the new scenario test.
+
+  How to run the drone encounter:
+  1. Run `npm run dev`.
+  2. Open the game and stay on the main menu.
+  3. Start the scenario by either:
+     - clicking `Drone Test Battle`, or
+     - pressing `T`.
+
+  What to look for during validation:
+  - Drones spawn on expected grid tiles and use unique colors:
+    - Defender drone (red-tinted), scout drone (lighter red), controller drone (purple-tinted).
+  - Enemy phase logs should show autonomous drone behavior:
+    - `advanced to (x, y)` when moving toward player units.
+    - `hit <target> for <damage>` when attacking in range.
+    - `is holding position` if no valid movement/attack is available.
+  - HP updates should reflect attacks in the selection panel/log flow.
+  - Battle should complete cleanly:
+    - Victory when all drones are defeated.
+    - Defeat when all friendly units are defeated.
+    - In both outcomes, scene returns without runtime errors.
+
 - Task: Define zookeeper drone enemy data models (TASK_ID=337, RUN_ID=577)
 - State: Completed
 - Notes: Added structured zookeeper drone enemy unit definitions to the central battle unit config module at `src/battle/units/animalUnits.js`.
