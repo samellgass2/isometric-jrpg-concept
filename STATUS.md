@@ -1588,3 +1588,57 @@ Battle party persistence test passed.
 
 ### Overall QA Verdict
 - PASS
+
+## Workflow 36 - Performance Optimization and Cross-Browser Compatibility Pass (Task #350, 2026-03-10)
+
+### Profiling Scope And Runtime Entry Points
+- Dev runtime command: `npm run dev` (serves `http://127.0.0.1:5173` from `scripts/dev-server.mjs`).
+- Browser entrypoint chain:
+  - `src/index.html` loads `src/main.js`
+  - `src/main.js` hydrates save state and boots Phaser with `new Phaser.Game(gameConfig)`
+  - `src/gameConfig.js` registers scene order: `BootScene`, `MainMenuScene`, `BattleScene`, `OverworldScene`, `Level1Scene`, `Level2Scene`
+- Primary Phaser scene classes profiled for gameplay interaction:
+  - Overworld exploration: `src/scenes/OverworldScene.js`
+  - High-action combat: `src/scenes/BattleScene.js` (drone test encounter path from `MainMenuScene`)
+
+### Tools Used
+- Chrome DevTools Protocol CPU profiling + frame pacing sampling (automated via Puppeteer Core against Chrome for Testing).
+- Additional Chromium-based compatibility/profile check: Chromium (snapshot build) using the same profile flow.
+- Input latency baseline: Event Timing API (`event` entries for key/mouse interactions) sampled during profile windows.
+
+### Performance Recordings (Representative Baseline)
+
+#### Recording A: Idle/Exploration Path (Main Menu -> Start Game -> Overworld movement)
+- Chrome:
+  - FPS: ~19.26 avg (51.9 ms avg frame, 83.4 ms p95 frame)
+  - Input delay: 46.3 ms p50 / 87.7 ms p95 (`keydown`/`pointerdown` event processing delay)
+- Chromium:
+  - FPS: ~15.64 avg (63.9 ms avg frame, 116.6 ms p95 frame)
+  - Input delay: 47.3 ms p50 / 94.7 ms p95
+- Scene method timing (runtime wrappers, no committed code instrumentation):
+  - `OverworldScene.update`: ~0.31-0.43 ms avg, p95 ~1.2-1.3 ms, max spike up to 26 ms (Chrome run)
+  - `OverworldScene.persistOverworldProgress`: ~0.096-0.102 ms avg per call, called ~184-212 times in ~9s window
+  - `OverworldScene.updateCulledObjectVisibility`: ~0.036-0.092 ms avg per call
+
+#### Recording B: Battle/High-Action Path (Main Menu -> Drone Test Battle -> repeated movement/confirm input)
+- Chrome:
+  - FPS: ~59.78 avg (16.73 ms avg frame, 16.8 ms p95)
+  - Input delay: 0.6 ms p50 / 2.5 ms p95
+- Chromium:
+  - FPS: ~57.78 avg (17.31 ms avg frame, 16.8 ms p95, occasional long frame spikes)
+  - Input delay: 3.3 ms p50 / 32.2 ms p95
+
+### Main Hotspots / Bottlenecks Observed
+1. WebGL sprite batching and render-path cost in overworld dominates CPU samples (`batchSprite`, `render`, `ImageWebGLRenderer`, `LayerWebGLRenderer`, and `texImage2D` in Phaser WebGL renderer).
+2. Frequent persistence churn from overworld update loop: `OverworldScene.persistOverworldProgress` is invoked at near-frame cadence, and storage writes (`setItem`) surfaced in Chromium CPU profile under exploration load.
+3. `OverworldScene.update` has low average cost but meaningful tail spikes (max observed 26 ms in Chrome), consistent with intermittent frame hitching in exploration.
+4. In battle/high-action state, `updateInputPlugins`/event dispatch (`emit`) and frame pump callbacks are visible but remain within near-60 FPS budget in this runner.
+
+### Cross-Browser Notes (Chrome vs Additional Chromium)
+- Overworld is materially slower in Chromium than Chrome in this environment (~15.6 FPS vs ~19.3 FPS average; worse p95 frame time).
+- Battle mode is close in both browsers (Chrome ~59.8 FPS, Chromium ~57.8 FPS), but Chromium shows higher high-percentile input delay and larger occasional long-frame spikes.
+- Additional Chromium-based browser used for compatibility check: Chromium (in addition to Chrome).
+
+### Firefox Profiling Limitation
+- Firefox profiling was not executed in this run due runner environment limitations while provisioning Firefox (`@puppeteer/browsers install firefox@stable` failed because required `xz` runtime/tooling is unavailable).
+- Therefore, Chrome-vs-Firefox behavior/performance could not be measured here and remains to be validated on a suitable environment with Firefox runtime dependencies present.
