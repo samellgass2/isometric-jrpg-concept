@@ -13,6 +13,8 @@ const TILE_COLORS = {
   fillB: 0x2c5889,
   stroke: 0xa7d0ff,
   highlight: 0x4f90d9,
+  aiActionFill: 0x875151,
+  aiActionStroke: 0xffb7b7,
 };
 const UNIT_SIDE_STYLE = {
   player: {
@@ -28,6 +30,11 @@ const UNIT_SIDE_STYLE = {
     labelColor: "#2d0f0f",
   },
 };
+const TURN_OWNER = Object.freeze({
+  player: "player",
+  ai: "ai",
+});
+const AI_TURN_DELAY_MS = 850;
 
 function isoProject(row, col, originX, originY) {
   return {
@@ -88,6 +95,9 @@ class BattleUnitManager {
     unitView.setDataEnabled();
     unitView.setData("unitId", id);
     unitView.setData("side", side);
+    unitView.setData("bodyShape", body);
+    unitView.setSize(28, 28);
+    unitView.setInteractive(new Phaser.Geom.Circle(0, 0, 16), Phaser.Geom.Circle.Contains);
     return unitView;
   }
 
@@ -123,6 +133,18 @@ class BattleUnitManager {
     }));
   }
 
+  forEachUnit(callback) {
+    this.units.forEach((unit) => callback(unit));
+  }
+
+  getUnitById(id) {
+    return this.unitsById.get(id) ?? null;
+  }
+
+  getFirstUnitBySide(side) {
+    return this.units.find((unit) => unit.side === side) ?? null;
+  }
+
   destroy() {
     this.units.forEach((unit) => unit.view.destroy());
     this.units = [];
@@ -136,7 +158,20 @@ class BattleScene extends Phaser.Scene {
     this.returnToOverworldKey = null;
     this.gridOrigin = { x: 0, y: 0 };
     this.tileObjects = [];
+    this.tileById = new Map();
     this.unitManager = null;
+    this.endTurnKey = null;
+    this.endTurnAltKey = null;
+    this.currentTurnOwner = TURN_OWNER.player;
+    this.turnCounter = 1;
+    this.selectedPlayerUnitId = null;
+    this.turnStatusText = null;
+    this.turnInstructionText = null;
+    this.turnSelectionText = null;
+    this.turnHistoryText = null;
+    this.aiTurnTimer = null;
+    this.aiActionTile = null;
+    this.aiActionTween = null;
   }
 
   preload() {}
@@ -151,11 +186,38 @@ class BattleScene extends Phaser.Scene {
       .setDepth(UI_DEPTH)
       .setScrollFactor(0);
 
-    this.add
-      .text(24, 48, "Board: 8x8 isometric grid (row,col). Press O to return to Overworld.", {
+    this.turnStatusText = this.add
+      .text(24, 48, "", {
+        color: "#ffe8a6",
+        fontFamily: "monospace",
+        fontSize: "14px",
+      })
+      .setDepth(UI_DEPTH)
+      .setScrollFactor(0);
+
+    this.turnInstructionText = this.add
+      .text(24, 66, "", {
         color: "#b5c7e8",
         fontFamily: "monospace",
         fontSize: "14px",
+      })
+      .setDepth(UI_DEPTH)
+      .setScrollFactor(0);
+
+    this.turnSelectionText = this.add
+      .text(24, 84, "", {
+        color: "#9fbbdf",
+        fontFamily: "monospace",
+        fontSize: "12px",
+      })
+      .setDepth(UI_DEPTH)
+      .setScrollFactor(0);
+
+    this.turnHistoryText = this.add
+      .text(24, 100, "", {
+        color: "#9fbbdf",
+        fontFamily: "monospace",
+        fontSize: "12px",
       })
       .setDepth(UI_DEPTH)
       .setScrollFactor(0);
@@ -200,6 +262,7 @@ class BattleScene extends Phaser.Scene {
 
   createGrid() {
     this.tileObjects = [];
+    this.tileById.clear();
     this.gridOrigin = this.computeGridOrigin();
     const halfW = TILE_WIDTH / 2;
     const halfH = TILE_HEIGHT / 2;
@@ -223,6 +286,7 @@ class BattleScene extends Phaser.Scene {
         tile.setData("worldY", projected.y);
 
         this.tileObjects.push(tile);
+        this.tileById.set(`${row},${col}`, tile);
       }
     }
   }
@@ -261,6 +325,33 @@ class BattleScene extends Phaser.Scene {
     unitDefinitions.forEach((unitConfig) => this.unitManager.createUnit(unitConfig));
   }
 
+  getTileBaseFillColor(row, col) {
+    return (row + col) % 2 === 0 ? TILE_COLORS.fillA : TILE_COLORS.fillB;
+  }
+
+  getTileAt(row, col) {
+    return this.tileById.get(`${row},${col}`) ?? null;
+  }
+
+  restoreTileVisual(tile) {
+    if (!tile) {
+      return;
+    }
+
+    const row = tile.getData("row");
+    const col = tile.getData("col");
+
+    if (this.aiActionTile === tile) {
+      tile.setFillStyle(TILE_COLORS.aiActionFill, 1);
+      tile.setStrokeStyle(2, TILE_COLORS.aiActionStroke, 1);
+      return;
+    }
+
+    tile.setAlpha(1);
+    tile.setFillStyle(this.getTileBaseFillColor(row, col), 1);
+    tile.setStrokeStyle(1, TILE_COLORS.stroke, 0.75);
+  }
+
   setupCamera() {
     this.cameras.main.setBackgroundColor("#243145");
     this.cameras.main.setZoom(1);
@@ -289,12 +380,192 @@ class BattleScene extends Phaser.Scene {
       });
 
       tile.on("pointerout", () => {
-        const row = tile.getData("row");
-        const col = tile.getData("col");
-        const fillColor = (row + col) % 2 === 0 ? TILE_COLORS.fillA : TILE_COLORS.fillB;
-        tile.setFillStyle(fillColor, 1);
+        this.restoreTileVisual(tile);
       });
     });
+  }
+
+  addUnitInputHandlers() {
+    this.unitManager.forEachUnit((unit) => {
+      unit.view.on("pointerdown", () => {
+        this.trySelectPlayerUnit(unit.id);
+      });
+
+      unit.view.on("pointerover", () => {
+        this.input.setDefaultCursor("pointer");
+      });
+
+      unit.view.on("pointerout", () => {
+        this.input.setDefaultCursor("default");
+      });
+    });
+  }
+
+  setTurnHistoryText(message) {
+    if (!this.turnHistoryText) {
+      return;
+    }
+
+    this.turnHistoryText.setText(`Last Action: ${message}`);
+  }
+
+  updateTurnUi() {
+    if (!this.turnStatusText || !this.turnInstructionText || !this.turnSelectionText) {
+      return;
+    }
+
+    const activeLabel = this.currentTurnOwner === TURN_OWNER.player ? "Player" : "AI";
+    this.turnStatusText.setText(`Turn ${this.turnCounter} | Active: ${activeLabel}`);
+
+    if (this.currentTurnOwner === TURN_OWNER.player) {
+      this.turnInstructionText.setText(
+        "Player Turn: Click a green unit to select. Press E or Enter to end turn. Press O for Overworld."
+      );
+    } else {
+      this.turnInstructionText.setText("AI Turn: simulated action in progress. Player input is temporarily locked.");
+    }
+
+    const selectedUnit = this.selectedPlayerUnitId ? this.unitManager.getUnitById(this.selectedPlayerUnitId) : null;
+    if (selectedUnit) {
+      this.turnSelectionText.setText(
+        `Selected Unit: ${selectedUnit.name} (${selectedUnit.id}) at (${selectedUnit.row},${selectedUnit.col})`
+      );
+      return;
+    }
+
+    this.turnSelectionText.setText("Selected Unit: none");
+  }
+
+  updateUnitVisuals() {
+    if (!this.unitManager) {
+      return;
+    }
+
+    this.unitManager.forEachUnit((unit) => {
+      const style = UNIT_SIDE_STYLE[unit.side];
+      const bodyShape = unit.view.getData("bodyShape");
+      const isSelected = unit.id === this.selectedPlayerUnitId;
+      const isPlayerTurn = this.currentTurnOwner === TURN_OWNER.player;
+      const isPlayersUnit = unit.side === TURN_OWNER.player;
+
+      unit.view.setScale(isSelected ? 1.2 : 1);
+      unit.view.setAlpha(!isPlayerTurn && isPlayersUnit ? 0.82 : 1);
+
+      if (bodyShape) {
+        if (isSelected && isPlayerTurn) {
+          bodyShape.setStrokeStyle(3, 0xfff6a2, 1);
+        } else {
+          bodyShape.setStrokeStyle(2, style.stroke, 1);
+        }
+      }
+    });
+  }
+
+  clearAiActionTileHighlight() {
+    if (this.aiActionTween) {
+      this.aiActionTween.stop();
+      this.aiActionTween = null;
+    }
+
+    if (this.aiActionTile) {
+      const tile = this.aiActionTile;
+      this.aiActionTile = null;
+      this.restoreTileVisual(tile);
+    }
+  }
+
+  highlightAiActionTile(row, col) {
+    this.clearAiActionTileHighlight();
+    const tile = this.getTileAt(row, col);
+    if (!tile) {
+      return;
+    }
+
+    this.aiActionTile = tile;
+    tile.setFillStyle(TILE_COLORS.aiActionFill, 1);
+    tile.setStrokeStyle(2, TILE_COLORS.aiActionStroke, 1);
+
+    this.aiActionTween = this.tweens.add({
+      targets: tile,
+      alpha: { from: 1, to: 0.6 },
+      duration: 260,
+      yoyo: true,
+      repeat: -1,
+    });
+  }
+
+  trySelectPlayerUnit(unitId) {
+    if (this.currentTurnOwner !== TURN_OWNER.player) {
+      return;
+    }
+
+    const unit = this.unitManager.getUnitById(unitId);
+    if (!unit) {
+      return;
+    }
+
+    if (unit.side !== TURN_OWNER.player) {
+      this.setTurnHistoryText(`Ignored selection for ${unit.id}; only player units are selectable.`);
+      return;
+    }
+
+    this.selectedPlayerUnitId = unit.id;
+    this.setTurnHistoryText(`Selected ${unit.name} (${unit.id}).`);
+    this.updateUnitVisuals();
+    this.updateTurnUi();
+  }
+
+  startPlayerTurn(reason, { incrementTurn } = { incrementTurn: false }) {
+    if (incrementTurn) {
+      this.turnCounter += 1;
+    }
+
+    this.currentTurnOwner = TURN_OWNER.player;
+    this.selectedPlayerUnitId = null;
+    this.clearAiActionTileHighlight();
+    this.updateUnitVisuals();
+    this.updateTurnUi();
+    this.setTurnHistoryText(reason);
+    console.log(`[Battle] Turn ${this.turnCounter}: player turn started. ${reason}`);
+  }
+
+  startAiTurn(reason) {
+    this.currentTurnOwner = TURN_OWNER.ai;
+    this.selectedPlayerUnitId = null;
+    this.updateUnitVisuals();
+    this.updateTurnUi();
+    this.setTurnHistoryText(reason);
+    console.log(`[Battle] Turn ${this.turnCounter}: AI turn started. ${reason}`);
+
+    const enemyUnit = this.unitManager.getFirstUnitBySide(TURN_OWNER.ai);
+    if (enemyUnit) {
+      this.highlightAiActionTile(enemyUnit.row, enemyUnit.col);
+      this.setTurnHistoryText(
+        `AI action: ${enemyUnit.name} (${enemyUnit.id}) holds at (${enemyUnit.row},${enemyUnit.col}).`
+      );
+      console.log(
+        `[Battle] Turn ${this.turnCounter}: AI action by ${enemyUnit.id} at (${enemyUnit.row},${enemyUnit.col}).`
+      );
+    } else {
+      this.setTurnHistoryText("AI action: no enemy units available.");
+      console.log(`[Battle] Turn ${this.turnCounter}: AI has no units to act.`);
+    }
+
+    if (this.aiTurnTimer) {
+      this.aiTurnTimer.remove(false);
+    }
+    this.aiTurnTimer = this.time.delayedCall(AI_TURN_DELAY_MS, () => {
+      this.aiTurnTimer = null;
+      this.startPlayerTurn("AI turn complete. Player control restored.", { incrementTurn: true });
+    });
+  }
+
+  endPlayerTurn(source) {
+    if (this.currentTurnOwner !== TURN_OWNER.player) {
+      return;
+    }
+
+    this.startAiTurn(`Player ended turn using ${source}.`);
   }
 
   create() {
@@ -303,9 +574,10 @@ class BattleScene extends Phaser.Scene {
     this.createInitialUnits();
     this.createUi();
     this.addHoverFeedback();
+    this.addUnitInputHandlers();
 
     this.add
-      .text(24, 70, `Tile Size: ${TILE_WIDTH}x${TILE_HEIGHT}  Origin: (${this.gridOrigin.x.toFixed(0)}, ${this.gridOrigin.y.toFixed(0)})`, {
+      .text(24, 122, `Tile Size: ${TILE_WIDTH}x${TILE_HEIGHT}  Origin: (${this.gridOrigin.x.toFixed(0)}, ${this.gridOrigin.y.toFixed(0)})`, {
         color: "#9fbbdf",
         fontFamily: "monospace",
         fontSize: "12px",
@@ -314,7 +586,7 @@ class BattleScene extends Phaser.Scene {
       .setScrollFactor(0);
 
     this.add
-      .text(24, 88, "Hover any diamond to verify stable tile objects for future targeting.", {
+      .text(24, 140, "Hover any diamond to verify stable tile objects for future targeting.", {
         color: "#b5c7e8",
         fontFamily: "monospace",
         fontSize: "12px",
@@ -328,7 +600,7 @@ class BattleScene extends Phaser.Scene {
       .join("  ");
 
     this.add
-      .text(24, 106, `Units: ${unitSummary}`, {
+      .text(24, 158, `Units: ${unitSummary}`, {
         color: "#9fbbdf",
         fontFamily: "monospace",
         fontSize: "12px",
@@ -337,10 +609,20 @@ class BattleScene extends Phaser.Scene {
       .setScrollFactor(0);
 
     this.returnToOverworldKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O);
+    this.endTurnKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    this.endTurnAltKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    this.startPlayerTurn("Battle initialized. Awaiting player input.", { incrementTurn: false });
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.clearAiActionTileHighlight();
+      if (this.aiTurnTimer) {
+        this.aiTurnTimer.remove(false);
+        this.aiTurnTimer = null;
+      }
       if (this.unitManager) {
         this.unitManager.destroy();
       }
+      this.input.setDefaultCursor("default");
       this.unitManager = null;
     });
   }
@@ -348,6 +630,14 @@ class BattleScene extends Phaser.Scene {
   update() {
     if (this.returnToOverworldKey && Phaser.Input.Keyboard.JustDown(this.returnToOverworldKey)) {
       this.scene.start("OverworldScene");
+    }
+
+    const didPressEndTurn =
+      (this.endTurnKey && Phaser.Input.Keyboard.JustDown(this.endTurnKey)) ||
+      (this.endTurnAltKey && Phaser.Input.Keyboard.JustDown(this.endTurnAltKey));
+
+    if (didPressEndTurn) {
+      this.endPlayerTurn("E/Enter");
     }
   }
 }
