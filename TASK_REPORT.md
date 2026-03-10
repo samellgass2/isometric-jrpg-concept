@@ -1,46 +1,48 @@
 # Task Report
 
-- Task ID: 350
-- Run ID: 634
-- Title: Profile current Phaser game performance
+- Task ID: 351
+- Run ID: 642
+- Title: Optimize rendering and asset loading paths
 - Status: Completed
 
 ## Summary
-Captured baseline performance profiles for exploration and battle gameplay using Chrome DevTools Protocol against two Chromium-based browsers (Chrome-for-Testing and Playwright Chromium), identified entrypoints and primary scenes, documented frame-time/FPS/input-latency observations, and recorded Firefox profiling limitations.
+Implemented concrete rendering and asset-path optimizations across the Phaser game: explicit renderer performance flags in `gameConfig`, centralized shared texture/animation generation via a new `BootScene`, reduced update-loop allocations in overworld/level scenes, and pooled battle highlight rendering to eliminate repeated create/destroy churn. Verified runtime behavior and test stability, and documented measured impact in `STATUS.md`.
 
-## What Was Profiled
-- Local run command: `npm run dev` (`scripts/dev-server.mjs`, `http://127.0.0.1:5173`)
-- Entrypoints:
-  - `src/main.js`
-  - `src/gameConfig.js`
-- Primary gameplay scenes:
-  - Overworld exploration: `src/scenes/OverworldScene.js`
-  - Battle/high-action: `src/scenes/BattleScene.js`
+## Key Changes
+1. Added shared boot/preload flow for common assets:
+   - `src/scenes/BootScene.js`
+   - `src/render/sharedAssets.js`
+   - `src/gameConfig.js` (scene ordering)
+2. Explicit render/performance config tuning:
+   - `src/gameConfig.js`
+3. Overworld optimization pass:
+   - `src/scenes/OverworldScene.js`
+   - Replaced redundant texture generation with shared boot assets
+   - Reduced pathfinding/update allocations
+   - Added constant-time tile entity lookups for NPC/sign interactions
+4. Level scene optimization pass:
+   - `src/scenes/Level1Scene.js`
+   - `src/scenes/Level2Scene.js`
+   - Shared tile textures + allocation-safe pathfinding/movement updates
+5. Battle rendering/update optimization pass:
+   - `src/scenes/BattleScene.js`
+   - Shared textured grid/obstacles
+   - Highlight object pooling (reuse instead of destroy/recreate)
+   - Guarded early UI update path to avoid startup race on cursor init
 
-## Tooling Used
-- Chrome DevTools performance sampling via CDP (headless capture workflow)
-- Browser 1: Chrome-for-Testing `146.0.7680.72`
-- Browser 2: Playwright Chromium `136.0.7103.25`
+## Performance Verification
+- Baseline reference (Task #350): Playwright Chromium Overworld ~6.3 FPS / ~383.3 ms P95 frame time.
+- Post-change representative re-run (this task, Playwright Chromium + virtual display, 6s rAF sample):
+  - Overworld: ~23.2 FPS / ~83.3 ms P95 frame time.
+- Result: representative overworld scenario improved versus prior baseline in this environment.
 
-## Baseline Results (Recorded)
-- Idle/Overworld:
-  - Chrome-for-Testing: ~57.2 FPS average, ~16.8 ms p95 frame time, 100 ms worst frame
-  - Playwright Chromium: ~6.3 FPS average, ~383.3 ms p95 frame time, 433.2 ms worst frame
-- Battle/High-action:
-  - Chrome-for-Testing: ~60.0 FPS average, ~16.7 ms p95 frame time
-  - Playwright Chromium: ~57.9 FPS average, ~16.8 ms p95 frame time, 133.4 ms worst frame
+## Runtime Validation
+- Scene flow exercised via browser automation: Main Menu -> Overworld and Main Menu -> Battle.
+- No runtime texture-key errors observed.
 
-## Main Hotspots Observed
-1. `OverworldScene.update` (`src/scenes/OverworldScene.js:1048`) as the continuous frame loop, including HUD/progress persistence calls.
-2. `OverworldScene.findTilePath` (`src/scenes/OverworldScene.js:712`) BFS queue/neighbor traversal on pointer pathing.
-3. `BattleScene.handleInputAction` / `handleConfirmAction` (`src/scenes/BattleScene.js:498`, `:583`) under high input rate.
-4. `BattleScene.showHighlights` / `clearHighlights` (`src/scenes/BattleScene.js:829`, `:823`) object churn with GC samples during battle input bursts.
+## Test Commands
+1. `npm install` - PASS
+2. `npm test` - PASS
 
-## Cross-Browser / Compatibility Notes
-- Both Chromium-based runs were functional and battle stayed near 60 FPS average.
-- Idle/exploration diverged materially in this environment (Chrome-for-Testing much faster than Playwright Chromium).
-- Firefox profiling was not executed: Firefox runtime unavailable in the runner (`firefox: command not found`), so Firefox behavior/performance remains unvalidated and should be tested in a suitable environment.
-
-## Validation
-- Ran: `npm test`
-- Result: PASS
+## Notes
+- Full optimization details and before/after metrics are also recorded in `STATUS.md` under Task #351.
