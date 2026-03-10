@@ -34,6 +34,7 @@ import {
   reconcilePartyProgressWithBattleUnits,
   resolveInitialFriendlyUnits,
 } from "../state/partyPersistence.js";
+import { ensureSharedAssets, TEXTURE_KEYS } from "../render/sharedAssets.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -83,9 +84,25 @@ class BattleScene extends Phaser.Scene {
     this.loadedProgress = null;
     this.hasPersistedProgressSnapshot = false;
     this.encounterFriendlyTemplateIds = [];
+    this.activeHighlightCount = 0;
   }
 
   create(data = {}) {
+    ensureSharedAssets(this);
+    this.units = [];
+    this.tileHighlights = [];
+    this.highlightTileData = [];
+    this.activeHighlightCount = 0;
+    this.logLines = [];
+    this.obstacleSet.clear();
+    this.selectedUnitId = null;
+    this.mode = "idle";
+    this.turn = 1;
+    this.playerTurn = true;
+    this.battleResolved = false;
+    this.protagonist = null;
+    this.commandIndex = 0;
+    this.currentActingUnitId = null;
     this.loadedProgress = this.getProgressState();
     this.hasPersistedProgressSnapshot = this.hasPersistedProgressData();
     const encounterData = this.resolveEncounterData(data);
@@ -119,13 +136,11 @@ class BattleScene extends Phaser.Scene {
     this.gridLayer = this.add.layer();
     for (let y = 0; y < GRID_HEIGHT; y += 1) {
       for (let x = 0; x < GRID_WIDTH; x += 1) {
-        const baseColor = (x + y) % 2 === 0 ? 0x314458 : 0x2a3a4c;
-        const tile = this.add.rectangle(
+        const textureKey = (x + y) % 2 === 0 ? TEXTURE_KEYS.battleFloorA : TEXTURE_KEYS.battleFloorB;
+        const tile = this.add.image(
           x * TILE_SIZE + TILE_SIZE / 2,
           y * TILE_SIZE + TILE_SIZE / 2,
-          TILE_SIZE - 2,
-          TILE_SIZE - 2,
-          baseColor
+          textureKey
         );
         this.gridLayer.add(tile);
       }
@@ -136,14 +151,11 @@ class BattleScene extends Phaser.Scene {
     this.obstacleLayer = this.add.layer();
     this.encounterObstacles.forEach(({ x, y }) => {
       this.obstacleSet.add(keyFor(x, y));
-      const block = this.add.rectangle(
+      const block = this.add.image(
         x * TILE_SIZE + TILE_SIZE / 2,
         y * TILE_SIZE + TILE_SIZE / 2,
-        TILE_SIZE - 8,
-        TILE_SIZE - 8,
-        0x6f4f3b
+        TEXTURE_KEYS.battleObstacle
       );
-      block.setStrokeStyle(2, 0xb08a66, 0.9);
       this.obstacleLayer.add(block);
     });
   }
@@ -548,6 +560,9 @@ class BattleScene extends Phaser.Scene {
       this.cursorIndicator.y = nextY * TILE_SIZE + TILE_SIZE / 2;
     }
 
+    if (!this.selectionPanelText || !this.turnHeaderText || !this.actionMenuText) {
+      return;
+    }
     this.updateSelectionPanel();
   }
 
@@ -821,8 +836,13 @@ class BattleScene extends Phaser.Scene {
   }
 
   clearHighlights() {
-    this.tileHighlights.forEach((highlight) => highlight.destroy());
-    this.tileHighlights = [];
+    for (let index = 0; index < this.activeHighlightCount; index += 1) {
+      const highlight = this.tileHighlights[index];
+      if (highlight) {
+        highlight.setActive(false).setVisible(false);
+      }
+    }
+    this.activeHighlightCount = 0;
     this.highlightTileData = [];
   }
 
@@ -833,16 +853,17 @@ class BattleScene extends Phaser.Scene {
 
   appendHighlights(tiles, color, alpha) {
     tiles.forEach(({ x, y }) => {
-      const rect = this.add.rectangle(
-        x * TILE_SIZE + TILE_SIZE / 2,
-        y * TILE_SIZE + TILE_SIZE / 2,
-        TILE_SIZE - 10,
-        TILE_SIZE - 10,
-        color,
-        alpha
-      );
+      let rect = this.tileHighlights[this.activeHighlightCount];
+      if (!rect) {
+        rect = this.add.rectangle(0, 0, TILE_SIZE - 10, TILE_SIZE - 10, color, alpha).setDepth(11);
+        this.tileHighlights.push(rect);
+      }
+      rect.x = x * TILE_SIZE + TILE_SIZE / 2;
+      rect.y = y * TILE_SIZE + TILE_SIZE / 2;
+      rect.setFillStyle(color, alpha);
       rect.setStrokeStyle(2, color, 0.9);
-      this.tileHighlights.push(rect);
+      rect.setActive(true).setVisible(true);
+      this.activeHighlightCount += 1;
     });
   }
 

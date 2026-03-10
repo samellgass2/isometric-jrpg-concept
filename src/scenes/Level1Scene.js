@@ -5,6 +5,7 @@ import {
   normalizePlayerProgressState,
 } from "../state/playerProgress.js";
 import { loadProgress } from "../persistence/saveSystem.js";
+import { ensureSharedAssets, TEXTURE_KEYS } from "../render/sharedAssets.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 14;
@@ -18,6 +19,12 @@ const START_TILE = { x: 1, y: 1 };
 const EXIT_TILE = { x: 12, y: 8 };
 const LEVEL1_BATTLE_ENCOUNTER_ID = "level-1-training-ambush";
 const LEVEL1_BATTLE_TRIGGER_TILE = { x: 6, y: 5 };
+const CARDINAL_DIRECTIONS = Object.freeze([
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+]);
 
 const TILE_LAYOUT = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -70,9 +77,12 @@ class Level1Scene extends Phaser.Scene {
     this.battleTriggerMarker = null;
     this.currentPlayerTileKey = "";
     this.battleStartLock = false;
+    this.movementVector = { x: 0, y: 0 };
+    this.bfsQueue = [];
   }
 
   create(data = {}) {
+    ensureSharedAssets(this);
     const progress = this.getProgressState();
     this.levelStartTile = data?.spawnTile ?? { ...START_TILE };
     this.clearedEncounterIds = new Set(data?.clearedEncounterIds ?? []);
@@ -119,15 +129,16 @@ class Level1Scene extends Phaser.Scene {
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
         const isBlocked = TILE_LAYOUT[y][x] === 1;
-        const baseColor = isBlocked ? 0x3e2f2f : (x + y) % 2 === 0 ? 0x28426a : 0x203757;
-        const tile = this.add.rectangle(
+        const tileTexture = isBlocked
+          ? TEXTURE_KEYS.level1Wall
+          : (x + y) % 2 === 0
+            ? TEXTURE_KEYS.level1FloorA
+            : TEXTURE_KEYS.level1FloorB;
+        const tile = this.add.image(
           x * TILE_SIZE + TILE_SIZE / 2,
           y * TILE_SIZE + TILE_SIZE / 2,
-          TILE_SIZE - 2,
-          TILE_SIZE - 2,
-          baseColor
+          tileTexture
         );
-        tile.setStrokeStyle(1, isBlocked ? 0x8e6a6a : 0x3a5e8b, 0.9);
         this.terrainLayer.add(tile);
 
         if (isBlocked) {
@@ -300,33 +311,32 @@ class Level1Scene extends Phaser.Scene {
       return [];
     }
 
-    const queue = [{ x: startTile.x, y: startTile.y }];
+    const queue = this.bfsQueue;
+    queue.length = 0;
+    queue.push({ x: startTile.x, y: startTile.y });
+    let queueIndex = 0;
     const visited = new Set([tileKey(startTile.x, startTile.y)]);
     const parentMap = new Map();
 
-    while (queue.length > 0) {
-      const current = queue.shift();
+    while (queueIndex < queue.length) {
+      const current = queue[queueIndex];
+      queueIndex += 1;
       if (current.x === targetTile.x && current.y === targetTile.y) {
         break;
       }
 
-      const neighbors = [
-        { x: current.x + 1, y: current.y },
-        { x: current.x - 1, y: current.y },
-        { x: current.x, y: current.y + 1 },
-        { x: current.x, y: current.y - 1 },
-      ];
-
-      neighbors.forEach((neighbor) => {
-        const key = tileKey(neighbor.x, neighbor.y);
-        if (!this.isWalkableTile(neighbor.x, neighbor.y) || visited.has(key)) {
-          return;
+      for (const [deltaX, deltaY] of CARDINAL_DIRECTIONS) {
+        const neighborX = current.x + deltaX;
+        const neighborY = current.y + deltaY;
+        const key = tileKey(neighborX, neighborY);
+        if (!this.isWalkableTile(neighborX, neighborY) || visited.has(key)) {
+          continue;
         }
 
         visited.add(key);
         parentMap.set(key, current);
-        queue.push(neighbor);
-      });
+        queue.push({ x: neighborX, y: neighborY });
+      }
     }
 
     const targetKey = tileKey(targetTile.x, targetTile.y);
@@ -359,9 +369,11 @@ class Level1Scene extends Phaser.Scene {
     }
 
     const nextWaypoint = this.pointerPath[0];
-    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, nextWaypoint.x, nextWaypoint.y);
+    const nextDeltaX = nextWaypoint.x - this.player.x;
+    const nextDeltaY = nextWaypoint.y - this.player.y;
+    const distanceSquared = nextDeltaX * nextDeltaX + nextDeltaY * nextDeltaY;
 
-    if (distance <= ARRIVAL_THRESHOLD) {
+    if (distanceSquared <= ARRIVAL_THRESHOLD * ARRIVAL_THRESHOLD) {
       this.player.setPosition(nextWaypoint.x, nextWaypoint.y);
       this.pointerPath.shift();
       this.pointerPathTiles.shift();
@@ -372,14 +384,16 @@ class Level1Scene extends Phaser.Scene {
     }
 
     const targetWaypoint = this.pointerPath[0];
-    const direction = new Phaser.Math.Vector2(targetWaypoint.x - this.player.x, targetWaypoint.y - this.player.y);
-    if (direction.lengthSq() === 0) {
+    const deltaX = targetWaypoint.x - this.player.x;
+    const deltaY = targetWaypoint.y - this.player.y;
+    const magnitudeSquared = deltaX * deltaX + deltaY * deltaY;
+    if (magnitudeSquared === 0) {
       this.player.body.setVelocity(0, 0);
       return true;
     }
 
-    direction.normalize().scale(PLAYER_SPEED);
-    this.player.body.setVelocity(direction.x, direction.y);
+    const magnitude = Math.sqrt(magnitudeSquared);
+    this.player.body.setVelocity((deltaX / magnitude) * PLAYER_SPEED, (deltaY / magnitude) * PLAYER_SPEED);
     return true;
   }
 
@@ -390,18 +404,28 @@ class Level1Scene extends Phaser.Scene {
     const downPressed = this.cursors.down.isDown || this.wasdKeys.down.isDown;
 
     if (leftPressed && !rightPressed) {
-      return { x: -1, y: 0 };
+      this.movementVector.x = -1;
+      this.movementVector.y = 0;
+      return this.movementVector;
     }
     if (rightPressed && !leftPressed) {
-      return { x: 1, y: 0 };
+      this.movementVector.x = 1;
+      this.movementVector.y = 0;
+      return this.movementVector;
     }
     if (upPressed && !downPressed) {
-      return { x: 0, y: -1 };
+      this.movementVector.x = 0;
+      this.movementVector.y = -1;
+      return this.movementVector;
     }
     if (downPressed && !upPressed) {
-      return { x: 0, y: 1 };
+      this.movementVector.x = 0;
+      this.movementVector.y = 1;
+      return this.movementVector;
     }
-    return { x: 0, y: 0 };
+    this.movementVector.x = 0;
+    this.movementVector.y = 0;
+    return this.movementVector;
   }
 
   playerIsNearExit() {

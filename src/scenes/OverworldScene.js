@@ -8,6 +8,7 @@ import {
   updateOverworldPosition,
 } from "../state/playerProgress.js";
 import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
+import { ensureSharedAssets, TEXTURE_KEYS } from "../render/sharedAssets.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 16;
@@ -19,12 +20,14 @@ const INTERACTION_DISTANCE = TILE_SIZE * 0.9;
 const UI_DEPTH = 40;
 const ARRIVAL_THRESHOLD = 4;
 const SIGN_INTERACTION_DISTANCE = TILE_SIZE;
-
-const PLAYER_TEXTURES = {
-  idle: "player-idle",
-  walkA: "player-walk-a",
-  walkB: "player-walk-b",
-};
+const INTERACTION_DISTANCE_SQUARED = INTERACTION_DISTANCE * INTERACTION_DISTANCE;
+const SIGN_INTERACTION_DISTANCE_SQUARED = SIGN_INTERACTION_DISTANCE * SIGN_INTERACTION_DISTANCE;
+const CARDINAL_DIRECTIONS = Object.freeze([
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+]);
 
 const NPC_DEFINITIONS = [
   {
@@ -134,6 +137,9 @@ class OverworldScene extends Phaser.Scene {
     this.pointerPathTiles = [];
     this.npcTileSet = new Set();
     this.signTileSet = new Set();
+    this.npcByTile = new Map();
+    this.signByTile = new Map();
+    this.bfsQueue = [];
     this.isTransitioning = false;
     this.hudOverlay = null;
     this.hudLastKey = "";
@@ -141,9 +147,11 @@ class OverworldScene extends Phaser.Scene {
     this.playerStats = { hp: 100, maxHp: 100 };
     this.lastSavedTileKey = "";
     this.progressSnapshot = normalizePlayerProgressState();
+    this.movementVector = { x: 0, y: 0 };
   }
 
   create(data) {
+    ensureSharedAssets(this);
     const progress = this.getProgressState();
     this.progressSnapshot = progress;
     const requestedSpawnPointId =
@@ -159,6 +167,12 @@ class OverworldScene extends Phaser.Scene {
 
     this.npcGroup = this.physics.add.staticGroup();
     this.signGroup = this.physics.add.staticGroup();
+    this.npcEntities = [];
+    this.levelSigns = [];
+    this.npcTileSet.clear();
+    this.signTileSet.clear();
+    this.npcByTile.clear();
+    this.signByTile.clear();
 
     this.renderTerrain();
     this.renderCollisionOverlay();
@@ -242,108 +256,15 @@ class OverworldScene extends Phaser.Scene {
     this.hudLastKey = "";
   }
 
-  createPlayerTextures() {
-    if (
-      this.textures.exists(PLAYER_TEXTURES.idle) &&
-      this.textures.exists(PLAYER_TEXTURES.walkA) &&
-      this.textures.exists(PLAYER_TEXTURES.walkB)
-    ) {
-      return;
-    }
-
-    const drawFrame = (textureKey, bodyColor, accentColor) => {
-      const frame = this.make.graphics({ x: 0, y: 0, add: false });
-      frame.fillStyle(0x1f1f2b, 1);
-      frame.fillRect(8, 1, 8, 8);
-      frame.fillStyle(bodyColor, 1);
-      frame.fillRoundedRect(4, 10, 16, 16, 3);
-      frame.fillStyle(accentColor, 1);
-      frame.fillRect(6, 13, 12, 2);
-      frame.fillStyle(0x111111, 1);
-      frame.fillRect(6, 28, 5, 3);
-      frame.fillRect(13, 28, 5, 3);
-      frame.generateTexture(textureKey, 24, 32);
-      frame.destroy();
-    };
-
-    drawFrame(PLAYER_TEXTURES.idle, 0x2f71ff, 0x8cb3ff);
-    drawFrame(PLAYER_TEXTURES.walkA, 0x3c7cff, 0xa8c6ff);
-    drawFrame(PLAYER_TEXTURES.walkB, 0x2b66e0, 0x7ea8ff);
-  }
-
-  createPlayerAnimations() {
-    if (!this.anims.exists("player-idle")) {
-      this.anims.create({
-        key: "player-idle",
-        frames: [{ key: PLAYER_TEXTURES.idle }],
-        frameRate: 1,
-        repeat: -1,
-      });
-    }
-
-    if (!this.anims.exists("player-walk")) {
-      this.anims.create({
-        key: "player-walk",
-        frames: [
-          { key: PLAYER_TEXTURES.walkA },
-          { key: PLAYER_TEXTURES.walkB },
-          { key: PLAYER_TEXTURES.walkA },
-          { key: PLAYER_TEXTURES.idle },
-        ],
-        frameRate: 10,
-        repeat: -1,
-      });
-    }
-  }
-
-  createNpcTexture(textureKey, bodyColor, accentColor) {
-    if (this.textures.exists(textureKey)) {
-      return;
-    }
-
-    const frame = this.make.graphics({ x: 0, y: 0, add: false });
-    frame.fillStyle(0x1f1f2b, 1);
-    frame.fillRoundedRect(6, 0, 12, 10, 3);
-    frame.fillStyle(bodyColor, 1);
-    frame.fillRoundedRect(4, 10, 16, 16, 4);
-    frame.fillStyle(accentColor, 1);
-    frame.fillRect(6, 14, 12, 3);
-    frame.fillStyle(0x111111, 1);
-    frame.fillRect(6, 28, 5, 3);
-    frame.fillRect(13, 28, 5, 3);
-    frame.generateTexture(textureKey, 24, 32);
-    frame.destroy();
-  }
-
-  createSignTexture(textureKey, postColor, boardColor) {
-    if (this.textures.exists(textureKey)) {
-      return;
-    }
-
-    const frame = this.make.graphics({ x: 0, y: 0, add: false });
-    frame.fillStyle(postColor, 1);
-    frame.fillRect(10, 14, 4, 14);
-    frame.fillStyle(boardColor, 1);
-    frame.fillRoundedRect(2, 2, 20, 14, 3);
-    frame.fillStyle(0x1a1a1a, 0.25);
-    frame.fillRect(4, 6, 16, 2);
-    frame.fillRect(4, 10, 16, 2);
-    frame.generateTexture(textureKey, 24, 32);
-    frame.destroy();
-  }
-
   renderTerrain() {
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
         const tileType = TILE_LAYOUT[y][x];
-        const color = tileType === 1 ? 0x5a4b3d : 0x4c8f5e;
-
-        const tile = this.add.rectangle(
+        const tileTexture = tileType === 1 ? TEXTURE_KEYS.overworldWall : TEXTURE_KEYS.overworldFloor;
+        const tile = this.add.image(
           x * TILE_SIZE + TILE_SIZE / 2,
           y * TILE_SIZE + TILE_SIZE / 2,
-          TILE_SIZE - 2,
-          TILE_SIZE - 2,
-          color
+          tileTexture
         );
 
         this.terrainLayer.add(tile);
@@ -462,11 +383,8 @@ class OverworldScene extends Phaser.Scene {
   }
 
   createPlayerCharacter(spawnTile) {
-    this.createPlayerTextures();
-    this.createPlayerAnimations();
-
     const playerStart = tileToWorld(spawnTile.x, spawnTile.y);
-    this.player = this.physics.add.sprite(playerStart.x, playerStart.y, PLAYER_TEXTURES.idle);
+    this.player = this.physics.add.sprite(playerStart.x, playerStart.y, TEXTURE_KEYS.playerSheet, 0);
     this.player.setDepth(10);
     this.player.setSize(16, 18);
     this.player.setOffset(4, 12);
@@ -483,7 +401,6 @@ class OverworldScene extends Phaser.Scene {
 
   createNpcPlaceholders() {
     NPC_DEFINITIONS.forEach((npcConfig) => {
-      this.createNpcTexture(npcConfig.texture, npcConfig.bodyColor, npcConfig.accentColor);
       const world = tileToWorld(npcConfig.tileX, npcConfig.tileY);
       const npc = this.npcGroup.create(world.x, world.y, npcConfig.texture);
       npc.setDepth(9);
@@ -494,7 +411,9 @@ class OverworldScene extends Phaser.Scene {
       npc.refreshBody();
       this.characterLayer.add(npc);
       this.npcEntities.push(npc);
-      this.npcTileSet.add(keyForTile(npcConfig.tileX, npcConfig.tileY));
+      const tileKey = keyForTile(npcConfig.tileX, npcConfig.tileY);
+      this.npcTileSet.add(tileKey);
+      this.npcByTile.set(tileKey, npc);
     });
   }
 
@@ -520,14 +439,7 @@ class OverworldScene extends Phaser.Scene {
   }
 
   createLevelSigns() {
-    LEVEL_SIGN_DEFINITIONS.forEach((signConfig, index) => {
-      const boardColors = [
-        { post: 0x7c5a3a, board: 0xffe6a8 },
-        { post: 0x4b658f, board: 0xbee3ff },
-      ];
-      const colorSet = boardColors[index % boardColors.length];
-      this.createSignTexture(signConfig.texture, colorSet.post, colorSet.board);
-
+    LEVEL_SIGN_DEFINITIONS.forEach((signConfig) => {
       const world = tileToWorld(signConfig.tileX, signConfig.tileY);
       const sign = this.signGroup.create(world.x, world.y, signConfig.texture);
       sign.setDepth(8);
@@ -540,7 +452,9 @@ class OverworldScene extends Phaser.Scene {
       sign.body.setOffset(0, 0);
       this.characterLayer.add(sign);
       this.levelSigns.push(sign);
-      this.signTileSet.add(keyForTile(signConfig.tileX, signConfig.tileY));
+      const tileKey = keyForTile(signConfig.tileX, signConfig.tileY);
+      this.signTileSet.add(tileKey);
+      this.signByTile.set(tileKey, sign);
 
       const signLabel = this.add
         .text(world.x, world.y - 28, signConfig.label, {
@@ -717,33 +631,32 @@ class OverworldScene extends Phaser.Scene {
       return [];
     }
 
-    const queue = [{ x: startTile.x, y: startTile.y }];
+    const queue = this.bfsQueue;
+    queue.length = 0;
+    queue.push({ x: startTile.x, y: startTile.y });
+    let queueIndex = 0;
     const visited = new Set([keyForTile(startTile.x, startTile.y)]);
     const parentMap = new Map();
 
-    while (queue.length > 0) {
-      const current = queue.shift();
+    while (queueIndex < queue.length) {
+      const current = queue[queueIndex];
+      queueIndex += 1;
       if (current.x === targetTile.x && current.y === targetTile.y) {
         break;
       }
 
-      const neighbors = [
-        { x: current.x + 1, y: current.y },
-        { x: current.x - 1, y: current.y },
-        { x: current.x, y: current.y + 1 },
-        { x: current.x, y: current.y - 1 },
-      ];
-
-      neighbors.forEach((neighbor) => {
-        const neighborKey = keyForTile(neighbor.x, neighbor.y);
-        if (visited.has(neighborKey) || !this.isWalkableTile(neighbor.x, neighbor.y)) {
-          return;
+      for (const [deltaX, deltaY] of CARDINAL_DIRECTIONS) {
+        const neighborX = current.x + deltaX;
+        const neighborY = current.y + deltaY;
+        const neighborKey = keyForTile(neighborX, neighborY);
+        if (visited.has(neighborKey) || !this.isWalkableTile(neighborX, neighborY)) {
+          continue;
         }
 
         visited.add(neighborKey);
         parentMap.set(neighborKey, current);
-        queue.push(neighbor);
-      });
+        queue.push({ x: neighborX, y: neighborY });
+      }
     }
 
     const targetKey = keyForTile(targetTile.x, targetTile.y);
@@ -806,9 +719,11 @@ class OverworldScene extends Phaser.Scene {
     let closestDistance = Number.POSITIVE_INFINITY;
 
     this.npcEntities.forEach((npc) => {
-      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, npc.x, npc.y);
-      if (distance <= INTERACTION_DISTANCE && distance < closestDistance) {
-        closestDistance = distance;
+      const deltaX = this.player.x - npc.x;
+      const deltaY = this.player.y - npc.y;
+      const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+      if (distanceSquared <= INTERACTION_DISTANCE_SQUARED && distanceSquared < closestDistance) {
+        closestDistance = distanceSquared;
         closestNpc = npc;
       }
     });
@@ -825,9 +740,11 @@ class OverworldScene extends Phaser.Scene {
     let closestDistance = Number.POSITIVE_INFINITY;
 
     this.levelSigns.forEach((sign) => {
-      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, sign.x, sign.y);
-      if (distance <= SIGN_INTERACTION_DISTANCE && distance < closestDistance) {
-        closestDistance = distance;
+      const deltaX = this.player.x - sign.x;
+      const deltaY = this.player.y - sign.y;
+      const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+      if (distanceSquared <= SIGN_INTERACTION_DISTANCE_SQUARED && distanceSquared < closestDistance) {
+        closestDistance = distanceSquared;
         closestSign = sign;
       }
     });
@@ -840,12 +757,7 @@ class OverworldScene extends Phaser.Scene {
       return null;
     }
 
-    return (
-      this.levelSigns.find((sign) => {
-        const signTile = worldToTile(sign.x, sign.y);
-        return signTile.x === tileX && signTile.y === tileY;
-      }) ?? null
-    );
+    return this.signByTile.get(keyForTile(tileX, tileY)) ?? null;
   }
 
   findNpcAtTile(tileX, tileY) {
@@ -853,12 +765,7 @@ class OverworldScene extends Phaser.Scene {
       return null;
     }
 
-    return (
-      this.npcEntities.find((npc) => {
-        const npcTile = worldToTile(npc.x, npc.y);
-        return npcTile.x === tileX && npcTile.y === tileY;
-      }) ?? null
-    );
+    return this.npcByTile.get(keyForTile(tileX, tileY)) ?? null;
   }
 
   tryInteractWithSign(sign) {
@@ -973,7 +880,9 @@ class OverworldScene extends Phaser.Scene {
 
   getMovementVector() {
     if (!this.inputManager) {
-      return { x: 0, y: 0 };
+      this.movementVector.x = 0;
+      this.movementVector.y = 0;
+      return this.movementVector;
     }
 
     const leftPressed = this.inputManager.isActionActive(InputActions.MOVE_LEFT);
@@ -982,22 +891,32 @@ class OverworldScene extends Phaser.Scene {
     const downPressed = this.inputManager.isActionActive(InputActions.MOVE_DOWN);
 
     if (leftPressed && !rightPressed) {
-      return { x: -1, y: 0 };
+      this.movementVector.x = -1;
+      this.movementVector.y = 0;
+      return this.movementVector;
     }
 
     if (rightPressed && !leftPressed) {
-      return { x: 1, y: 0 };
+      this.movementVector.x = 1;
+      this.movementVector.y = 0;
+      return this.movementVector;
     }
 
     if (upPressed && !downPressed) {
-      return { x: 0, y: -1 };
+      this.movementVector.x = 0;
+      this.movementVector.y = -1;
+      return this.movementVector;
     }
 
     if (downPressed && !upPressed) {
-      return { x: 0, y: 1 };
+      this.movementVector.x = 0;
+      this.movementVector.y = 1;
+      return this.movementVector;
     }
 
-    return { x: 0, y: 0 };
+    this.movementVector.x = 0;
+    this.movementVector.y = 0;
+    return this.movementVector;
   }
 
   moveAlongPointerPath() {
@@ -1006,14 +925,11 @@ class OverworldScene extends Phaser.Scene {
     }
 
     const nextWaypoint = this.pointerPath[0];
-    const distance = Phaser.Math.Distance.Between(
-      this.player.x,
-      this.player.y,
-      nextWaypoint.x,
-      nextWaypoint.y
-    );
+    const nextDeltaX = nextWaypoint.x - this.player.x;
+    const nextDeltaY = nextWaypoint.y - this.player.y;
+    const distanceSquared = nextDeltaX * nextDeltaX + nextDeltaY * nextDeltaY;
 
-    if (distance <= ARRIVAL_THRESHOLD) {
+    if (distanceSquared <= ARRIVAL_THRESHOLD * ARRIVAL_THRESHOLD) {
       this.player.setPosition(nextWaypoint.x, nextWaypoint.y);
       this.pointerPath.shift();
       this.pointerPathTiles.shift();
@@ -1025,21 +941,21 @@ class OverworldScene extends Phaser.Scene {
     }
 
     const targetWaypoint = this.pointerPath[0];
-    const direction = new Phaser.Math.Vector2(
-      targetWaypoint.x - this.player.x,
-      targetWaypoint.y - this.player.y
-    );
-
-    if (direction.lengthSq() === 0) {
+    const deltaX = targetWaypoint.x - this.player.x;
+    const deltaY = targetWaypoint.y - this.player.y;
+    const magnitudeSquared = deltaX * deltaX + deltaY * deltaY;
+    if (magnitudeSquared === 0) {
       this.player.body.setVelocity(0, 0);
       return true;
     }
 
-    direction.normalize().scale(PLAYER_SPEED);
-    this.player.body.setVelocity(direction.x, direction.y);
+    const magnitude = Math.sqrt(magnitudeSquared);
+    const velocityX = (deltaX / magnitude) * PLAYER_SPEED;
+    const velocityY = (deltaY / magnitude) * PLAYER_SPEED;
+    this.player.body.setVelocity(velocityX, velocityY);
 
-    if (Math.abs(direction.x) > 1) {
-      this.player.setFlipX(direction.x < 0);
+    if (Math.abs(velocityX) > 1) {
+      this.player.setFlipX(velocityX < 0);
     }
     this.player.anims.play("player-walk", true);
     return true;

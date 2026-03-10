@@ -1584,3 +1584,74 @@ Battle party persistence test passed.
 - Chrome-for-Testing and Playwright Chromium both sustain near-60 FPS in the battle scenario, but Chromium shows larger hitch outliers.
 - Idle/overworld behavior diverged materially in this environment: Chrome-for-Testing stayed near ~57 FPS while Playwright Chromium dropped to low single-digit FPS with very high frame-time spikes.
 - Because Firefox could not run in this environment, Chrome-vs-Firefox behavioral/performance differences could not be measured in this task run.
+
+## Workflow #36 - Performance Optimization and Cross-Browser Compatibility Pass (Task #351, RUN_ID=642)
+
+### Summary
+- Implemented targeted render + asset-path optimizations in Phaser config and core scenes.
+- Added a dedicated shared-asset boot stage to prevent redundant texture generation.
+- Refactored update/pathfinding hot paths to reduce per-frame and per-input allocations.
+- Replaced battle highlight create/destroy churn with pooled, reusable display objects.
+
+### Code-Level Optimizations
+1. Renderer configuration tightened for 2D/pixel-art perf:
+   - File: `src/gameConfig.js`
+   - Changes:
+     - Explicit renderer/perf flags: `antialias: false`, `roundPixels: true`, `autoRound: true`.
+     - Added `render` block with explicit `powerPreference: "high-performance"`, disabled expensive blending/transparency defaults for this project (`transparent: false`, `premultipliedAlpha: false`), and pixel-art-focused settings.
+     - Added explicit `fps.target = 60`.
+2. Shared common assets centralized in boot scene:
+   - Files: `src/scenes/BootScene.js`, `src/render/sharedAssets.js`, `src/gameConfig.js`
+   - Changes:
+     - Added `BootScene` as the first scene in config.
+     - Added `ensureSharedAssets(scene)` pipeline for common textures/animations used across scenes.
+     - Generated player movement art as a spritesheet (`player-sheet`) plus shared animation setup once at boot.
+     - Centralized common tile textures (`overworld`, `level1`, `level2`, `battle`) and shared NPC/sign textures.
+3. Overworld render/update hotspot optimization:
+   - File: `src/scenes/OverworldScene.js`
+   - Changes:
+     - Terrain switched from per-tile rectangle primitives to shared texture images.
+     - Removed per-scene redundant player/NPC/sign texture generation; uses boot-cached textures.
+     - Pathfinding BFS no longer uses `queue.shift()`; replaced with index-based queue walk.
+     - Interaction checks now use squared-distance math (no repeated sqrt calls).
+     - Tile lookup for NPC/sign interaction now uses maps (`npcByTile` / `signByTile`) rather than repeated array scans + `worldToTile` allocations.
+     - Update movement vector and pointer movement computations now reuse data structures and scalar math instead of per-frame object/Vector2 allocations.
+4. Level scene update/pathfinding optimization:
+   - Files: `src/scenes/Level1Scene.js`, `src/scenes/Level2Scene.js`
+   - Changes:
+     - Terrain render switched to shared tile textures.
+     - BFS pathfinding refactored to index-based queue logic.
+     - Movement vector and pointer movement direction math refactored to avoid frame-time object allocations.
+5. Battle highlight churn and rendering optimization:
+   - File: `src/scenes/BattleScene.js`
+   - Changes:
+     - Grid/obstacle render switched from rectangle primitives to shared textures.
+     - Highlight rendering (`showHighlights` / `appendHighlights` / `clearHighlights`) now uses pooled rectangles toggled active/visible instead of create/destroy on each command transition.
+     - Added scene-create resets for reused mutable scene state to avoid stale-object carryover.
+     - Added defensive guard in `setCursorTile` to avoid UI update calls before text objects are initialized.
+
+### Runtime Verification
+- Scene transition smoke validation:
+  - Main menu -> Overworld -> Battle launch path exercised via Playwright-driven browser automation.
+  - No Phaser runtime errors after final patch.
+  - No missing-texture runtime errors observed in console logs.
+
+### Performance Measurements (Representative Scenario)
+- Baseline source for comparison:
+  - Task #350 recorded Playwright Chromium Idle/Overworld baseline at `~6.3 FPS` with `~383.3 ms` P95 frame time.
+- Post-optimization re-run (this task):
+  - Tooling: Playwright Chromium launched in a local virtual display (`Xvfb`) against `npm run dev`; frame stats sampled from in-page `requestAnimationFrame` deltas over a 6s window.
+  - Overworld (representative scenario):
+    - Avg FPS: `~23.2`
+    - P95 frame time: `~83.3 ms`
+    - Worst frame: `~183.4 ms`
+- Before/after (Overworld representative scenario):
+  - Avg FPS: `~6.3` -> `~23.2` (improved)
+  - P95 frame time: `~383.3 ms` -> `~83.3 ms` (improved)
+
+### Validation Commands
+1. `npm install` - PASS
+2. `npm test` - PASS
+3. Browser runtime/perf smoke:
+   - `npm run dev`
+   - Playwright automation run (local script, Chromium) for scene transitions + frame sampling
