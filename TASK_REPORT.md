@@ -1,48 +1,46 @@
 # Task Report
 
-- Task ID: 339
-- Run ID: 581
-- Title: Integrate drones into battles and add test scenario
+- Task ID: 350
+- Run ID: 634
+- Title: Profile current Phaser game performance
 - Status: Completed
 
 ## Summary
-Integrated a dedicated zookeeper drone battle scenario that is directly launchable from the main menu, and added automated validation for encounter wiring plus drone move-then-attack progression.
+Captured baseline performance profiles for exploration and battle gameplay using Chrome DevTools Protocol against two Chromium-based browsers (Chrome-for-Testing and Playwright Chromium), identified entrypoints and primary scenes, documented frame-time/FPS/input-latency observations, and recorded Firefox profiling limitations.
 
-## Changes Made
-- Added new encounter config in `src/battle/encounters.js`:
-  - Encounter ID: `drone-test-battle`
-  - Name: `Drone Test Battle`
-  - Friendly side: protagonist + guardian dog
-  - Enemy side: defender, scout, and controller zookeeper drones
-  - Includes explicit obstacle layout and spawn coordinates for a readable AI behavior showcase.
-- Updated `src/scenes/MainMenuScene.js`:
-  - Added `Drone Test Battle` menu button.
-  - Added keyboard shortcut `T` to launch the test encounter.
-  - Starts `BattleScene` with `encounterId: "drone-test-battle"` and returns to `MainMenuScene` after battle resolution.
-- Added `scripts/drone-test-battle-scenario.test.mjs`:
-  - Verifies the encounter exists and is clearly named.
-  - Verifies at least one friendly unit and multiple drone enemy types are present.
-  - Simulates drone AI decisions to confirm move behavior when out of range and attack behavior once in range.
-  - Confirms attack resolution applies positive damage for visible HP changes.
-- Updated `package.json` test script to include `scripts/drone-test-battle-scenario.test.mjs` in `npm test`.
-- Updated `STATUS.md` with run instructions and behavior walkthrough for the drone encounter.
+## What Was Profiled
+- Local run command: `npm run dev` (`scripts/dev-server.mjs`, `http://127.0.0.1:5173`)
+- Entrypoints:
+  - `src/main.js`
+  - `src/gameConfig.js`
+- Primary gameplay scenes:
+  - Overworld exploration: `src/scenes/OverworldScene.js`
+  - Battle/high-action: `src/scenes/BattleScene.js`
 
-## Acceptance Test Check
-1. Clearly named battle configuration with player + multiple drone types: PASS (`drone-test-battle`).
-2. Drone placement and visual distinction in the scenario: PASS (fixed spawn positions + per-drone colors).
-3. Autonomous drone actions and visible feedback: PASS (`BattleScene` logs movement/attacks/hold; HP changes shown by existing UI/log flow).
-4. Stable completion on victory/defeat: PASS (existing `BattleScene.evaluateBattleOutcome` + `finishBattle` flow unchanged and exercised by scenario).
-5. Simple documented activation method: PASS (main menu button and `T` shortcut, documented in `STATUS.md`).
-6. STATUS walkthrough of expected drone behaviors: PASS.
+## Tooling Used
+- Chrome DevTools performance sampling via CDP (headless capture workflow)
+- Browser 1: Chrome-for-Testing `146.0.7680.72`
+- Browser 2: Playwright Chromium `136.0.7103.25`
+
+## Baseline Results (Recorded)
+- Idle/Overworld:
+  - Chrome-for-Testing: ~57.2 FPS average, ~16.8 ms p95 frame time, 100 ms worst frame
+  - Playwright Chromium: ~6.3 FPS average, ~383.3 ms p95 frame time, 433.2 ms worst frame
+- Battle/High-action:
+  - Chrome-for-Testing: ~60.0 FPS average, ~16.7 ms p95 frame time
+  - Playwright Chromium: ~57.9 FPS average, ~16.8 ms p95 frame time, 133.4 ms worst frame
+
+## Main Hotspots Observed
+1. `OverworldScene.update` (`src/scenes/OverworldScene.js:1048`) as the continuous frame loop, including HUD/progress persistence calls.
+2. `OverworldScene.findTilePath` (`src/scenes/OverworldScene.js:712`) BFS queue/neighbor traversal on pointer pathing.
+3. `BattleScene.handleInputAction` / `handleConfirmAction` (`src/scenes/BattleScene.js:498`, `:583`) under high input rate.
+4. `BattleScene.showHighlights` / `clearHighlights` (`src/scenes/BattleScene.js:829`, `:823`) object churn with GC samples during battle input bursts.
+
+## Cross-Browser / Compatibility Notes
+- Both Chromium-based runs were functional and battle stayed near 60 FPS average.
+- Idle/exploration diverged materially in this environment (Chrome-for-Testing much faster than Playwright Chromium).
+- Firefox profiling was not executed: Firefox runtime unavailable in the runner (`firefox: command not found`), so Firefox behavior/performance remains unvalidated and should be tested in a suitable environment.
 
 ## Validation
 - Ran: `npm test`
 - Result: PASS
-  - Rollback test passed.
-  - Dog conditional behavior test passed.
-  - Battle grid stats test passed.
-  - Drone AI decision test passed.
-  - Drone test battle scenario test passed.
-  - Player progress state test passed.
-  - Save system persistence test passed.
-  - Battle party persistence test passed.

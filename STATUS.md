@@ -1541,3 +1541,46 @@ Battle party persistence test passed.
 
 ### Overall QA Verdict
 - PASS
+
+## Workflow #36 - Performance Optimization and Cross-Browser Compatibility Pass (Task #350, RUN_ID=634)
+
+### Profiling Scope And Tooling
+- Local run command: `npm run dev` (serves `src/index.html` via `scripts/dev-server.mjs` at `http://127.0.0.1:5173`).
+- Profiling method: Chrome DevTools Performance/CPU sampling via Chrome DevTools Protocol (headless capture).
+- Browsers profiled:
+  - Chrome-for-Testing `146.0.7680.72` (Chromium-based).
+  - Playwright Chromium `136.0.7103.25` (additional Chromium-based compatibility pass).
+- Firefox status: Firefox runtime is unavailable in this runner (`firefox: command not found`), so Firefox profiling could not be performed here. Firefox behavior/performance remains to be validated in a suitable environment with required Firefox runtime libraries.
+
+### Entrypoints And Primary Phaser Scenes
+- Entrypoint boot:
+  - `src/main.js` initializes `new Phaser.Game(gameConfig)` and hydrates persisted progress before boot.
+  - `src/gameConfig.js` defines renderer/physics config and scene list.
+- Scene classes tied to profiled gameplay:
+  - Overworld exploration: `src/scenes/OverworldScene.js`.
+  - Battle/high-action gameplay: `src/scenes/BattleScene.js`.
+  - Transition surface used during capture: `src/scenes/MainMenuScene.js`.
+
+### Recorded Performance Baseline
+- Representative recordings captured:
+  - Idle/exploration recording in `OverworldScene`.
+  - High-action battle recording in `BattleScene` (repeated command/menu/cursor inputs).
+
+| Browser | Scenario | Avg FPS | P95 Frame Time | Worst Frame | Input Delay (observed) |
+| --- | --- | ---: | ---: | ---: | --- |
+| Chrome-for-Testing | Idle/Overworld | ~57.2 | ~16.8 ms | 100 ms | ~1.9-5.0 ms (`keydown`) |
+| Chrome-for-Testing | Battle/High-action | ~60.0 | ~16.7 ms | 16.8 ms | No usable EventTiming samples in this run |
+| Playwright Chromium | Idle/Overworld | ~6.3 | ~383.3 ms | 433.2 ms | ~47.1-156.3 ms (`keydown`) |
+| Playwright Chromium | Battle/High-action | ~57.9 | ~16.8 ms | 133.4 ms | ~0.3 ms (single sampled event) |
+
+### Key Bottlenecks / Hot Functions
+1. `OverworldScene.update` (`src/scenes/OverworldScene.js:1048`) is a persistent hot loop and repeatedly calls `syncHudOverlay()` plus `persistOverworldProgress()` along movement/idle branches; trace samples also show non-trivial time in browser `save` calls during overworld capture.
+2. Pointer pathfinding (`OverworldScene.findTilePath`, `src/scenes/OverworldScene.js:712`) uses BFS with array queue shifting (`queue.shift()`), creating avoidable per-selection churn that can contribute to exploration hitches.
+3. Battle input/command handling (`BattleScene.handleInputAction` at `src/scenes/BattleScene.js:498`, `handleConfirmAction` at `:583`) is a hotspot during high-action input bursts; devtools samples show frequent `onKeyDown` / event-dispatch activity.
+4. Highlight rendering churn (`BattleScene.showHighlights` / `clearHighlights`, `src/scenes/BattleScene.js:829` and `:823`) repeatedly creates/destroys rectangle display objects; garbage-collector samples appear in battle profiles.
+5. Rendering cost is dominated by Phaser renderer internals in both scenarios (notably layer/rectangle renderer paths), indicating draw-call/object-count pressure rather than a single isolated logic function.
+
+### Cross-Browser Notes
+- Chrome-for-Testing and Playwright Chromium both sustain near-60 FPS in the battle scenario, but Chromium shows larger hitch outliers.
+- Idle/overworld behavior diverged materially in this environment: Chrome-for-Testing stayed near ~57 FPS while Playwright Chromium dropped to low single-digit FPS with very high frame-time spikes.
+- Because Firefox could not run in this environment, Chrome-vs-Firefox behavioral/performance differences could not be measured in this task run.
