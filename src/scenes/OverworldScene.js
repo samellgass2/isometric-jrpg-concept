@@ -9,6 +9,7 @@ const MAP_PIXEL_HEIGHT = MAP_HEIGHT * TILE_SIZE;
 const INTERACTION_DISTANCE = TILE_SIZE * 0.9;
 const UI_DEPTH = 40;
 const ARRIVAL_THRESHOLD = 4;
+const SIGN_INTERACTION_DISTANCE = TILE_SIZE;
 
 const PLAYER_TEXTURES = {
   idle: "player-idle",
@@ -36,6 +37,25 @@ const NPC_DEFINITIONS = [
     tileX: 11,
     tileY: 8,
     dialogue: "Mechanic Ivo: Placeholder line... my workshop will open in a later build.",
+  },
+];
+
+const LEVEL_SIGN_DEFINITIONS = [
+  {
+    id: "sign-level-1",
+    label: "Level 1",
+    texture: "sign-level-1",
+    tileX: 4,
+    tileY: 9,
+    prompt: "Level 1: Training Grounds",
+  },
+  {
+    id: "sign-level-2",
+    label: "Level 2",
+    texture: "sign-level-2",
+    tileX: 13,
+    tileY: 3,
+    prompt: "Level 2: Canyon Crossing",
   },
 ];
 
@@ -82,14 +102,19 @@ class OverworldScene extends Phaser.Scene {
     this.wasdKeys = null;
     this.interactKeys = null;
     this.npcGroup = null;
+    this.signGroup = null;
     this.npcEntities = [];
+    this.levelSigns = [];
     this.dialogueBox = null;
     this.dialogueText = null;
     this.dialogueHintText = null;
     this.activeDialogueNpcId = null;
+    this.activeDialogueSignId = null;
+    this.awaitingSignEnterChoice = false;
     this.pointerPath = [];
     this.pointerPathTiles = [];
     this.npcTileSet = new Set();
+    this.signTileSet = new Set();
   }
 
   create() {
@@ -102,12 +127,14 @@ class OverworldScene extends Phaser.Scene {
     this.characterLayer = this.add.layer();
 
     this.npcGroup = this.physics.add.staticGroup();
+    this.signGroup = this.physics.add.staticGroup();
 
     this.renderTerrain();
     this.renderCollisionOverlay();
     this.createCollisionBodies();
     this.createPlayerCharacter();
     this.createNpcPlaceholders();
+    this.createLevelSigns();
     this.setupMovementInput();
     this.setupPointerInput();
     this.createDialogueUi();
@@ -204,6 +231,23 @@ class OverworldScene extends Phaser.Scene {
     frame.destroy();
   }
 
+  createSignTexture(textureKey, postColor, boardColor) {
+    if (this.textures.exists(textureKey)) {
+      return;
+    }
+
+    const frame = this.make.graphics({ x: 0, y: 0, add: false });
+    frame.fillStyle(postColor, 1);
+    frame.fillRect(10, 14, 4, 14);
+    frame.fillStyle(boardColor, 1);
+    frame.fillRoundedRect(2, 2, 20, 14, 3);
+    frame.fillStyle(0x1a1a1a, 0.25);
+    frame.fillRect(4, 6, 16, 2);
+    frame.fillRect(4, 10, 16, 2);
+    frame.generateTexture(textureKey, 24, 32);
+    frame.destroy();
+  }
+
   renderTerrain() {
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
@@ -270,6 +314,7 @@ class OverworldScene extends Phaser.Scene {
 
     this.physics.add.collider(this.player, this.collisionBodies);
     this.physics.add.collider(this.player, this.npcGroup);
+    this.physics.add.collider(this.player, this.signGroup);
     this.characterLayer.add(this.player);
   }
 
@@ -287,6 +332,47 @@ class OverworldScene extends Phaser.Scene {
       this.characterLayer.add(npc);
       this.npcEntities.push(npc);
       this.npcTileSet.add(keyForTile(npcConfig.tileX, npcConfig.tileY));
+    });
+  }
+
+  createLevelSigns() {
+    LEVEL_SIGN_DEFINITIONS.forEach((signConfig, index) => {
+      const boardColors = [
+        { post: 0x7c5a3a, board: 0xffe6a8 },
+        { post: 0x4b658f, board: 0xbee3ff },
+      ];
+      const colorSet = boardColors[index % boardColors.length];
+      this.createSignTexture(signConfig.texture, colorSet.post, colorSet.board);
+
+      const world = tileToWorld(signConfig.tileX, signConfig.tileY);
+      const sign = this.signGroup.create(world.x, world.y, signConfig.texture);
+      sign.setDepth(8);
+      sign.setDataEnabled();
+      sign.setData("signId", signConfig.id);
+      sign.setData("label", signConfig.label);
+      sign.setData("prompt", signConfig.prompt);
+      sign.refreshBody();
+      sign.body.setSize(32, 32);
+      sign.body.setOffset(0, 0);
+      sign.setInteractive({ useHandCursor: true });
+      sign.on("pointerdown", (pointer, localX, localY, event) => {
+        this.handleSignPointerInteraction(sign, event);
+      });
+      this.characterLayer.add(sign);
+      this.levelSigns.push(sign);
+      this.signTileSet.add(keyForTile(signConfig.tileX, signConfig.tileY));
+
+      const signLabel = this.add
+        .text(world.x, world.y - 28, signConfig.label, {
+          color: "#f5f7ff",
+          fontFamily: "monospace",
+          fontSize: "12px",
+          backgroundColor: "#111827bb",
+          padding: { x: 4, y: 1 },
+        })
+        .setOrigin(0.5)
+        .setDepth(12);
+      this.characterLayer.add(signLabel);
     });
   }
 
@@ -356,6 +442,9 @@ class OverworldScene extends Phaser.Scene {
       return false;
     }
     if (this.npcTileSet.has(keyForTile(tileX, tileY))) {
+      return false;
+    }
+    if (this.signTileSet.has(keyForTile(tileX, tileY))) {
       return false;
     }
     return true;
@@ -468,34 +557,111 @@ class OverworldScene extends Phaser.Scene {
     return closestNpc;
   }
 
+  findNearbySign() {
+    if (!this.player || this.levelSigns.length === 0) {
+      return null;
+    }
+
+    let closestSign = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    this.levelSigns.forEach((sign) => {
+      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, sign.x, sign.y);
+      if (distance <= SIGN_INTERACTION_DISTANCE && distance < closestDistance) {
+        closestDistance = distance;
+        closestSign = sign;
+      }
+    });
+
+    return closestSign;
+  }
+
   showDialogue(npc) {
     const npcName = npc.getData("name") || "NPC";
     const npcDialogue = npc.getData("dialogue") || `${npcName}: Placeholder dialogue.`;
     this.activeDialogueNpcId = npc.getData("npcId") || null;
+    this.activeDialogueSignId = null;
+    this.awaitingSignEnterChoice = false;
     this.dialogueText.setText(npcDialogue);
+    this.dialogueHintText.setText("Press Space or Enter to close");
     this.dialogueBox.setVisible(true);
     this.dialogueText.setVisible(true);
     this.dialogueHintText.setVisible(true);
   }
 
+  showLevelSignPrompt(sign) {
+    const signLabel = sign.getData("label") || "Unknown Level";
+    const signPrompt = sign.getData("prompt") || signLabel;
+    this.activeDialogueNpcId = null;
+    this.activeDialogueSignId = sign.getData("signId") || null;
+    this.awaitingSignEnterChoice = true;
+    this.dialogueText.setText(
+      `${signPrompt}\nPress Enter to choose ${signLabel}, or Space to close.`
+    );
+    this.dialogueHintText.setText("Enter: select level  Space: close");
+    this.dialogueBox.setVisible(true);
+    this.dialogueText.setVisible(true);
+    this.dialogueHintText.setVisible(true);
+  }
+
+  confirmLevelSignSelection() {
+    const sign = this.levelSigns.find(
+      (entity) => entity.getData("signId") === this.activeDialogueSignId
+    );
+    const signLabel = sign?.getData("label") || "this level";
+    this.awaitingSignEnterChoice = false;
+    this.dialogueText.setText(
+      `${signLabel} selected.\nLevel loading is not wired yet, but this sign marks the entry point.`
+    );
+    this.dialogueHintText.setText("Press Space or Enter to close");
+  }
+
   hideDialogue() {
     this.activeDialogueNpcId = null;
+    this.activeDialogueSignId = null;
+    this.awaitingSignEnterChoice = false;
     this.dialogueBox.setVisible(false);
     this.dialogueText.setVisible(false);
     this.dialogueHintText.setVisible(false);
   }
 
-  handleInteractionInput() {
-    const interactPressed =
-      Phaser.Input.Keyboard.JustDown(this.interactKeys.space) ||
-      Phaser.Input.Keyboard.JustDown(this.interactKeys.enter);
+  handleSignPointerInteraction(sign, event) {
+    if (!this.player || this.dialogueBox?.visible) {
+      return;
+    }
 
-    if (!interactPressed) {
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, sign.x, sign.y);
+    if (distance > SIGN_INTERACTION_DISTANCE) {
+      return;
+    }
+
+    if (event?.stopPropagation) {
+      event.stopPropagation();
+    }
+    this.clearPointerPath();
+    this.showLevelSignPrompt(sign);
+  }
+
+  handleInteractionInput() {
+    const spacePressed = Phaser.Input.Keyboard.JustDown(this.interactKeys.space);
+    const enterPressed = Phaser.Input.Keyboard.JustDown(this.interactKeys.enter);
+
+    if (!spacePressed && !enterPressed) {
       return;
     }
 
     if (this.dialogueBox.visible) {
+      if (enterPressed && this.activeDialogueSignId && this.awaitingSignEnterChoice) {
+        this.confirmLevelSignSelection();
+        return;
+      }
       this.hideDialogue();
+      return;
+    }
+
+    const nearbySign = this.findNearbySign();
+    if (nearbySign) {
+      this.showLevelSignPrompt(nearbySign);
       return;
     }
 

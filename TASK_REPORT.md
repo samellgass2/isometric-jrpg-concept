@@ -1,44 +1,45 @@
 # TASK REPORT
 
 ## Task
-- TASK_ID: 309
-- RUN_ID: 528
-- Title: Implement overworld map with movement controls
+- TASK_ID: 310
+- RUN_ID: 531
+- Title: Add overworld signs for level 1 and level 2
 
 ## Summary of Changes
-- Extended `src/scenes/OverworldScene.js` (dedicated overworld file) with click-to-move support in addition to existing keyboard controls.
-- Added tile/path helpers and pointer input handling:
-  - mouse click converts world position to tile,
-  - BFS pathfinding computes a cardinal route over walkable tiles,
-  - player follows waypoints via Arcade velocity until destination.
-- Preserved and clarified movement handoff behavior:
-  - Arrow keys/WASD still provide immediate manual movement,
-  - keyboard input cancels active click pathing.
-- Enforced map constraints for both movement modes:
-  - world bounds + collision tiles still block leaving map,
-  - click pathfinding treats collision tiles and NPC-occupied tiles as non-walkable.
-- Updated scene HUD instructions to include mouse movement controls.
-- Updated `STATUS.md` with TASK 309 implementation notes, controls, and technical limitations (placeholder tiles/sprites, no external tilemap asset yet).
+- Extended `src/scenes/OverworldScene.js` with two visible level signposts:
+  - `Level 1` sign at tile `(4,9)`
+  - `Level 2` sign at tile `(13,3)`
+- Added sign rendering and setup using generated sign textures and static physics bodies via a new `signGroup`.
+- Added visible in-world labels above each sign (`Level 1`, `Level 2`).
+- Added sign tile occupancy tracking (`signTileSet`) and integrated it with walkability/pathfinding so click-to-move does not target sign tiles.
+- Added collision between player and sign group for reliable proximity-based interaction positioning.
+- Implemented sign interaction behavior in the existing dialogue flow:
+  - Keyboard: `Space` or `Enter` while near a sign opens a prompt for that level.
+  - Prompt offers entry choice: `Enter` selects the shown level (placeholder confirmation), `Space` closes.
+  - Mouse: clicking a sign opens prompt only when player is within sign interaction distance.
+- Preserved existing NPC interaction behavior and used the same dialogue UI pattern.
 
-## Verification
-- `npm test` - PASS
+## STATUS Documentation
+- Updated `STATUS.md` with a new top entry for TASK_ID=310 documenting:
+  - Sign existence and map positions
+  - Keyboard and click interaction behavior
+  - Proximity restriction behavior
+  - Playtesting steps
+
+## Acceptance Criteria Check
+1. Two distinct visible sign/marker objects labeled `Level 1` and `Level 2`: **PASS**.
+2. Near `Level 1` sign + interaction key/click triggers message referencing `Level 1`: **PASS**.
+3. Near `Level 2` sign + interaction key/click triggers message referencing `Level 2`: **PASS**.
+4. Far-away interaction does not trigger sign prompt: **PASS** (distance gate in sign pointer handler and nearby-sign lookup).
+5. Interaction logic encapsulated cleanly in `OverworldScene` and follows existing interaction/dialogue patterns: **PASS**.
+6. `STATUS.md` updated with behavior and playtesting usage: **PASS**.
+
+## Test Execution
+- Ran: `npm test`
+- Result: **PASS**
   - `Rollback test passed.`
   - `Dog conditional behavior test passed.`
   - `Battle grid stats test passed.`
-- Dev server smoke test - PASS
-  - Started `node scripts/dev-server.mjs`,
-  - `curl -I http://127.0.0.1:5173/` returned `HTTP/1.1 200 OK`.
 
-## Acceptance Criteria Mapping
-1. Main menu `Start Game` transitions to overworld with visible player:
-   - Existing `MainMenuScene.startGame()` still starts `OverworldScene`; player sprite creation unchanged in overworld.
-2. Keyboard movement works without errors:
-   - Arrow/WASD movement path retained (`getMovementVector` + physics velocity).
-3. Mouse click movement available:
-   - Implemented pointer click pathing (`setupPointerInput`, `findTilePath`, `moveAlongPointerPath`).
-4. Player cannot leave intended map:
-   - Physics world bounds/colliders remain; click path also bounded by `isInBounds` + walkability checks.
-5. Overworld scene remains dedicated/exported/registered:
-   - `src/scenes/OverworldScene.js` continues exporting `OverworldScene`; `src/gameConfig.js` scene graph already includes it.
-6. Status documentation updated:
-   - `STATUS.md` includes TASK_ID=309 entry describing controls and map/boundary notes.
+## Notes
+- Level entry is intentionally a placeholder confirmation message (`selected`) and does not transition scenes yet.
