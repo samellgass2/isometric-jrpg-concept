@@ -1,57 +1,50 @@
-# TASK 330 Report - Record and restore key battle outcome flags
+# Task Report
+
+- Task ID: 337
+- Run ID: 577
+- Title: Define zookeeper drone enemy data models
+- Status: Completed
 
 ## Summary
-Extended the save/load model with a dedicated key-battle outcome flag structure and wired battle completion + scene load behavior so key encounters persist across runs and visibly alter game flow.
+Implemented centralized zookeeper drone enemy unit definitions and integrated them into battle encounter data so they can be instantiated by the existing battle/turn/grid pipeline.
 
-## Changes made
-- Updated progress schema in `src/state/playerProgress.js`
-  - Added `battleOutcomes.keyBattles` with stable boolean flags:
-    - `level1TrainingAmbushCleared`
-    - `level2CanyonGauntletCleared`
-  - Added `battleOutcomes.encounterResults` for per-encounter outcome history.
-  - Added helpers:
-    - `getBattleOutcomeFlag(...)`
-    - `setBattleOutcomeFlag(...)`
-    - `resolveKeyBattleOutcomeFlagForEncounter(...)`
-  - Updated `recordBattleOutcome(...)` to write to `encounterResults` and auto-set mapped key flags on victory.
-  - Preserved backward compatibility by normalizing legacy flat `battleOutcomes[encounterId]` saves into the new shape.
+## Changes Made
+- Added drone AI behavior tags in `src/battle/units/animalUnits.js`:
+  - `AI_BEHAVIOR_TAGS.AGGRESSIVE`
+  - `AI_BEHAVIOR_TAGS.DEFENSIVE`
+  - `AI_BEHAVIOR_TAGS.SUPPORT`
+- Added three distinct drone variants in `src/battle/units/animalUnits.js`:
+  - `zookeeperScoutDroneUnit`
+  - `zookeeperDefenderDroneUnit`
+  - `zookeeperControllerDroneUnit`
+- Added drone exports/lookup structures in the same module:
+  - `zookeeperDroneUnits`
+  - `zookeeperDroneUnitList`
+  - `getZookeeperDroneUnitConfig(unitKey)`
+- Updated `src/battle/encounters.js`:
+  - Imported drone unit definitions.
+  - Added drones to `level-2-canyon-gauntlet` enemy roster.
+  - Extended encounter clone helper to clone `tags` arrays.
+- Updated `src/scenes/BattleScene.js`:
+  - Imported drone definitions for default battle fallback setup.
+  - Default enemy lineup now uses the three drone variants.
+  - Runtime spawn now preserves `role`, `aiBehavior`, and `tags` from unit configs.
+- Updated `scripts/battle-grid-stats.test.mjs`:
+  - Added assertions for drone behavior tags.
+  - Added assertions for distinct drone stat profiles.
+  - Added assertion that encounter definitions include zookeeper drone archetypes.
+- Updated `STATUS.md` with a task entry including file paths and summary.
 
-- Updated battle resolution hook in `src/scenes/BattleScene.js`
-  - On battle completion, persists outcome history and mapped key-battle flags through existing progress/save utilities.
+## Acceptance Test Check
+1. Single source-of-truth module for drone definitions alongside existing units: PASS (`src/battle/units/animalUnits.js`).
+2. At least three drone variants with distinct HP/move/range/damage/defense: PASS.
+3. Each drone includes AI behavior tag: PASS (`aiBehavior` set to aggressive/defensive/support).
+4. Battle setup can instantiate drones without runtime errors: PASS (encounter/default battle references + tests pass).
+5. STATUS.md updated with summary and path: PASS.
 
-- Updated scene load-time consumption of outcome flags
-  - `src/scenes/Level1Scene.js`
-    - Reads persisted progress on create.
-    - If `level1TrainingAmbushCleared` is true, marks encounter as cleared, keeps cleared visuals, and prevents retrigger.
-  - `src/scenes/Level2Scene.js`
-    - Reads persisted progress on create.
-    - If `level2CanyonGauntletCleared` is true, marks encounter as cleared and prevents retrigger.
-  - `src/scenes/OverworldScene.js`
-    - Uses persisted key-battle flags to unlock alternate NPC dialogue:
-      - Ranger Sol after Level 1 ambush clear.
-      - Mechanic Ivo after Level 2 gauntlet clear.
-
-- Updated tests
-  - `scripts/player-progress.test.mjs`
-    - Validates new `battleOutcomes` structure.
-    - Validates automatic key-flag updates on recorded victory.
-    - Validates explicit flag setting/getting.
-    - Validates legacy save normalization into new structure.
-
-- Updated documentation
-  - `STATUS.md` now includes Task 330 section listing each persisted battle outcome flag, when it is set, and where it changes behavior on load.
-
-## Acceptance test check
-1. Dedicated battle outcome structure with stable descriptive keys: PASS (`battleOutcomes.keyBattles`).
-2. Battle resolution/controller updates relevant flags via progress/persistence path: PASS (`BattleScene.persistBattleProgress`).
-3. At least one encounter wired to set persistent outcome flag: PASS (Level 1 and Level 2 encounters).
-4. Subsequent runs check stored flags and visibly change behavior: PASS (encounter retrigger prevention + NPC dialogue unlocks).
-5. Flags serialize/restore through localStorage save/load layer: PASS (`normalize/serialize/deserialize` + `saveSystem` path).
-6. Non-wired battles continue functioning: PASS (default encounter flow unchanged).
-7. `STATUS.md` documents each persisted flag and load-time behavior: PASS.
-
-## Validation run
-- `npm test` -> PASS
+## Validation
+- Ran: `npm test`
+- Result: PASS
   - Rollback test passed.
   - Dog conditional behavior test passed.
   - Battle grid stats test passed.
