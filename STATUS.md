@@ -1385,3 +1385,65 @@ Dev server running at http://127.0.0.1:5173
 
 ## Overall Verdict
 - CLEAN
+
+## Tester Report - Workflow #34 (2026-03-10)
+
+### Scope
+- Project: `isometric-strategy-game`
+- Branch tested: `workflow/34/dev`
+- Tasks verified: `#337`, `#338`, `#339`
+
+### Tests Run And Results
+1. `npm install` - PASS
+   - Output: `up to date, audited 3 packages in 4s`
+   - Output: `found 0 vulnerabilities`
+2. `npm test` - PASS
+   - `Rollback test passed.`
+   - `Dog conditional behavior test passed.`
+   - `Battle grid stats test passed.`
+   - `Drone AI decision test passed.`
+   - `Drone test battle scenario test passed.`
+   - `Player progress state test passed.`
+   - `Save system persistence test passed.`
+   - `Battle party persistence test passed.`
+
+### Per-Task Acceptance Verdict
+
+#### Task #337: Define zookeeper drone enemy data models
+- Verdict: PASS
+- Acceptance checks verified:
+  - Single source module for drone unit definitions exists in `src/battle/units/animalUnits.js` and follows existing unit export pattern.
+  - Three distinct variants are present (`zookeeperScoutDroneUnit`, `zookeeperDefenderDroneUnit`, `zookeeperControllerDroneUnit`) with clearly different HP/move/range/damage/defense.
+  - Each drone includes AI behavior tags via `aiBehavior` (`aggressive`, `defensive`, `support`).
+  - Drone definitions are referenced by encounter and battle setup paths (`src/battle/encounters.js`, `src/scenes/BattleScene.js`) and instantiate successfully (validated by passing test suite).
+  - `STATUS.md` includes entries describing drone definitions and location.
+
+#### Task #338: Implement basic zookeeper drone AI decisions
+- Verdict: PASS
+- Acceptance checks verified:
+  - Drone turns are automated in `BattleScene.runEnemyTurn()` and invoke AI decision logic without manual input.
+  - In-range targets trigger attack actions and existing damage resolution via `resolveAttack`/`attackTarget`, reducing HP.
+  - Out-of-range targets trigger movement toward nearest vulnerable players using existing grid/path utilities in `src/battle/ai/droneDecisionController.js`.
+  - No-target/unreachable cases safely return `wait` behavior.
+  - AI logic is encapsulated in reusable/testable `decideDroneAction`.
+  - `STATUS.md` documents AI decision logic and files changed.
+
+#### Task #339: Integrate drones into battles and add test scenario
+- Verdict: PASS
+- Acceptance checks verified:
+  - Named scenario `drone-test-battle` (`Drone Test Battle`) exists and includes friendlies plus multiple drone types.
+  - Drones spawn at explicit grid positions and are visually distinguishable with encounter colors/placeholders.
+  - Automated enemy turns show move/attack/hold behavior with combat log and HP updates.
+  - Battle completion is handled for both victory and defeat via `evaluateBattleOutcome()`/`finishBattle()`.
+  - Scenario activation is simple (main menu button + `T` shortcut) and documented in `STATUS.md`.
+  - `STATUS.md` includes run instructions and expected behavior walkthrough.
+
+### Bugs Filed
+- None.
+
+### Integration/Regression Check
+- Tasks `#337-#339` work together cohesively (data definitions -> AI decision module -> battle scenario integration).
+- No regressions detected in the repository test suite.
+
+### Overall Verdict
+- CLEAN
