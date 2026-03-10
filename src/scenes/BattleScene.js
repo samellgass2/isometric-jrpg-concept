@@ -9,6 +9,7 @@ import {
   getTargetableTiles,
   getUnitMovementRange,
 } from "../battle/grid.js";
+import InputManager, { InputActions } from "../input/InputManager.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -47,6 +48,8 @@ class BattleScene extends Phaser.Scene {
     this.returnSceneKey = DEFAULT_RETURN_SCENE_KEY;
     this.returnSceneData = {};
     this.battleResolved = false;
+    this.inputManager = null;
+    this.inputUnsubscribe = null;
   }
 
   create(data = {}) {
@@ -302,22 +305,52 @@ class BattleScene extends Phaser.Scene {
   }
 
   setupInput() {
-    this.input.on("pointerdown", (pointer) => {
-      if (!this.playerTurn) {
-        return;
-      }
-      const tileX = Math.floor(pointer.worldX / TILE_SIZE);
-      const tileY = Math.floor(pointer.worldY / TILE_SIZE);
-      if (!inBounds(tileX, tileY)) {
-        return;
-      }
-      this.handleTileClick(tileX, tileY);
-    });
+    this.inputManager = new InputManager(this, { tileSize: TILE_SIZE, autoCleanup: false });
+    this.inputUnsubscribe = this.inputManager.onAction((event) => this.handleInputAction(event));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownInputManager());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.teardownInputManager());
 
     this.input.keyboard.on("keydown-M", () => this.enterMoveMode());
     this.input.keyboard.on("keydown-A", () => this.enterAttackMode());
     this.input.keyboard.on("keydown-E", () => this.endPlayerTurn());
     this.input.keyboard.on("keydown-H", () => this.toggleProtagonistDanger());
+  }
+
+  teardownInputManager() {
+    if (this.inputUnsubscribe) {
+      this.inputUnsubscribe();
+      this.inputUnsubscribe = null;
+    }
+    if (this.inputManager) {
+      this.inputManager.destroy();
+      this.inputManager = null;
+    }
+  }
+
+  handleInputAction(event) {
+    if (!event || event.type !== "pressed") {
+      return;
+    }
+
+    if (event.action === InputActions.SELECT_TILE) {
+      if (!this.playerTurn) {
+        return;
+      }
+      if (!Number.isInteger(event.tileX) || !Number.isInteger(event.tileY)) {
+        return;
+      }
+      if (!inBounds(event.tileX, event.tileY)) {
+        return;
+      }
+      this.handleTileClick(event.tileX, event.tileY);
+      return;
+    }
+
+    if (event.action === InputActions.CANCEL) {
+      this.clearHighlights();
+      this.mode = "idle";
+      this.updateSelectionPanel();
+    }
   }
 
   handleTileClick(tileX, tileY) {

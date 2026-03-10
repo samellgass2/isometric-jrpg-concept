@@ -1,5 +1,23 @@
 # Status
 
+- Task: Implement unified input abstraction layer (TASK_ID=319, RUN_ID=546)
+- State: Completed
+- Notes: Added a new reusable input module at `src/input/InputManager.js` that normalizes raw Phaser keyboard/pointer/touch events into semantic actions: `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`, `CONFIRM`, `CANCEL`, and `SELECT_TILE`.
+
+  Public API:
+  - `new InputManager(scene, options)` creates scene-local listeners without coupling to a specific scene class.
+  - `onAction(callback)` / `offAction(callback)` subscribes/unsubscribes observers to high-level action events.
+  - `isActionActive(action)` supports held-input polling (used for directional movement).
+  - `rebindAction(action, keyNames)` and `unbindAction(action)` allow hardware binding changes without touching scene gameplay logic.
+  - `setActionEnabled(action, enabled)` and `destroy()` support temporary input gating and cleanup.
+
+  Wiring:
+  - `src/scenes/OverworldScene.js` now consumes `InputManager` for movement (`MOVE_*` polling), interactions (`CONFIRM`/`CANCEL`), and click/touch path selection (`SELECT_TILE` tile coordinates), replacing direct cursor/WASD/interact key reads and direct scene pointer listener logic for movement/selection.
+  - `src/scenes/BattleScene.js` now consumes `InputManager` for `SELECT_TILE` tile selection and `CANCEL` mode reset, while keeping existing battle-specific hotkeys (`M`, `A`, `E`, `H`) unchanged.
+
+  Result:
+  - Scene gameplay logic now reacts to semantic actions instead of device-specific events, and key-binding changes (for example, unbinding WASD through `InputManager`) do not require changes to overworld or battle scene logic.
+
 - Task: Integrate simple battle encounters into levels (TASK_ID=312, RUN_ID=535)
 - State: Completed
 - Notes: Integrated `BattleScene` as an encounter-driven scene instead of a standalone static prototype by adding reusable encounter definitions in `src/battle/encounters.js` and data-driven scene startup in `src/scenes/BattleScene.js`. `BattleScene` now accepts `encounterId`, uses the existing turn/grid/movement-targeting/combat resolver system to run the encounter, detects encounter completion (`victory` when enemies are defeated, `defeat` when friendlies are defeated), and returns to a caller scene with payload (`battleResult`, `lastEncounterId`) so flow is end-to-end and deterministic.
