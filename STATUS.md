@@ -592,6 +592,135 @@ Dev server running at http://127.0.0.1:5173
 ## Overall Verdict
 - CLEAN
 
+# QA Validation Summary (2026-03-10) - Workflow #32 Certification
+
+## Commits Reviewed (`git log --oneline main..HEAD`)
+- `73fc60d` task/331: supervisor safety-commit (Codex omitted git commit)
+- `3f4848c` task/330: persist key battle outcome flags and load-time gates
+- `84f499a` task/329: persist battle party composition across saves
+- `796bb80` task/328: persist overworld tile position across reloads
+- `4462c12` task/327: update task report summary
+- `ae84f44` task/327: add localStorage player progress persistence
+- `c14d94b` task/326: add core player progress save state model
+
+## Diffstat Reviewed (`git diff main...HEAD --stat`)
+```text
+ STATUS.md                                 | 251 +++++++++++++++++
+ TASK_REPORT.md                            |  74 +++--
+ package.json                              |   2 +-
+ scripts/battle-party-persistence.test.mjs | 175 ++++++++++++
+ scripts/player-progress.test.mjs          |  90 ++++++
+ scripts/save-system.test.mjs              |  73 +++++
+ src/main.js                               |  20 ++
+ src/persistence/saveSystem.js             |  75 +++++
+ src/scenes/BattleScene.js                 | 107 ++++++-
+ src/scenes/Level1Scene.js                 |  19 ++
+ src/scenes/Level2Scene.js                 |  19 ++
+ src/scenes/MainMenuScene.js               |  13 +-
+ src/scenes/OverworldScene.js              | 132 ++++++++-
+ src/state/partyPersistence.js             | 125 +++++++++
+ src/state/playerProgress.js               | 453 ++++++++++++++++++++++++++++++
+ 15 files changed, 1594 insertions(+), 34 deletions(-)
+```
+
+## Test Commands Run And Results
+1. `cat package.json | grep -A 40 '"scripts"'` - PASS
+```text
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "start": "node scripts/dev-server.mjs",
+    "test": "node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/player-progress.test.mjs && node scripts/save-system.test.mjs && node scripts/battle-party-persistence.test.mjs"
+  },
+```
+
+2. `npm install` - PASS
+```text
+added 2 packages, and audited 3 packages in 12s
+found 0 vulnerabilities
+```
+
+3. `npm test` - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/player-progress.test.mjs && node scripts/save-system.test.mjs && node scripts/battle-party-persistence.test.mjs
+
+Rollback test passed.
+Dog conditional behavior test passed.
+Battle grid stats test passed.
+Player progress state test passed.
+Save system persistence test passed.
+Battle party persistence test passed.
+```
+
+4. `timeout 12s npm run dev` - PASS (startup smoke)
+```text
+> workspace@1.0.0 dev
+> node scripts/dev-server.mjs
+
+Dev server running at http://127.0.0.1:5173
+```
+- Note: exited with code `124` due timeout after successful startup log.
+
+## Per-Task Acceptance Verdict
+
+### Task: Implement core save data model
+- Verdict: PASS
+- Criteria verified:
+  - `src/state/playerProgress.js` exists and imports without runtime errors.
+  - Exports default progress constructor with modeled `overworld`, `party`, and `battleOutcomes`.
+  - Exports immutable update helpers for overworld position, party upsert/remove, and battle outcome recording.
+  - Exports serialization/deserialization helpers preserving round-trip data.
+  - Includes inline JSDoc field documentation for overworld/battle usage.
+  - `STATUS.md` documents modeled progress aspects.
+
+### Task: Add localStorage-based save and load layer
+- Verdict: PASS
+- Criteria verified:
+  - `src/persistence/saveSystem.js` exports `saveProgress`, `loadProgress`, and `clearProgress`.
+  - Uses stable key `playerProgress` (`PLAYER_PROGRESS_STORAGE_KEY`).
+  - `loadProgress` falls back to default state on missing key or invalid JSON.
+  - `clearProgress` removes the key and default reload behavior is preserved.
+  - Bootstrapping in `src/main.js` calls `loadProgress` and exposes loaded state via Phaser registry.
+  - Manual move/refresh persistence walkthrough is documented in `STATUS.md`.
+  - `STATUS.md` describes key usage, reset conditions, and save/load invocation guidance.
+
+### Task: Wire overworld position into save system
+- Verdict: PASS
+- Criteria verified:
+  - `OverworldScene` imports progress + persistence utilities.
+  - Scene spawn resolution uses loaded progress position when explicit transition spawn is absent.
+  - Fresh profile still falls back to default spawn (`2,2`) and unchanged behavior.
+  - Movement commits updated coordinates through `persistOverworldProgress` -> `updateOverworldPosition` -> save.
+  - Reload path restores last saved overworld position.
+  - Missing/corrupt storage is safely handled through fallback loading.
+  - `STATUS.md` includes QA walkthrough for move/refresh spawn persistence.
+
+### Task: Persist party composition across sessions
+- Verdict: PASS
+- Criteria verified:
+  - Party management wiring imports progress/persistence via `BattleScene` and `src/state/partyPersistence.js`.
+  - Party initialization hydrates from saved progress when persisted data exists.
+  - Fresh profiles keep existing default encounter party.
+  - Party add/remove/order reconciliation updates progress and saves without runtime errors.
+  - Persisted party representation is JSON-safe (ID/name/archetype/level/hp fields only).
+  - JSON round-trip behavior is covered by implementation and tests.
+  - `STATUS.md` documents saved party-member fields and conversion back into encounter units.
+
+### Task: Record and restore key battle outcome flags
+- Verdict: PASS
+- Criteria verified:
+  - Save model includes structured `battleOutcomes.keyBattles` and `battleOutcomes.encounterResults`.
+  - `BattleScene` records outcomes and updates mapped key-battle flags on completion.
+  - Wired named encounters (`level-1-training-ambush`, `level-2-canyon-gauntlet`) set persistent flags.
+  - Stored flags visibly alter future behavior (battle retrigger prevention in `Level1Scene`/`Level2Scene`, NPC dialogue variants in `OverworldScene`).
+  - Flags are serialized/restored through existing save/load layer.
+  - Non-keyed/default encounters continue through existing battle flow without regression.
+  - `STATUS.md` documents each persisted key-battle flag, set conditions, and load-time behavior.
+
+## Overall Workflow Goal Verdict
+- Goal: Save/Load System and Persistent Player Progress (`overworld` position, `party` composition, key `battle` outcomes via localStorage).
+- Verdict: PASS
+
 # QA Validation Report (2026-03-10)
 
 ## Workflow
