@@ -1,5 +1,9 @@
 # Status
 
+- Task: Define animal unit stats and abilities (TASK_ID=294, RUN_ID=499)
+- State: Completed
+- Notes: Added `src/battle/units/animalUnits.js` with a structured animal unit catalog for battle systems. The module exports named configs for `elephantUnit`, `cheetahUnit`, `guardianDogUnit`, and `scoutDogUnit`, plus aggregate exports (`animalUnits`, `animalUnitList`, `getAnimalUnitConfig`) for clean imports by future battle/turn logic. Each config includes core battle attributes (`stats.maxHp`, `stats.defense`, `movement.tilesPerTurn`, `attack.range`, `attack.baseDamage`) and ability metadata with triggers/effects. Narrative rules are encoded as data: elephant has very high defense and slow movement and can attack over obstacles (`attack.canAttackOverObstacles: true`), cheetah has very high movement with lower HP/defense, and dog variants have protagonist-danger conditional buffs using a low-HP trigger threshold (`thresholdPercent: 35`) that increase combat output/survivability while active. `src/gameConfig.js` now imports the animal unit list through `battleUnitCatalog` to provide a startup-time import sanity path.
+
 - Task: Add simple map collision and NPC placeholders (TASK_ID=281, RUN_ID=482)
 - State: Completed
 - Notes: Enhanced `src/scenes/OverworldScene.js` with explicit collidable tile boundaries (border walls + interior obstacle tiles) backed by Arcade static bodies so the player cannot move through blocked regions or leave the playable map bounds. Replaced circle placeholders with two fixed-position physics NPC sprites (`Ranger Sol` at tile 8,4 and `Mechanic Ivo` at tile 11,8), each carrying NPC-specific placeholder dialogue metadata. Added interaction handling on `Space` or `Enter`: when the player is adjacent to an NPC, a fixed-screen dialogue box appears with NPC-specific text; pressing the interaction key again dismisses the message.
