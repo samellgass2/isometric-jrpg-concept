@@ -165,7 +165,8 @@ class Level1Scene extends Phaser.Scene {
 
   createPlayer() {
     const start = tileToWorld(this.levelStartTile.x, this.levelStartTile.y);
-    this.player = this.physics.add.rectangle(start.x, start.y, TILE_SIZE - 18, TILE_SIZE - 18, 0x9bd2ff, 1);
+    this.player = this.add.rectangle(start.x, start.y, TILE_SIZE - 18, TILE_SIZE - 18, 0x9bd2ff, 1);
+    this.physics.add.existing(this.player);
     this.player.setStrokeStyle(2, 0xe4f3ff, 1);
     this.player.body.setAllowGravity(false);
     this.player.body.setCollideWorldBounds(true);
