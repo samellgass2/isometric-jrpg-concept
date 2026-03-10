@@ -1752,6 +1752,21 @@ Executed on: **2026-03-10 (UTC)**.
 | Mozilla Firefox (required) | `firefox --version` -> `command not found` | **NOT EXECUTED** | Firefox runtime/binary is not present in this environment. |
 | Additional Chromium-based browser (executed: Playwright Chromium) | Playwright Chromium `145.0.7632.6`; UA `HeadlessChrome/145.0.7632.6` | **PARTIAL PASS with discrepancy** | Main menu + overworld navigation passed. Battle interaction burst passed. Level-route check found discrepancy below. |
 
+### Primary-Browser Regression Spot-Check Rerun (Task #353 Acceptance)
+Executed on: **2026-03-10T23:27:38Z (UTC)** in the available Chrome-family runtime (`HeadlessChrome/145.0.7632.6` via Playwright Chromium).
+
+- Harness:
+  - `node scripts/dev-server.mjs`
+  - Python Playwright with `p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-gpu'])`
+- Regression spot-check outcomes:
+  - Overworld navigation (Start Game -> movement inputs): **PASS**
+    - Result: no `pageerror`, no console errors, persisted `overworld.currentSceneKey = "OverworldScene"`.
+  - Battle command flow (Drone Test Battle via `T`, then confirm/cancel + directional inputs): **PASS**
+    - Result: no `pageerror`, no console errors during command input sequence.
+  - Scene transitions (resume into `Level1Scene`, attempt return to overworld with `Esc`): **FAIL (REGRESSION CONFIRMED)**
+    - Runtime error observed: `this.physics.add.rectangle is not a function`
+    - Persisted state after attempted return remained `overworld.currentSceneKey = "Level1Scene"` (return transition did not complete).
+
 ### Executed Runtime Evidence
 - Runtime harness:
   - Local dev server: `node scripts/dev-server.mjs`
