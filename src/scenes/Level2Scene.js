@@ -10,6 +10,8 @@ const UI_DEPTH = 30;
 
 const START_TILE = { x: 1, y: 9 };
 const EXIT_TILE = { x: 10, y: 1 };
+const LEVEL2_BATTLE_ENCOUNTER_ID = "level-2-canyon-gauntlet";
+const LEVEL2_BATTLE_TOTEM_TILE = { x: 5, y: 5 };
 
 const TILE_LAYOUT = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -57,9 +59,20 @@ class Level2Scene extends Phaser.Scene {
     this.interactKeys = null;
     this.returnKey = null;
     this.isReturning = false;
+    this.levelStartTile = { ...START_TILE };
+    this.clearedEncounterIds = new Set();
+    this.battleTotem = null;
+    this.battleStartLock = false;
   }
 
-  create() {
+  create(data = {}) {
+    this.levelStartTile = data?.spawnTile ?? { ...START_TILE };
+    this.clearedEncounterIds = new Set(data?.clearedEncounterIds ?? []);
+    if (data?.battleResult === "victory" && data?.lastEncounterId === LEVEL2_BATTLE_ENCOUNTER_ID) {
+      this.clearedEncounterIds.add(LEVEL2_BATTLE_ENCOUNTER_ID);
+    }
+    this.battleStartLock = false;
+
     const mapPixelWidth = MAP_WIDTH * TILE_SIZE;
     const mapPixelHeight = MAP_HEIGHT * TILE_SIZE;
 
@@ -71,6 +84,7 @@ class Level2Scene extends Phaser.Scene {
     this.createCollisionBodies();
     this.createPlayer();
     this.createExitBeacon();
+    this.createBattleTotem();
     this.setupInput();
     this.setupPointerInput();
     this.createUi();
@@ -114,7 +128,7 @@ class Level2Scene extends Phaser.Scene {
   }
 
   createPlayer() {
-    const start = tileToWorld(START_TILE.x, START_TILE.y);
+    const start = tileToWorld(this.levelStartTile.x, this.levelStartTile.y);
     this.player = this.physics.add.rectangle(start.x, start.y, TILE_SIZE - 20, TILE_SIZE - 20, 0xffcc86, 1);
     this.player.setStrokeStyle(2, 0xffefca, 1);
     this.player.body.setAllowGravity(false);
@@ -167,13 +181,56 @@ class Level2Scene extends Phaser.Scene {
       .setDepth(UI_DEPTH);
 
     this.add
-      .text(14, 36, "Move: Arrows/WASD or click | Return: Esc or interact near OVERWORLD marker", {
-        color: "#f2d9b8",
-        fontFamily: "monospace",
-        fontSize: "13px",
-      })
+      .text(
+        14,
+        36,
+        "Move: Arrows/WASD or click | Battle: interact near TOTEM | Return: Esc or interact near OVERWORLD marker",
+        {
+          color: "#f2d9b8",
+          fontFamily: "monospace",
+          fontSize: "13px",
+        }
+      )
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
+  }
+
+  createBattleTotem() {
+    const world = tileToWorld(LEVEL2_BATTLE_TOTEM_TILE.x, LEVEL2_BATTLE_TOTEM_TILE.y);
+    this.battleTotem = this.add
+      .triangle(world.x, world.y, 0, 20, 11, 0, 22, 20, 0x8b2f2f, 0.95)
+      .setDepth(6)
+      .setStrokeStyle(2, 0xffc2c2, 1);
+
+    this.add
+      .text(world.x, world.y - 28, "TOTEM", {
+        color: "#ffe0cc",
+        fontFamily: "monospace",
+        fontSize: "11px",
+        backgroundColor: "#30170fcc",
+        padding: { x: 3, y: 1 },
+      })
+      .setOrigin(0.5)
+      .setDepth(7);
+
+    this.battleTotem.setInteractive({ useHandCursor: true });
+    this.battleTotem.on("pointerdown", () => {
+      if (this.playerIsNearBattleTotem()) {
+        this.startLevelBattleEncounter();
+      }
+    });
+
+    if (this.clearedEncounterIds.has(LEVEL2_BATTLE_ENCOUNTER_ID)) {
+      this.setBattleTotemClearedVisual();
+    }
+  }
+
+  setBattleTotemClearedVisual() {
+    if (!this.battleTotem) {
+      return;
+    }
+    this.battleTotem.setFillStyle(0x2a7a5d, 0.95);
+    this.battleTotem.setStrokeStyle(2, 0xb0ffd9, 1);
   }
 
   setupInput() {
@@ -343,6 +400,15 @@ class Level2Scene extends Phaser.Scene {
     return distance <= INTERACTION_DISTANCE;
   }
 
+  playerIsNearBattleTotem() {
+    if (!this.player || !this.battleTotem) {
+      return false;
+    }
+
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.battleTotem.x, this.battleTotem.y);
+    return distance <= INTERACTION_DISTANCE;
+  }
+
   handleReturnInput() {
     if (Phaser.Input.Keyboard.JustDown(this.returnKey)) {
       this.returnToOverworld();
@@ -353,8 +419,18 @@ class Level2Scene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(this.interactKeys.space) ||
       Phaser.Input.Keyboard.JustDown(this.interactKeys.enter);
 
-    if (interactPressed && this.playerIsNearExit()) {
-      this.returnToOverworld();
+    if (interactPressed) {
+      if (
+        !this.clearedEncounterIds.has(LEVEL2_BATTLE_ENCOUNTER_ID) &&
+        this.playerIsNearBattleTotem()
+      ) {
+        this.startLevelBattleEncounter();
+        return;
+      }
+
+      if (this.playerIsNearExit()) {
+        this.returnToOverworld();
+      }
     }
   }
 
@@ -368,6 +444,31 @@ class Level2Scene extends Phaser.Scene {
     this.cameras.main.fadeOut(160, 0, 0, 0);
     this.time.delayedCall(170, () => {
       this.scene.start("OverworldScene", { spawnPointId: "level-2-return" });
+    });
+  }
+
+  startLevelBattleEncounter() {
+    if (
+      this.battleStartLock ||
+      this.isReturning ||
+      this.clearedEncounterIds.has(LEVEL2_BATTLE_ENCOUNTER_ID)
+    ) {
+      return;
+    }
+
+    this.battleStartLock = true;
+    this.clearPointerPath();
+    this.player.body.setVelocity(0, 0);
+    this.cameras.main.fadeOut(160, 0, 0, 0);
+    this.time.delayedCall(170, () => {
+      this.scene.start("BattleScene", {
+        encounterId: LEVEL2_BATTLE_ENCOUNTER_ID,
+        returnSceneKey: "Level2Scene",
+        returnSceneData: {
+          spawnTile: { x: LEVEL2_BATTLE_TOTEM_TILE.x + 1, y: LEVEL2_BATTLE_TOTEM_TILE.y },
+          clearedEncounterIds: [...this.clearedEncounterIds],
+        },
+      });
     });
   }
 

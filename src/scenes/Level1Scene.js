@@ -10,6 +10,8 @@ const UI_DEPTH = 30;
 
 const START_TILE = { x: 1, y: 1 };
 const EXIT_TILE = { x: 12, y: 8 };
+const LEVEL1_BATTLE_ENCOUNTER_ID = "level-1-training-ambush";
+const LEVEL1_BATTLE_TRIGGER_TILE = { x: 6, y: 5 };
 
 const TILE_LAYOUT = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -57,9 +59,22 @@ class Level1Scene extends Phaser.Scene {
     this.interactKeys = null;
     this.returnKey = null;
     this.isReturning = false;
+    this.levelStartTile = { ...START_TILE };
+    this.clearedEncounterIds = new Set();
+    this.battleTriggerMarker = null;
+    this.currentPlayerTileKey = "";
+    this.battleStartLock = false;
   }
 
-  create() {
+  create(data = {}) {
+    this.levelStartTile = data?.spawnTile ?? { ...START_TILE };
+    this.clearedEncounterIds = new Set(data?.clearedEncounterIds ?? []);
+    if (data?.battleResult === "victory" && data?.lastEncounterId === LEVEL1_BATTLE_ENCOUNTER_ID) {
+      this.clearedEncounterIds.add(LEVEL1_BATTLE_ENCOUNTER_ID);
+    }
+    this.currentPlayerTileKey = "";
+    this.battleStartLock = false;
+
     const mapPixelWidth = MAP_WIDTH * TILE_SIZE;
     const mapPixelHeight = MAP_HEIGHT * TILE_SIZE;
 
@@ -71,6 +86,7 @@ class Level1Scene extends Phaser.Scene {
     this.createCollisionBodies();
     this.createPlayer();
     this.createExitBeacon();
+    this.createBattleTriggerMarker();
     this.setupInput();
     this.setupPointerInput();
     this.createUi();
@@ -114,7 +130,7 @@ class Level1Scene extends Phaser.Scene {
   }
 
   createPlayer() {
-    const start = tileToWorld(START_TILE.x, START_TILE.y);
+    const start = tileToWorld(this.levelStartTile.x, this.levelStartTile.y);
     this.player = this.physics.add.rectangle(start.x, start.y, TILE_SIZE - 18, TILE_SIZE - 18, 0x9bd2ff, 1);
     this.player.setStrokeStyle(2, 0xe4f3ff, 1);
     this.player.body.setAllowGravity(false);
@@ -165,13 +181,49 @@ class Level1Scene extends Phaser.Scene {
       .setDepth(UI_DEPTH);
 
     this.add
-      .text(14, 36, "Move: Arrows/WASD or click | Return: Esc or interact near EXIT", {
-        color: "#c8d9ff",
-        fontFamily: "monospace",
-        fontSize: "13px",
-      })
+      .text(
+        14,
+        36,
+        "Move: Arrows/WASD or click | Battle: step on red tile | Return: Esc or interact near EXIT",
+        {
+          color: "#c8d9ff",
+          fontFamily: "monospace",
+          fontSize: "13px",
+        }
+      )
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
+  }
+
+  createBattleTriggerMarker() {
+    const world = tileToWorld(LEVEL1_BATTLE_TRIGGER_TILE.x, LEVEL1_BATTLE_TRIGGER_TILE.y);
+    this.battleTriggerMarker = this.add
+      .rectangle(world.x, world.y, TILE_SIZE - 14, TILE_SIZE - 14, 0xb73333, 0.82)
+      .setStrokeStyle(2, 0xff9d9d, 1)
+      .setDepth(6);
+
+    this.add
+      .text(world.x, world.y - 28, "AMBUSH", {
+        color: "#ffd9d9",
+        fontFamily: "monospace",
+        fontSize: "11px",
+        backgroundColor: "#300f0fcc",
+        padding: { x: 3, y: 1 },
+      })
+      .setOrigin(0.5)
+      .setDepth(7);
+
+    if (this.clearedEncounterIds.has(LEVEL1_BATTLE_ENCOUNTER_ID)) {
+      this.setBattleTriggerClearedVisual();
+    }
+  }
+
+  setBattleTriggerClearedVisual() {
+    if (!this.battleTriggerMarker) {
+      return;
+    }
+    this.battleTriggerMarker.setFillStyle(0x2f7f46, 0.8);
+    this.battleTriggerMarker.setStrokeStyle(2, 0xb8ffd2, 1);
   }
 
   setupInput() {
@@ -369,6 +421,50 @@ class Level1Scene extends Phaser.Scene {
     });
   }
 
+  checkBattleTrigger() {
+    if (this.isReturning || this.battleStartLock || !this.player) {
+      return;
+    }
+
+    if (this.clearedEncounterIds.has(LEVEL1_BATTLE_ENCOUNTER_ID)) {
+      return;
+    }
+
+    const playerTile = worldToTile(this.player.x, this.player.y);
+    const playerTileKey = tileKey(playerTile.x, playerTile.y);
+    if (playerTileKey === this.currentPlayerTileKey) {
+      return;
+    }
+    this.currentPlayerTileKey = playerTileKey;
+
+    if (
+      playerTile.x === LEVEL1_BATTLE_TRIGGER_TILE.x &&
+      playerTile.y === LEVEL1_BATTLE_TRIGGER_TILE.y
+    ) {
+      this.startLevelBattleEncounter();
+    }
+  }
+
+  startLevelBattleEncounter() {
+    if (this.battleStartLock || this.isReturning) {
+      return;
+    }
+    this.battleStartLock = true;
+    this.clearPointerPath();
+    this.player.body.setVelocity(0, 0);
+    this.cameras.main.fadeOut(160, 0, 0, 0);
+    this.time.delayedCall(170, () => {
+      this.scene.start("BattleScene", {
+        encounterId: LEVEL1_BATTLE_ENCOUNTER_ID,
+        returnSceneKey: "Level1Scene",
+        returnSceneData: {
+          spawnTile: { x: LEVEL1_BATTLE_TRIGGER_TILE.x - 1, y: LEVEL1_BATTLE_TRIGGER_TILE.y },
+          clearedEncounterIds: [...this.clearedEncounterIds],
+        },
+      });
+    });
+  }
+
   update() {
     if (!this.player?.body || this.isReturning) {
       return;
@@ -384,10 +480,12 @@ class Level1Scene extends Phaser.Scene {
     }
 
     if (this.moveAlongPointerPath()) {
+      this.checkBattleTrigger();
       return;
     }
 
     this.player.body.setVelocity(0, 0);
+    this.checkBattleTrigger();
   }
 }
 

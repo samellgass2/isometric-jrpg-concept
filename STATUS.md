@@ -1,5 +1,24 @@
 # Status
 
+- Task: Integrate simple battle encounters into levels (TASK_ID=312, RUN_ID=535)
+- State: Completed
+- Notes: Integrated `BattleScene` as an encounter-driven scene instead of a standalone static prototype by adding reusable encounter definitions in `src/battle/encounters.js` and data-driven scene startup in `src/scenes/BattleScene.js`. `BattleScene` now accepts `encounterId`, uses the existing turn/grid/movement-targeting/combat resolver system to run the encounter, detects encounter completion (`victory` when enemies are defeated, `defeat` when friendlies are defeated), and returns to a caller scene with payload (`battleResult`, `lastEncounterId`) so flow is end-to-end and deterministic.
+
+  Level 1 wiring (`src/scenes/Level1Scene.js`):
+  - Trigger: stepping onto tile `(6,5)` marked `AMBUSH` starts encounter `level-1-training-ambush`.
+  - On transition, the level starts `BattleScene` with return target `Level1Scene`.
+  - On battle return, the scene respawns the player near the trigger and records encounter clear state on victory to prevent retriggering in that run.
+
+  Level 2 wiring (`src/scenes/Level2Scene.js`):
+  - Trigger: interacting (Enter/Space or click) while near the `TOTEM` at tile `(5,5)` starts encounter `level-2-canyon-gauntlet`.
+  - On transition, the level starts `BattleScene` with return target `Level2Scene`.
+  - On battle return, the scene respawns the player near the totem and records encounter clear state on victory to prevent repeated starts in that run.
+
+  Assumptions/limitations:
+  - Encounters are lightweight demonstrations and intentionally use a small roster/objective (`defeat all enemies`) to validate flow.
+  - Encounter clear state is scene-session based (persisted through scene restart payload within a play session), not saved to long-term storage.
+  - No new battle engine was introduced; all actions still route through existing grid reachability, attack targeting, and resolver logic.
+
 - Task: Add overworld signs for level 1 and level 2 (TASK_ID=310, RUN_ID=531)
 - State: Completed
 - Notes: Updated `src/scenes/OverworldScene.js` to add two visible, tile-aligned signposts at fixed coordinates (`Level 1` at tile `4,9` and `Level 2` at tile `13,3`) with on-map labels. Signs are implemented as static physics objects in a dedicated `signGroup`, added to collision and walkability rules so they behave like intentional overworld interaction points rather than pass-through decorations. Interaction follows existing dialogue patterns: `Space` or `Enter` checks nearby interactables and now prioritizes nearby signs before NPCs; when in range, sign dialogue shows the level name and prompts `Enter` to choose that level (placeholder selection confirmation) or `Space` to close. Added sign click support via pointer interaction on each sign object; clicking a sign only opens the prompt when the player is within the sign interaction distance, while far-away clicks do not trigger sign interaction. For playtesting: walk next to either sign and press `Space`/`Enter`, or stand nearby and click the sign, to verify the corresponding `Level 1`/`Level 2` prompt.

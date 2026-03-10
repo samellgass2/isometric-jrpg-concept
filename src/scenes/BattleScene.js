@@ -1,6 +1,7 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import { cheetahUnit, elephantUnit, guardianDogUnit } from "../battle/units/animalUnits.js";
 import { getEffectiveCombatStats, isDogDangerBuffActive, resolveAttack } from "../battle/combatResolver.js";
+import { getEncounterDefinition } from "../battle/encounters.js";
 import {
   canUnitTarget,
   chooseMovementDestinationTowardTarget,
@@ -18,6 +19,7 @@ const OBSTACLES = [
   { x: 6, y: 4 },
   { x: 8, y: 2 },
 ];
+const DEFAULT_RETURN_SCENE_KEY = "OverworldScene";
 
 function keyFor(x, y) {
   return `${x},${y}`;
@@ -39,18 +41,37 @@ class BattleScene extends Phaser.Scene {
     this.logLines = [];
     this.obstacleSet = new Set();
     this.dangerMessageShown = false;
+    this.encounterId = "default-battle";
+    this.encounterName = "Prototype Battle";
+    this.encounterTriggerDescription = "";
+    this.returnSceneKey = DEFAULT_RETURN_SCENE_KEY;
+    this.returnSceneData = {};
+    this.battleResolved = false;
   }
 
-  create() {
+  create(data = {}) {
+    const encounterData = this.resolveEncounterData(data);
+    this.encounterId = encounterData.id;
+    this.encounterName = encounterData.name;
+    this.encounterTriggerDescription = encounterData.triggerDescription;
+    this.returnSceneKey = data.returnSceneKey ?? DEFAULT_RETURN_SCENE_KEY;
+    this.returnSceneData = data.returnSceneData ?? {};
+    this.encounterObstacles = encounterData.obstacles;
+
     this.cameras.main.setBackgroundColor("#1a1f2b");
     this.createGrid();
     this.createObstacles();
-    this.createUnits();
+    this.createUnits(encounterData);
     this.createUi();
     this.setupInput();
     this.refreshDogBuffVisuals();
     this.updateTurnHeader();
     this.updateSelectionPanel();
+    this.addLog(`Encounter: ${this.encounterName}`);
+    this.addLog("Objective: Defeat all enemies.");
+    if (this.encounterTriggerDescription) {
+      this.addLog(`Triggered by: ${this.encounterTriggerDescription}`);
+    }
   }
 
   createGrid() {
@@ -72,7 +93,7 @@ class BattleScene extends Phaser.Scene {
 
   createObstacles() {
     this.obstacleLayer = this.add.layer();
-    OBSTACLES.forEach(({ x, y }) => {
+    this.encounterObstacles.forEach(({ x, y }) => {
       this.obstacleSet.add(keyFor(x, y));
       const block = this.add.rectangle(
         x * TILE_SIZE + TILE_SIZE / 2,
@@ -86,59 +107,104 @@ class BattleScene extends Phaser.Scene {
     });
   }
 
-  createUnits() {
-    const protagonist = this.spawnUnit(
-      {
-        id: "protagonist",
-        name: "Protagonist",
-        archetype: "hero",
-        movement: { tilesPerTurn: 4 },
-        attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
-        stats: { maxHp: 120, defense: 14 },
-        abilities: [],
-      },
-      "friendly",
-      2,
-      4,
-      0x6aa9ff
-    );
-    protagonist.currentHp = 32;
-    this.protagonist = protagonist;
+  createUnits(encounterData) {
+    encounterData.friendlyUnits.forEach((unitConfig) => {
+      const unit = this.spawnUnit(
+        unitConfig,
+        "friendly",
+        unitConfig.spawn.x,
+        unitConfig.spawn.y,
+        unitConfig.color ?? 0x6aa9ff
+      );
+      if (unitConfig.id === "protagonist") {
+        this.protagonist = unit;
+      }
+      if (Number.isFinite(unitConfig.currentHp)) {
+        unit.currentHp = Math.max(1, Math.min(unitConfig.currentHp, unit.stats.maxHp));
+      }
+    });
 
-    this.spawnUnit(elephantUnit, "friendly", 5, 3, 0xb5b5b5);
-    this.spawnUnit(cheetahUnit, "friendly", 1, 2, 0xe8c26e);
-    this.spawnUnit(guardianDogUnit, "friendly", 3, 5, 0xc48e5a);
+    encounterData.enemyUnits.forEach((unitConfig) => {
+      this.spawnUnit(
+        unitConfig,
+        "enemy",
+        unitConfig.spawn.x,
+        unitConfig.spawn.y,
+        unitConfig.color ?? 0xc45656
+      );
+    });
 
-    this.spawnUnit(
-      {
-        id: "enemy-raider-1",
-        name: "Raider Alpha",
-        archetype: "raider",
-        movement: { tilesPerTurn: 3 },
-        attack: { range: 1, baseDamage: 20, canAttackOverObstacles: false },
-        stats: { maxHp: 90, defense: 8 },
-        abilities: [],
-      },
-      "enemy",
-      7,
-      3,
-      0xc45656
-    );
-    this.spawnUnit(
-      {
-        id: "enemy-raider-2",
-        name: "Raider Beta",
-        archetype: "raider",
-        movement: { tilesPerTurn: 3 },
-        attack: { range: 1, baseDamage: 18, canAttackOverObstacles: false },
-        stats: { maxHp: 80, defense: 7 },
-        abilities: [],
-      },
-      "enemy",
-      9,
-      5,
-      0xb14747
-    );
+    if (!this.protagonist) {
+      this.protagonist = this.getFriendlyUnits()[0] ?? null;
+    }
+  }
+
+  resolveEncounterData(data) {
+    const encounterId = typeof data.encounterId === "string" ? data.encounterId : null;
+    const definition = encounterId ? getEncounterDefinition(encounterId) : null;
+    const fallback = this.getDefaultEncounter();
+    if (!definition) {
+      return fallback;
+    }
+
+    return {
+      id: definition.id,
+      name: definition.name ?? fallback.name,
+      triggerDescription: definition.triggerDescription ?? "",
+      obstacles: Array.isArray(definition.obstacles) ? definition.obstacles : fallback.obstacles,
+      friendlyUnits: Array.isArray(definition.friendlyUnits) ? definition.friendlyUnits : fallback.friendlyUnits,
+      enemyUnits: Array.isArray(definition.enemyUnits) ? definition.enemyUnits : fallback.enemyUnits,
+    };
+  }
+
+  getDefaultEncounter() {
+    return {
+      id: "default-battle",
+      name: "Prototype Battle",
+      triggerDescription: "Debug/default start.",
+      obstacles: [...OBSTACLES],
+      friendlyUnits: [
+        {
+          id: "protagonist",
+          name: "Protagonist",
+          archetype: "hero",
+          movement: { tilesPerTurn: 4 },
+          attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
+          stats: { maxHp: 120, defense: 14 },
+          abilities: [],
+          spawn: { x: 2, y: 4 },
+          color: 0x6aa9ff,
+          currentHp: 32,
+        },
+        { ...elephantUnit, spawn: { x: 5, y: 3 }, color: 0xb5b5b5 },
+        { ...cheetahUnit, spawn: { x: 1, y: 2 }, color: 0xe8c26e },
+        { ...guardianDogUnit, spawn: { x: 3, y: 5 }, color: 0xc48e5a },
+      ],
+      enemyUnits: [
+        {
+          id: "enemy-raider-1",
+          name: "Raider Alpha",
+          archetype: "raider",
+          movement: { tilesPerTurn: 3 },
+          attack: { range: 1, baseDamage: 20, canAttackOverObstacles: false },
+          stats: { maxHp: 90, defense: 8 },
+          abilities: [],
+          spawn: { x: 7, y: 3 },
+          color: 0xc45656,
+        },
+        {
+          id: "enemy-raider-2",
+          name: "Raider Beta",
+          archetype: "raider",
+          movement: { tilesPerTurn: 3 },
+          attack: { range: 1, baseDamage: 18, canAttackOverObstacles: false },
+          stats: { maxHp: 80, defense: 7 },
+          abilities: [],
+          spawn: { x: 9, y: 5 },
+          color: 0xb14747,
+        },
+      ],
+    };
   }
 
   spawnUnit(config, faction, tileX, tileY, color) {
@@ -194,11 +260,16 @@ class BattleScene extends Phaser.Scene {
       .setDepth(UI_DEPTH);
 
     this.instructionsText = this.add
-      .text(12, 32, "Click a friendly unit. Keys: [M] Move [A] Attack [E] End Turn [H] Toggle Danger HP", {
-        color: "#d7dfef",
-        fontFamily: "monospace",
-        fontSize: "12px",
-      })
+      .text(
+        12,
+        32,
+        "Click a friendly unit. Keys: [M] Move [A] Attack [E] End Turn [H] Toggle Danger HP",
+        {
+          color: "#d7dfef",
+          fontFamily: "monospace",
+          fontSize: "12px",
+        }
+      )
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
 
@@ -401,6 +472,10 @@ class BattleScene extends Phaser.Scene {
   }
 
   attackTarget(attacker, defender) {
+    if (this.battleResolved) {
+      return;
+    }
+
     const result = resolveAttack({
       attacker,
       defender,
@@ -421,12 +496,19 @@ class BattleScene extends Phaser.Scene {
       this.addLog(`${defender.name} was defeated.`);
     }
 
+    if (this.evaluateBattleOutcome()) {
+      return;
+    }
+
     this.refreshDogBuffVisuals();
     this.updateSelectionPanel();
     this.tryAutoEndPlayerTurn();
   }
 
   tryAutoEndPlayerTurn() {
+    if (this.battleResolved) {
+      return;
+    }
     const waiting = this.getFriendlyUnits().filter((unit) => unit.id !== this.protagonist.id);
     const allActed = waiting.every((unit) => unit.hasActed);
     if (allActed) {
@@ -435,7 +517,7 @@ class BattleScene extends Phaser.Scene {
   }
 
   endPlayerTurn() {
-    if (!this.playerTurn) {
+    if (!this.playerTurn || this.battleResolved) {
       return;
     }
     this.playerTurn = false;
@@ -447,16 +529,24 @@ class BattleScene extends Phaser.Scene {
   }
 
   runEnemyTurn() {
+    if (this.battleResolved) {
+      return;
+    }
+
     const enemies = this.getEnemyUnits();
-    const friendly = this.getFriendlyUnits();
-    enemies.forEach((enemy) => {
+    for (const enemy of enemies) {
+      if (this.battleResolved) {
+        return;
+      }
+
+      const friendly = this.getFriendlyUnits();
       const target = this.pickTargetForEnemy(enemy, friendly);
       if (!target) {
-        return;
+        continue;
       }
       if (this.canUnitAttackTarget(enemy, target)) {
         this.attackTarget(enemy, target);
-        return;
+        continue;
       }
 
       const reachable = getReachableTiles({
@@ -485,8 +575,13 @@ class BattleScene extends Phaser.Scene {
         enemy.tileY = destination.y;
         enemy.sprite.x = destination.x * TILE_SIZE + TILE_SIZE / 2;
         enemy.sprite.y = destination.y * TILE_SIZE + TILE_SIZE / 2;
+        this.addLog(`${enemy.name} advanced to (${destination.x}, ${destination.y}).`);
       }
-    });
+    }
+
+    if (this.evaluateBattleOutcome()) {
+      return;
+    }
 
     this.turn += 1;
     this.playerTurn = true;
@@ -498,6 +593,50 @@ class BattleScene extends Phaser.Scene {
     this.refreshDogBuffVisuals();
     this.updateTurnHeader();
     this.addLog(`Turn ${this.turn}: your phase.`);
+  }
+
+  evaluateBattleOutcome() {
+    if (this.battleResolved) {
+      return true;
+    }
+
+    const enemiesRemaining = this.getEnemyUnits().length;
+    if (enemiesRemaining === 0) {
+      this.finishBattle("victory");
+      return true;
+    }
+
+    const friendliesRemaining = this.getFriendlyUnits().length;
+    if (friendliesRemaining === 0) {
+      this.finishBattle("defeat");
+      return true;
+    }
+
+    return false;
+  }
+
+  finishBattle(result) {
+    if (this.battleResolved) {
+      return;
+    }
+
+    this.battleResolved = true;
+    this.playerTurn = false;
+    this.mode = "idle";
+    this.clearHighlights();
+
+    const completionLabel = result === "victory" ? "Victory" : "Defeat";
+    this.addLog(`${completionLabel}. Returning...`);
+    this.updateTurnHeader();
+    this.updateSelectionPanel();
+
+    this.time.delayedCall(450, () => {
+      this.scene.start(this.returnSceneKey, {
+        ...this.returnSceneData,
+        battleResult: result,
+        lastEncounterId: this.encounterId,
+      });
+    });
   }
 
   pickTargetForEnemy(enemy, friendlyUnits) {
@@ -551,7 +690,8 @@ class BattleScene extends Phaser.Scene {
   }
 
   updateTurnHeader() {
-    this.turnHeaderText.setText(`Battle Turn ${this.turn} | ${this.playerTurn ? "Player Phase" : "Enemy Phase"}`);
+    const phase = this.battleResolved ? "Complete" : this.playerTurn ? "Player Phase" : "Enemy Phase";
+    this.turnHeaderText.setText(`${this.encounterName} | Turn ${this.turn} | ${phase}`);
   }
 
   updateSelectionPanel() {
