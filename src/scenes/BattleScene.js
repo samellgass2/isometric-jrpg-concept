@@ -1,6 +1,13 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import { cheetahUnit, elephantUnit, guardianDogUnit } from "../battle/units/animalUnits.js";
 import { getEffectiveCombatStats, isDogDangerBuffActive, resolveAttack } from "../battle/combatResolver.js";
+import {
+  canUnitTarget,
+  chooseMovementDestinationTowardTarget,
+  getReachableTiles,
+  getTargetableTiles,
+  getUnitMovementRange,
+} from "../battle/grid.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -16,23 +23,8 @@ function keyFor(x, y) {
   return `${x},${y}`;
 }
 
-function manhattanDistance(a, b) {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-}
-
 function inBounds(x, y) {
   return x >= 0 && y >= 0 && x < GRID_WIDTH && y < GRID_HEIGHT;
-}
-
-function findStepToward(start, goal) {
-  const dx = goal.x - start.x;
-  const dy = goal.y - start.y;
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return { x: start.x + Math.sign(dx), y: start.y };
-  }
-
-  return { x: start.x, y: start.y + Math.sign(dy) };
 }
 
 class BattleScene extends Phaser.Scene {
@@ -319,7 +311,7 @@ class BattleScene extends Phaser.Scene {
       return;
     }
     this.mode = "move";
-    const reachableTiles = this.getReachableTiles(unit, unit.movement.tilesPerTurn);
+    const reachableTiles = this.getReachableTiles(unit);
     this.showHighlights(reachableTiles, 0x45d483, 0.35);
     this.highlightTileData = reachableTiles;
     this.updateSelectionPanel();
@@ -331,11 +323,19 @@ class BattleScene extends Phaser.Scene {
       return;
     }
     this.mode = "attack";
-    const targets = this.getEnemyUnits()
+    const targetableTiles = getTargetableTiles({
+      unit,
+      width: GRID_WIDTH,
+      height: GRID_HEIGHT,
+      isObstacleAt: (x, y) => this.obstacleSet.has(keyFor(x, y)),
+    });
+    this.showHighlights(targetableTiles, 0xe46f6f, 0.3);
+
+    const enemyTargets = this.getEnemyUnits()
       .filter((enemy) => this.canUnitAttackTarget(unit, enemy))
       .map((enemy) => ({ x: enemy.tileX, y: enemy.tileY }));
-    this.showHighlights(targets, 0xe46f6f, 0.38);
-    this.highlightTileData = targets;
+    this.appendHighlights(enemyTargets, 0xff7f7f, 0.45);
+    this.highlightTileData = enemyTargets;
     this.updateSelectionPanel();
   }
 
@@ -347,6 +347,10 @@ class BattleScene extends Phaser.Scene {
 
   showHighlights(tiles, color, alpha) {
     this.clearHighlights();
+    this.appendHighlights(tiles, color, alpha);
+  }
+
+  appendHighlights(tiles, color, alpha) {
     tiles.forEach(({ x, y }) => {
       const rect = this.add.rectangle(
         x * TILE_SIZE + TILE_SIZE / 2,
@@ -361,44 +365,18 @@ class BattleScene extends Phaser.Scene {
     });
   }
 
-  getReachableTiles(unit, range) {
-    const queue = [{ x: unit.tileX, y: unit.tileY, dist: 0 }];
-    const visited = new Set([keyFor(unit.tileX, unit.tileY)]);
-    const tiles = [];
-
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (current.dist >= range) {
-        continue;
-      }
-
-      const neighbors = [
-        { x: current.x + 1, y: current.y },
-        { x: current.x - 1, y: current.y },
-        { x: current.x, y: current.y + 1 },
-        { x: current.x, y: current.y - 1 },
-      ];
-
-      neighbors.forEach((neighbor) => {
-        if (!inBounds(neighbor.x, neighbor.y)) {
-          return;
-        }
-        const k = keyFor(neighbor.x, neighbor.y);
-        if (visited.has(k) || this.obstacleSet.has(k)) {
-          return;
-        }
-        const occupant = this.getUnitAt(neighbor.x, neighbor.y);
-        if (occupant && occupant.id !== unit.id) {
-          return;
-        }
-
-        visited.add(k);
-        tiles.push({ x: neighbor.x, y: neighbor.y });
-        queue.push({ x: neighbor.x, y: neighbor.y, dist: current.dist + 1 });
-      });
-    }
-
-    return tiles;
+  getReachableTiles(unit) {
+    const moveRange = getUnitMovementRange(unit);
+    return getReachableTiles({
+      start: { x: unit.tileX, y: unit.tileY },
+      moveRange,
+      inBounds,
+      isObstacleAt: (x, y) => this.obstacleSet.has(keyFor(x, y)),
+      isOccupied: (x, y) => {
+        const occupant = this.getUnitAt(x, y);
+        return occupant && occupant.id !== unit.id;
+      },
+    }).map(({ x, y }) => ({ x, y }));
   }
 
   moveUnit(unit, tileX, tileY) {
@@ -416,47 +394,10 @@ class BattleScene extends Phaser.Scene {
     this.tryAutoEndPlayerTurn();
   }
 
-  hasBlockingObstacleBetween(from, to) {
-    if (from.tileX === to.tileX) {
-      const x = from.tileX;
-      const start = Math.min(from.tileY, to.tileY) + 1;
-      const end = Math.max(from.tileY, to.tileY);
-      for (let y = start; y < end; y += 1) {
-        if (this.obstacleSet.has(keyFor(x, y))) {
-          return true;
-        }
-      }
-    }
-
-    if (from.tileY === to.tileY) {
-      const y = from.tileY;
-      const start = Math.min(from.tileX, to.tileX) + 1;
-      const end = Math.max(from.tileX, to.tileX);
-      for (let x = start; x < end; x += 1) {
-        if (this.obstacleSet.has(keyFor(x, y))) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
-
   canUnitAttackTarget(attacker, defender) {
-    if (!attacker.alive || !defender.alive) {
-      return false;
-    }
-
-    const inRange = manhattanDistance(attacker, defender) <= attacker.attack.range;
-    if (!inRange) {
-      return false;
-    }
-
-    if (attacker.attack.canAttackOverObstacles) {
-      return true;
-    }
-
-    return !this.hasBlockingObstacleBetween(attacker, defender);
+    return canUnitTarget(attacker, defender, {
+      isObstacleAt: (x, y) => this.obstacleSet.has(keyFor(x, y)),
+    });
   }
 
   attackTarget(attacker, defender) {
@@ -517,13 +458,33 @@ class BattleScene extends Phaser.Scene {
         this.attackTarget(enemy, target);
         return;
       }
-      const step = findStepToward(enemy, target);
-      const occupied = this.getUnitAt(step.x, step.y);
-      if (inBounds(step.x, step.y) && !this.obstacleSet.has(keyFor(step.x, step.y)) && !occupied) {
-        enemy.tileX = step.x;
-        enemy.tileY = step.y;
-        enemy.sprite.x = step.x * TILE_SIZE + TILE_SIZE / 2;
-        enemy.sprite.y = step.y * TILE_SIZE + TILE_SIZE / 2;
+
+      const reachable = getReachableTiles({
+        start: { x: enemy.tileX, y: enemy.tileY },
+        moveRange: getUnitMovementRange(enemy),
+        inBounds,
+        isObstacleAt: (x, y) => this.obstacleSet.has(keyFor(x, y)),
+        isOccupied: (x, y) => {
+          const occupant = this.getUnitAt(x, y);
+          return occupant && occupant.id !== enemy.id;
+        },
+      });
+
+      const destination = chooseMovementDestinationTowardTarget({
+        mover: enemy,
+        target,
+        reachableTiles: reachable,
+        isOccupied: (x, y) => {
+          const occupant = this.getUnitAt(x, y);
+          return occupant && occupant.id !== enemy.id;
+        },
+      });
+
+      if (destination) {
+        enemy.tileX = destination.x;
+        enemy.tileY = destination.y;
+        enemy.sprite.x = destination.x * TILE_SIZE + TILE_SIZE / 2;
+        enemy.sprite.y = destination.y * TILE_SIZE + TILE_SIZE / 2;
       }
     });
 
@@ -549,7 +510,11 @@ class BattleScene extends Phaser.Scene {
       return protagonistAlive;
     }
 
-    return [...friendlyUnits].sort((a, b) => manhattanDistance(enemy, a) - manhattanDistance(enemy, b))[0];
+    return [...friendlyUnits].sort((a, b) => {
+      const aDistance = Math.abs(enemy.tileX - a.tileX) + Math.abs(enemy.tileY - a.tileY);
+      const bDistance = Math.abs(enemy.tileX - b.tileX) + Math.abs(enemy.tileY - b.tileY);
+      return aDistance - bDistance;
+    })[0];
   }
 
   toggleProtagonistDanger() {
