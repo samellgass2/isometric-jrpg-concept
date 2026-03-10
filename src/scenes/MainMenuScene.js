@@ -8,6 +8,9 @@ class MainMenuScene extends Phaser.Scene {
     this.droneTestButton = null;
     this.droneTestButtonLabel = null;
     this.startTriggered = false;
+    this.onEnterKeyDown = null;
+    this.onSpaceKeyDown = null;
+    this.onDroneTestKeyDown = null;
   }
 
   create() {
@@ -83,9 +86,9 @@ class MainMenuScene extends Phaser.Scene {
     this.droneTestButton = droneTestStart.button;
     this.droneTestButtonLabel = droneTestStart.buttonLabel;
 
-    this.input.keyboard.on("keydown-ENTER", () => this.startGame());
-    this.input.keyboard.on("keydown-SPACE", () => this.startGame());
-    this.input.keyboard.on("keydown-T", () => this.startDroneTestBattle());
+    this.bindKeyboardInput();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanupInputHandlers());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanupInputHandlers());
 
     this.add
       .text(centerX, height / 2 + 114, "Press Enter/Space to Start Game or T for Drone Test Battle", {
@@ -164,6 +167,43 @@ class MainMenuScene extends Phaser.Scene {
     this.time.delayedCall(210, () => {
       this.scene.start(resumeSceneKey, resumeData);
     });
+  }
+
+  bindKeyboardInput() {
+    const keyboard = this.input?.keyboard;
+    if (!keyboard) {
+      return;
+    }
+
+    this.cleanupInputHandlers();
+
+    this.onEnterKeyDown = () => this.startGame();
+    this.onSpaceKeyDown = () => this.startGame();
+    this.onDroneTestKeyDown = () => this.startDroneTestBattle();
+
+    keyboard.on("keydown-ENTER", this.onEnterKeyDown);
+    keyboard.on("keydown-SPACE", this.onSpaceKeyDown);
+    keyboard.on("keydown-T", this.onDroneTestKeyDown);
+  }
+
+  cleanupInputHandlers() {
+    const keyboard = this.input?.keyboard;
+    if (!keyboard) {
+      return;
+    }
+
+    if (this.onEnterKeyDown) {
+      keyboard.off("keydown-ENTER", this.onEnterKeyDown);
+      this.onEnterKeyDown = null;
+    }
+    if (this.onSpaceKeyDown) {
+      keyboard.off("keydown-SPACE", this.onSpaceKeyDown);
+      this.onSpaceKeyDown = null;
+    }
+    if (this.onDroneTestKeyDown) {
+      keyboard.off("keydown-T", this.onDroneTestKeyDown);
+      this.onDroneTestKeyDown = null;
+    }
   }
 }
 

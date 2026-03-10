@@ -483,6 +483,7 @@ class BattleScene extends Phaser.Scene {
   }
 
   setupInput() {
+    this.teardownInputManager();
     this.inputManager = new InputManager(this, { tileSize: TILE_SIZE, autoCleanup: false });
     this.inputUnsubscribe = this.inputManager.onAction((event) => this.handleInputAction(event));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownInputManager());

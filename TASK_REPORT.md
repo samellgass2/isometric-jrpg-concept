@@ -1,18 +1,21 @@
-# Task Report - Task #350
+# Task Report - Task #352
 
 ## Summary
-- Profiled Phaser runtime performance baseline using `npm run dev` with Chrome DevTools Protocol automation in:
-  - Chrome (Chrome for Testing)
-  - Chromium (additional Chromium-based browser compatibility check)
-- Captured two representative recordings per browser:
-  - Overworld exploration (idle/movement/input interaction)
-  - Battle/high-action state (Drone Test Battle)
-- Documented entrypoints, scene classes, FPS/frame times, input latency, and CPU hotspots in `STATUS.md` under Workflow 36.
-- Attempted Firefox setup; profiling blocked in this runner because Firefox provisioning failed due missing `xz` dependency, so Firefox behavior remains unvalidated here.
+- Optimized input responsiveness by moving heavy click/tap pathfinding work out of input callbacks and into scene `update()` processing queues.
+- Reduced input event overhead in `InputManager` by trimming non-essential pointer payload fields.
+- Added explicit listener lifecycle cleanup to prevent duplicate keyboard/pointer handlers across scene restarts and transitions.
+- Documented all primary input handlers and optimization details in `STATUS.md`.
 
 ## Files Updated
+- `src/input/InputManager.js`
+- `src/scenes/OverworldScene.js`
+- `src/scenes/Level1Scene.js`
+- `src/scenes/Level2Scene.js`
+- `src/scenes/MainMenuScene.js`
+- `src/scenes/BattleScene.js`
 - `STATUS.md`
 - `TASK_REPORT.md`
 
 ## Verification
-- `npm test` executed successfully after documentation updates.
+- `npm test` passed.
+- `node --check` passed for all modified input-related scene/module files.

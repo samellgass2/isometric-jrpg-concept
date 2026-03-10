@@ -80,6 +80,8 @@ class InputManager {
   }
 
   attach() {
+    this.destroyKeyboardBindings();
+
     if (this.keyboardEnabled) {
       this.bindKeyboardActions();
     }
@@ -151,6 +153,10 @@ class InputManager {
   }
 
   bindPointerActions() {
+    if (this.pointerListener) {
+      this.scene.input.off("pointerdown", this.pointerListener);
+    }
+
     this.pointerListener = (pointer) => {
       if (!this.enabledActions.has(InputActions.SELECT_TILE)) {
         return;
@@ -160,19 +166,9 @@ class InputManager {
         ? this.tileResolver(pointer.worldX, pointer.worldY, pointer)
         : { tileX: null, tileY: null };
 
-      const viewportWidth = this.scene.scale?.width ?? 1;
-      const viewportHeight = this.scene.scale?.height ?? 1;
-
       this.emitAction(InputActions.SELECT_TILE, {
         type: "pressed",
         source: pointer.wasTouch || pointer.pointerType === "touch" ? "touch" : "mouse",
-        pointer,
-        worldX: pointer.worldX,
-        worldY: pointer.worldY,
-        screenX: pointer.x,
-        screenY: pointer.y,
-        normalizedX: Phaser.Math.Clamp(pointer.x / viewportWidth, 0, 1),
-        normalizedY: Phaser.Math.Clamp(pointer.y / viewportHeight, 0, 1),
         tileX: tile?.tileX ?? null,
         tileY: tile?.tileY ?? null,
       });

@@ -1,5 +1,50 @@
 # Status
 
+- Task: Improve input handling performance and responsiveness (TASK_ID=352, RUN_ID=615)
+- State: Completed
+- Notes:
+  - Input handler inventory (primary scenes/modules):
+    - `src/input/InputManager.js`:
+      - `bindPointerActions()` registers `pointerdown` (mouse + touch source detection) and emits `SELECT_TILE`.
+      - `bindKeyboardActions()` registers key `down/up` listeners for move, confirm, cancel actions.
+    - `src/scenes/OverworldScene.js`:
+      - `handleInputAction(event)` consumes `InputManager` actions (pointer + keyboard).
+      - `processPendingTileSelection()` + `handleSelectTileAction()` now process queued tile actions during `update()`.
+    - `src/scenes/BattleScene.js`:
+      - `handleInputAction(event)` handles pointer tile select + keyboard move/confirm/cancel through `InputManager`.
+    - `src/scenes/Level1Scene.js`:
+      - `setupPointerInput()` registers `pointerdown` for click/tap movement target selection.
+      - `handleReturnInput()` polls keyboard (`ESC`, `SPACE`, `ENTER`) via `JustDown`.
+    - `src/scenes/Level2Scene.js`:
+      - `setupPointerInput()` registers `pointerdown` for click/tap movement target selection.
+      - `handleReturnInput()` polls keyboard (`ESC`, `SPACE`, `ENTER`) via `JustDown`.
+    - `src/scenes/MainMenuScene.js`:
+      - Pointer handlers on menu buttons (`pointerdown`).
+      - Keyboard handlers (`keydown-ENTER`, `keydown-SPACE`, `keydown-T`) in `bindKeyboardInput()`.
+    - No dedicated `pointermove`/`pointerup` gameplay handlers were present before or after this pass.
+  - Optimizations made:
+    - Moved expensive pointer pathfinding out of event callbacks:
+      - `Level1Scene`/`Level2Scene` `pointerdown` handlers now only queue a tile request (`pendingPathRequest`).
+      - Path validation + BFS path generation now run in `processPendingPathRequest()` from `update()`.
+      - `OverworldScene` now queues tile-select events in `handleInputAction()` and resolves selection/path logic in `processPendingTileSelection()` during `update()`.
+    - Reduced per-event pointer payload overhead in `InputManager`:
+      - Removed non-essential pointer payload fields (`pointer` object, world/screen coordinates, normalized coordinates) from emitted events.
+      - Pointer callback now emits only action-critical metadata (`source`, `tileX`, `tileY`, `type`).
+    - Prevented listener duplication/leaks on scene transitions:
+      - `MainMenuScene` now tracks keyboard callbacks and unregisters them in `cleanupInputHandlers()` on scene shutdown/destroy.
+      - `Level1Scene`/`Level2Scene` now store and remove their scene `pointerdown` listeners via `cleanupInputHandlers()`.
+      - `BattleScene.setupInput()` and `OverworldScene.setupInputManager()` now proactively teardown existing input manager bindings before creating new ones.
+      - `InputManager.bindPointerActions()` now detaches any prior pointer listener before re-binding.
+  - Bugs fixed:
+    - Potential repeated `MainMenuScene` keyboard triggers after returning to menu multiple times (duplicate key listeners).
+    - Potential repeated level pointer callbacks after scene restarts (duplicate `pointerdown` listeners).
+  - Responsiveness note (qualitative):
+    - Before: rapid click/tap sequences could run full pathfinding directly inside input callbacks, increasing input-thread work and causing occasional stutter under burst input.
+    - After: input callbacks are lightweight and mostly enqueue actions; pathfinding runs in frame update, coalescing rapid taps to latest intent and improving responsiveness consistency.
+  - Cross-browser/manual validation:
+    - Automated regression tests passed (`npm test`).
+    - Manual Chrome/Firefox interaction checks should be run in an interactive browser environment (this runner does not provide direct manual browser interaction), with focus on rapid tile taps/clicks and quick directional keyboard changes.
+
 - Task: Optimize rendering and asset loading paths (TASK_ID=351, RUN_ID=596)
 - State: Completed
 - Notes: Implemented rendering-path and asset-loading optimizations across Phaser configuration and primary scenes, including centralized shared texture loading, reduced per-frame allocations, and pooled highlight rendering.

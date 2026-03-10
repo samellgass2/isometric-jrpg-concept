@@ -131,6 +131,7 @@ class OverworldScene extends Phaser.Scene {
     this.pointerPath = [];
     this.pointerPathTiles = [];
     this.pointerPathIndex = 0;
+    this.pendingTileSelection = null;
     this.npcTileSet = new Set();
     this.signTileSet = new Set();
     this.collisionTileCoords = [];
@@ -486,6 +487,7 @@ class OverworldScene extends Phaser.Scene {
   }
 
   setupInputManager() {
+    this.teardownInputManager();
     this.inputManager = new InputManager(this, { tileSize: TILE_SIZE, autoCleanup: false });
     this.inputUnsubscribe = this.inputManager.onAction((event) => this.handleInputAction(event));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownInputManager());
@@ -501,6 +503,7 @@ class OverworldScene extends Phaser.Scene {
       this.inputManager.destroy();
       this.inputManager = null;
     }
+    this.pendingTileSelection = null;
   }
 
   handleInputAction(event) {
@@ -509,7 +512,10 @@ class OverworldScene extends Phaser.Scene {
     }
 
     if (event.action === InputActions.SELECT_TILE) {
-      this.handleSelectTileAction(event);
+      if (event.type !== "pressed" || !Number.isInteger(event.tileX) || !Number.isInteger(event.tileY)) {
+        return;
+      }
+      this.pendingTileSelection = { tileX: event.tileX, tileY: event.tileY };
       return;
     }
 
@@ -528,6 +534,16 @@ class OverworldScene extends Phaser.Scene {
       }
       this.clearPointerPath();
     }
+  }
+
+  processPendingTileSelection() {
+    if (!this.pendingTileSelection || this.isTransitioning) {
+      return;
+    }
+
+    const event = this.pendingTileSelection;
+    this.pendingTileSelection = null;
+    this.handleSelectTileAction(event);
   }
 
   handleSelectTileAction(event) {
@@ -1008,6 +1024,7 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
     this.updateCulledObjectVisibility();
+    this.processPendingTileSelection();
 
     if (this.dialogueBox.visible) {
       this.clearPointerPath();
