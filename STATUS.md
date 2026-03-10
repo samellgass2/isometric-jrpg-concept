@@ -1,5 +1,36 @@
 # Status
 
+- Task: Implement core save data model (TASK_ID=326, RUN_ID=558)
+- State: Completed
+- Notes: Added a centralized player progress module at `src/state/playerProgress.js` for save/load foundations, with a JSON-safe schema and immutable update helpers.
+
+  Data model summary:
+  - `schemaVersion`: integer save schema marker (`PLAYER_PROGRESS_SCHEMA_VERSION`) for future migrations.
+  - `overworld`: current exploration context.
+    - `position`: tile coordinates `{ x, y }` for overworld/player return placement.
+    - `spawnPointId`: named spawn marker (aligned with scene handoff IDs like `default`, `level-1-return`, `level-2-return`).
+    - `currentSceneKey`: active scene identifier for restore flow (`OverworldScene` by default).
+  - `party`: battle roster summary.
+    - `memberOrder`: stable member ID order for future UI/formation/turn integrations.
+    - `members`: JSON-safe party member objects (`id`, `name`, `archetype`, `level`, `currentHp`, `maxHp`), aligned with existing encounter unit IDs.
+  - `battleOutcomes`: encounter outcome collection keyed by encounter ID/name (for clear flags and retrigger gating), storing either a result string or `{ result, recordedAt }`.
+
+  Exported helper API:
+  - `createInitialPlayerProgressState(overrides?)`: build default normalized save state.
+  - `normalizePlayerProgressState(state)`: enforce schema shape for unknown/loaded input.
+  - `updateOverworldPosition(previousState, position, options?)`: immutable overworld movement/scene metadata updates.
+  - `upsertPartyMember(previousState, member)` / `removePartyMember(previousState, memberId)`: immutable party composition updates.
+  - `recordBattleOutcome(previousState, encounterId, outcome)`: immutable encounter result recording.
+  - `serializePlayerProgress(state)` / `deserializePlayerProgress(json)`: JSON round-trip persistence helpers.
+
+  Expected interaction pattern:
+  - Overworld/level traversal systems should call `updateOverworldPosition` when player location or spawn context changes.
+  - Party-management systems should call `upsertPartyMember` / `removePartyMember` when roster changes.
+  - Battle resolution flow (currently producing `battleResult` + `lastEncounterId`) should map those values through `recordBattleOutcome` to persist encounter completion across sessions.
+
+  Validation:
+  - Added `scripts/player-progress.test.mjs` and wired it into `npm test` to verify initialization, overworld updates, party add/remove, battle outcome recording, and serialization/deserialization round-trip without information loss.
+
 - Task: Wire input layer into overworld controls (TASK_ID=320, RUN_ID=548)
 - State: Completed
 - Notes: Refactored `src/scenes/OverworldScene.js` to fully consume high-level `InputManager` actions for overworld control and interaction flow.

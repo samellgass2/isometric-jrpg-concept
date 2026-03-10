@@ -1,38 +1,47 @@
-# TASK 322 Report - Implement basic in-game HUD overlays
+# TASK 326 Report - Implement core save data model
 
 ## Summary
-Implemented a reusable HUD overlay module and integrated it into overworld and battle scenes with state-driven updates (no direct device input coupling).
+Implemented a centralized player progress save model in `src/state/playerProgress.js` with immutable state update helpers and JSON serialization/deserialization utilities, then documented the persisted fields and integration expectations in `STATUS.md`.
 
 ## Changes made
-- Added `src/ui/HUDOverlay.js`:
-  - Encapsulates HUD panel creation with Phaser primitives.
-  - Exposes `setData({ context, primary, secondary, tertiary })` for reusable updates.
-  - Caches previous payload to avoid unnecessary redraw updates.
-  - Handles teardown via `destroy()`.
-- Updated `src/scenes/OverworldScene.js`:
-  - Integrated `HUDOverlay` at top-right of viewport.
-  - HUD fields: `Unit`, `HP`, and player `Tile` coordinate.
-  - Added `syncHudOverlay()` to update from scene state and only when state snapshot changes.
-  - Wired cleanup on scene shutdown/destroy.
-- Updated `src/scenes/BattleScene.js`:
-  - Integrated `HUDOverlay` at top-right of viewport.
-  - HUD fields: `Active` unit (+ HP), `Phase`, and `Turn`.
-  - Added active-unit derivation from battle state (`selectedUnitId`, `currentActingUnitId`, unit lists).
-  - Updated HUD from battle state transitions (`updateSelectionPanel`, enemy-turn processing, battle completion).
-  - Wired cleanup on scene shutdown/destroy.
+- Added `src/state/playerProgress.js`:
+  - Introduced canonical player progress schema with JSON-safe fields:
+    - `schemaVersion`
+    - `overworld` (`position`, `spawnPointId`, `currentSceneKey`)
+    - `party` (`memberOrder`, `members`)
+    - `battleOutcomes` (encounter keyed outcomes)
+  - Added pure immutable helpers:
+    - `createInitialPlayerProgressState`
+    - `normalizePlayerProgressState`
+    - `updateOverworldPosition`
+    - `upsertPartyMember`
+    - `removePartyMember`
+    - `recordBattleOutcome`
+    - `serializePlayerProgress`
+    - `deserializePlayerProgress`
+  - Added inline JSDoc documentation describing each field and expected usage by overworld/battle systems.
+
+- Added `scripts/player-progress.test.mjs`:
+  - Verifies default initialization includes overworld position, party composition, and battle outcomes collection.
+  - Verifies immutable overworld updates, party member add/remove behavior, named battle outcome recording, and JSON round-trip integrity.
+
+- Updated `package.json`:
+  - Included `scripts/player-progress.test.mjs` in `npm test` command chain.
+
 - Updated `STATUS.md`:
-  - Added Task 322 section documenting HUD elements, scene integration points, and state-driven update model.
+  - Added Task 326 entry documenting the new player progress module, persisted fields, and expected interaction points for overworld, party management, and battle completion flows.
 
 ## Acceptance test check
-1. New HUD module exists and encapsulates HUD creation/update: PASS (`src/ui/HUDOverlay.js`).
-2. Overworld HUD shows character + HP/stat and updates when state changes: PASS (`Unit`, `HP`, `Tile`; refreshed via `syncHudOverlay()` with snapshot keying).
-3. Battle HUD shows active unit and turn/phase from battle state: PASS (`Active`, `Phase`, `Turn` from battle scene state).
-4. HUD code does not reference keyboard/mouse/touch directly: PASS (HUD module has no input listeners; scene HUD updates are state-driven).
-5. HUD remains visible and positioned away from critical play area: PASS (fixed top-right overlay, scroll-factor 0, compact panel sizing).
-6. `STATUS.md` includes HUD implementation summary and scene/state wiring: PASS.
+1. Dedicated player progress module exists and imports without runtime errors: PASS (`src/state/playerProgress.js`, imported by test script).
+2. Initial default state includes overworld position, party composition, battle outcomes collection: PASS (`createInitialPlayerProgressState`).
+3. Immutable update functions for overworld position, party members, and named battle outcome flag: PASS (`updateOverworldPosition`, `upsertPartyMember`/`removePartyMember`, `recordBattleOutcome`).
+4. Serialize/deserialize helpers preserve state information: PASS (`serializePlayerProgress`, `deserializePlayerProgress`, round-trip tested).
+5. Inline documentation for fields and usage: PASS (JSDoc in module).
+6. `STATUS.md` includes summary and modeled progress aspects: PASS (new Task 326 section).
 
 ## Validation run
 - `npm test` -> PASS
   - Rollback test passed.
   - Dog conditional behavior test passed.
   - Battle grid stats test passed.
+  - Player progress state test passed.
