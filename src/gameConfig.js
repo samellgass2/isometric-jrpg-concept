@@ -1,6 +1,9 @@
 import * as Phaser from "../node_modules/phaser/dist/phaser.esm.js";
+import MainMenuScene from "./scenes/MainMenuScene.js";
 import OverworldScene from "./scenes/OverworldScene.js";
 import BattleScene from "./scenes/BattleScene.js";
+import Level1Scene from "./scenes/Level1Scene.js";
+import Level2Scene from "./scenes/Level2Scene.js";
 import { animalUnitList } from "./battle/units/animalUnits.js";
 
 export const battleUnitCatalog = {
@@ -21,7 +24,7 @@ const gameConfig = {
       debug: false,
     },
   },
-  scene: [BattleScene, OverworldScene],
+  scene: [MainMenuScene, BattleScene, OverworldScene, Level1Scene, Level2Scene],
 };
 
 export default gameConfig;
