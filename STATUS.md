@@ -548,3 +548,101 @@ Dev server running at http://127.0.0.1:5173
 
 ### Overall Verdict
 - CLEAN
+
+# QA Validation Report (2026-03-10)
+
+## Workflow
+- Project: `isometric-strategy-game`
+- Workflow #30: Overworld and Level Selection Implementation
+- Branch validated: `workflow/30/dev`
+
+## Commits Reviewed (`main..HEAD`)
+- `a53fd66` task/314: supervisor safety-commit (Codex omitted git commit)
+- `1b3c23c` task/312: integrate level-based battle encounters
+- `fc1880d` task/311: add task report summary
+- `0063017` task/311: wire overworld signs to level scene flow
+- `098e2eb` task/310: add overworld level sign interactions
+- `2e767e1` task/309: update task report summary
+- `9c8c85c` task/309: add overworld click-to-move controls
+- `e66105f` task/308: update task report for main menu implementation
+- `3f315b3` task/308: add main menu scene and overworld entry flow
+
+## Diffstat Reviewed (`main...HEAD --stat`)
+```text
+ STATUS.md                    | 117 ++++++++++
+ TASK_REPORT.md               |  86 ++++----
+ src/battle/encounters.js     | 115 ++++++++++
+ src/gameConfig.js            |   5 +-
+ src/scenes/BattleScene.js    | 278 ++++++++++++++++++------
+ src/scenes/Level1Scene.js    | 492 ++++++++++++++++++++++++++++++++++++++++++
+ src/scenes/Level2Scene.js    | 497 +++++++++++++++++++++++++++++++++++++++++++
+ src/scenes/MainMenuScene.js  | 107 ++++++++++
+ src/scenes/OverworldScene.js | 431 +++++++++++++++++++++++++++++++++++--
+ 9 files changed, 1996 insertions(+), 132 deletions(-)
+```
+
+## Test Commands Run And Output
+
+1. `cat package.json | grep -A 30 '"scripts"'` - PASS
+```text
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "start": "node scripts/dev-server.mjs",
+    "test": "node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs"
+  },
+```
+
+2. `npm install` - PASS
+```text
+added 2 packages, and audited 3 packages in 10s
+found 0 vulnerabilities
+```
+
+3. `npm test` - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs
+
+Rollback test passed.
+Dog conditional behavior test passed.
+Battle grid stats test passed.
+```
+
+4. `timeout 8s npm run dev` - PASS (startup smoke)
+```text
+> workspace@1.0.0 dev
+> node scripts/dev-server.mjs
+
+Dev server running at http://127.0.0.1:5173
+```
+- Note: command terminated by timeout (`exit 124`) after confirming startup.
+
+## Acceptance Criteria Verdicts
+
+### Task: Implement main menu and level select UI
+- Verdict: PASS
+- Evidence: `MainMenuScene` added and bootstrapped first in `src/gameConfig.js`; `Start Game` control transitions to `OverworldScene`; menu text includes `Level 1` and `Level 2`; feature documented in `STATUS.md` task entries.
+
+### Task: Implement overworld map with movement controls
+- Verdict: PASS
+- Evidence: `OverworldScene` includes keyboard movement (`Arrows/WASD`), pointer click-to-move pathfinding, map/world bounds + collision blocking, scene registration in `src/gameConfig.js`, and controls/limitations documentation in `STATUS.md`.
+
+### Task: Add overworld signs for level 1 and level 2
+- Verdict: PASS
+- Evidence: Two sign entities (`Level 1`, `Level 2`) with labels and prompts; interaction requires proximity; keyboard/pointer interaction displays level-specific prompt text; logic is encapsulated inside `OverworldScene`; documented in `STATUS.md`.
+
+### Task: Wire sign interactions to level loading flow
+- Verdict: PASS
+- Evidence: Sign interactions map to `Level1Scene`/`Level2Scene`; both levels are distinct scenes and registered centrally; both levels support return to overworld (Esc or interact near exit marker) with spawn point IDs; transitions use Phaser `scene.start(...)`; documented in `STATUS.md`.
+
+### Task: Integrate simple battle encounters into levels
+- Verdict: PASS
+- Evidence: `Level1Scene` trigger tile and `Level2Scene` totem interaction start encounter-driven `BattleScene` using existing battle grid/combat systems; enemies respond during enemy turn; battle completion returns to originating level with result payload and encounter clear-state handling; encounter flow documented in `STATUS.md`.
+
+## Workflow Goal Verification
+- Goal: Implement overworld + level selection flow with menu entry, sign-based level selection, and forward/back navigation using keyboard/mouse.
+- Verdict: PASS
+- Rationale: Main menu -> overworld -> sign interaction -> level scene -> battle -> return to level/overworld loop is present and connected, with both keyboard and mouse interactions implemented across overworld/level traversal.
+
+## Overall Verdict
+- PASS
