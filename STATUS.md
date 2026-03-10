@@ -1,5 +1,29 @@
 # Status
 
+- Task: Define zookeeper drone enemy data models (TASK_ID=337, RUN_ID=577)
+- State: Completed
+- Notes: Added structured zookeeper drone enemy unit definitions to the central battle unit config module at `src/battle/units/animalUnits.js`.
+
+  What changed:
+  - Added AI behavior tag constants in `src/battle/units/animalUnits.js`:
+    - `AI_BEHAVIOR_TAGS.AGGRESSIVE`
+    - `AI_BEHAVIOR_TAGS.DEFENSIVE`
+    - `AI_BEHAVIOR_TAGS.SUPPORT`
+  - Added three distinct drone variants in `src/battle/units/animalUnits.js`:
+    - `zookeeperScoutDroneUnit` (high movement skirmisher, medium range, low defense, aggressive behavior)
+    - `zookeeperDefenderDroneUnit` (high HP/defense frontline, short range, defensive behavior)
+    - `zookeeperControllerDroneUnit` (longer range control profile, support behavior)
+  - Exported drone-specific lookup structures in the same module:
+    - `zookeeperDroneUnits`
+    - `zookeeperDroneUnitList`
+    - `getZookeeperDroneUnitConfig(unitKey)`
+  - Integrated drones into encounter enemy rosters in `src/battle/encounters.js` so battle setups can instantiate them directly.
+  - Extended runtime unit creation in `src/scenes/BattleScene.js` to preserve `role`, `aiBehavior`, and `tags` on spawned units.
+  - Extended `scripts/battle-grid-stats.test.mjs` to validate:
+    - behavior tags per drone type,
+    - distinct stat profiles across drone variants,
+    - and encounter-level drone references for battle spawning.
+
 - Task: Persist party composition across sessions (TASK_ID=329, RUN_ID=563)
 - State: Completed
 - Notes: Extended `src/scenes/BattleScene.js` so the battle party system now uses persisted player progress for party composition when real save data exists, while preserving prior default encounter composition for fresh profiles.

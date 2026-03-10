@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { cheetahUnit, elephantUnit, guardianDogUnit } from "../src/battle/units/animalUnits.js";
+import {
+  AI_BEHAVIOR_TAGS,
+  cheetahUnit,
+  elephantUnit,
+  guardianDogUnit,
+  zookeeperControllerDroneUnit,
+  zookeeperDefenderDroneUnit,
+  zookeeperScoutDroneUnit,
+} from "../src/battle/units/animalUnits.js";
+import { getEncounterDefinition } from "../src/battle/encounters.js";
 import {
   canUnitTarget,
   chooseMovementDestinationTowardTarget,
@@ -123,6 +132,35 @@ function runTests() {
   });
 
   assert.deepEqual(destination, { x: 6, y: 1 }, "Enemy movement choice should use full movement range, not fixed one-step movement.");
+
+  assert.equal(
+    zookeeperScoutDroneUnit.aiBehavior,
+    AI_BEHAVIOR_TAGS.AGGRESSIVE,
+    "Scout drone should use aggressive behavior tag."
+  );
+  assert.equal(
+    zookeeperDefenderDroneUnit.aiBehavior,
+    AI_BEHAVIOR_TAGS.DEFENSIVE,
+    "Defender drone should use defensive behavior tag."
+  );
+  assert.equal(
+    zookeeperControllerDroneUnit.aiBehavior,
+    AI_BEHAVIOR_TAGS.SUPPORT,
+    "Controller drone should use support behavior tag."
+  );
+  assert.ok(
+    zookeeperDefenderDroneUnit.stats.maxHp > zookeeperControllerDroneUnit.stats.maxHp
+      && zookeeperControllerDroneUnit.attack.range > zookeeperDefenderDroneUnit.attack.range
+      && zookeeperScoutDroneUnit.movement.tilesPerTurn > zookeeperDefenderDroneUnit.movement.tilesPerTurn,
+    "Drone variants should have clearly distinct stat profiles."
+  );
+
+  const canyonEncounter = getEncounterDefinition("level-2-canyon-gauntlet");
+  const canyonEnemyArchetypes = canyonEncounter.enemyUnits.map((unit) => unit.archetype);
+  assert.ok(
+    canyonEnemyArchetypes.includes("zookeeper-drone"),
+    "Encounter definitions should reference zookeeper drones so they can be spawned in battle scenes."
+  );
 
   console.log("Battle grid stats test passed.");
 }

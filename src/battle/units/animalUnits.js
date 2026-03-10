@@ -10,6 +10,7 @@ function createAnimalUnitConfig({
   name,
   role,
   archetype,
+  aiBehavior = null,
   stats,
   movement,
   attack,
@@ -21,6 +22,7 @@ function createAnimalUnitConfig({
     name,
     role,
     archetype,
+    aiBehavior,
     stats,
     movement,
     attack,
@@ -28,6 +30,12 @@ function createAnimalUnitConfig({
     tags,
   };
 }
+
+export const AI_BEHAVIOR_TAGS = Object.freeze({
+  AGGRESSIVE: "aggressive",
+  DEFENSIVE: "defensive",
+  SUPPORT: "support",
+});
 
 export const elephantUnit = createAnimalUnitConfig({
   id: "animal-elephant-bulwark",
@@ -179,6 +187,120 @@ export const scoutDogUnit = createAnimalUnitConfig({
   tags: ["animal", "mobile", "protagonist-linked"],
 });
 
+export const zookeeperScoutDroneUnit = createAnimalUnitConfig({
+  id: "enemy-zookeeper-drone-scout",
+  name: "Zookeeper Scout Drone",
+  role: "skirmisher",
+  archetype: "zookeeper-drone",
+  aiBehavior: AI_BEHAVIOR_TAGS.AGGRESSIVE,
+  stats: {
+    maxHp: 72,
+    defense: 5,
+  },
+  movement: {
+    tilesPerTurn: 6,
+    speedClass: "very_fast",
+  },
+  attack: {
+    range: 2,
+    baseDamage: 18,
+    canAttackOverObstacles: false,
+  },
+  abilities: [
+    {
+      id: "target-ping",
+      name: "Target Ping",
+      description: "Scans for exposed targets and rushes weak flanks.",
+      type: "passive",
+      trigger: {
+        source: "self",
+        condition: "on_turn_start",
+      },
+      effect: {
+        modifies: "movement.initiativeBonus",
+        value: 1,
+      },
+    },
+  ],
+  tags: ["enemy", "zookeeper", "drone", "scout"],
+});
+
+export const zookeeperDefenderDroneUnit = createAnimalUnitConfig({
+  id: "enemy-zookeeper-drone-defender",
+  name: "Zookeeper Defender Drone",
+  role: "bulwark",
+  archetype: "zookeeper-drone",
+  aiBehavior: AI_BEHAVIOR_TAGS.DEFENSIVE,
+  stats: {
+    maxHp: 158,
+    defense: 18,
+  },
+  movement: {
+    tilesPerTurn: 3,
+    speedClass: "slow",
+  },
+  attack: {
+    range: 1,
+    baseDamage: 24,
+    canAttackOverObstacles: false,
+  },
+  abilities: [
+    {
+      id: "guard-plating",
+      name: "Guard Plating",
+      description: "Reinforced chassis optimized for holding front lines.",
+      type: "passive",
+      trigger: {
+        source: "self",
+        condition: "on_turn_start",
+      },
+      effect: {
+        modifies: "stats.damageReduction",
+        value: 0.1,
+      },
+    },
+  ],
+  tags: ["enemy", "zookeeper", "drone", "defender"],
+});
+
+export const zookeeperControllerDroneUnit = createAnimalUnitConfig({
+  id: "enemy-zookeeper-drone-controller",
+  name: "Zookeeper Controller Drone",
+  role: "controller",
+  archetype: "zookeeper-drone",
+  aiBehavior: AI_BEHAVIOR_TAGS.SUPPORT,
+  stats: {
+    maxHp: 96,
+    defense: 8,
+  },
+  movement: {
+    tilesPerTurn: 4,
+    speedClass: "medium",
+  },
+  attack: {
+    range: 3,
+    baseDamage: 14,
+    canAttackOverObstacles: true,
+  },
+  abilities: [
+    {
+      id: "suppression-signal",
+      name: "Suppression Signal",
+      description: "Projects control pulses from range to pressure backline targets.",
+      type: "passive",
+      trigger: {
+        source: "self",
+        condition: "on_attack",
+      },
+      effect: {
+        modifies: "attack.appliesPressure",
+        value: true,
+      },
+    },
+  ],
+  tags: ["enemy", "zookeeper", "drone", "controller"],
+});
+
 export const animalUnits = {
   elephant: elephantUnit,
   cheetah: cheetahUnit,
@@ -187,6 +309,18 @@ export const animalUnits = {
 };
 
 export const animalUnitList = Object.freeze(Object.values(animalUnits));
+
+export const zookeeperDroneUnits = Object.freeze({
+  scoutDrone: zookeeperScoutDroneUnit,
+  defenderDrone: zookeeperDefenderDroneUnit,
+  controllerDrone: zookeeperControllerDroneUnit,
+});
+
+export const zookeeperDroneUnitList = Object.freeze(Object.values(zookeeperDroneUnits));
+
+export function getZookeeperDroneUnitConfig(unitKey) {
+  return zookeeperDroneUnits[unitKey] ?? null;
+}
 
 export function getAnimalUnitConfig(unitKey) {
   return animalUnits[unitKey] ?? null;

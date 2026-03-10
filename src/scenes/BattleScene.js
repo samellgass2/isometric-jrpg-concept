@@ -1,5 +1,12 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
-import { cheetahUnit, elephantUnit, guardianDogUnit } from "../battle/units/animalUnits.js";
+import {
+  cheetahUnit,
+  elephantUnit,
+  guardianDogUnit,
+  zookeeperControllerDroneUnit,
+  zookeeperDefenderDroneUnit,
+  zookeeperScoutDroneUnit,
+} from "../battle/units/animalUnits.js";
 import { getEffectiveCombatStats, isDogDangerBuffActive, resolveAttack } from "../battle/combatResolver.js";
 import { getEncounterDefinition } from "../battle/encounters.js";
 import {
@@ -278,26 +285,22 @@ class BattleScene extends Phaser.Scene {
       ],
       enemyUnits: [
         {
-          id: "enemy-raider-1",
-          name: "Raider Alpha",
-          archetype: "raider",
-          movement: { tilesPerTurn: 3 },
-          attack: { range: 1, baseDamage: 20, canAttackOverObstacles: false },
-          stats: { maxHp: 90, defense: 8 },
-          abilities: [],
+          ...zookeeperDefenderDroneUnit,
+          id: "enemy-zookeeper-defender-default",
           spawn: { x: 7, y: 3 },
-          color: 0xc45656,
+          color: 0xc06a6a,
         },
         {
-          id: "enemy-raider-2",
-          name: "Raider Beta",
-          archetype: "raider",
-          movement: { tilesPerTurn: 3 },
-          attack: { range: 1, baseDamage: 18, canAttackOverObstacles: false },
-          stats: { maxHp: 80, defense: 7 },
-          abilities: [],
+          ...zookeeperScoutDroneUnit,
+          id: "enemy-zookeeper-scout-default",
           spawn: { x: 9, y: 5 },
-          color: 0xb14747,
+          color: 0xde8c8c,
+        },
+        {
+          ...zookeeperControllerDroneUnit,
+          id: "enemy-zookeeper-controller-default",
+          spawn: { x: 10, y: 2 },
+          color: 0xa65f9a,
         },
       ],
     };
@@ -325,11 +328,14 @@ class BattleScene extends Phaser.Scene {
       id: config.id,
       name: config.name,
       faction,
+      role: config.role ?? null,
       archetype: config.archetype ?? null,
+      aiBehavior: config.aiBehavior ?? null,
       movement: { ...config.movement },
       attack: { ...config.attack },
       stats: { ...config.stats },
       abilities: Array.isArray(config.abilities) ? [...config.abilities] : [],
+      tags: Array.isArray(config.tags) ? [...config.tags] : [],
       currentHp: config.stats.maxHp,
       tileX,
       tileY,

@@ -1,4 +1,11 @@
-import { cheetahUnit, elephantUnit, guardianDogUnit } from "./units/animalUnits.js";
+import {
+  cheetahUnit,
+  elephantUnit,
+  guardianDogUnit,
+  zookeeperControllerDroneUnit,
+  zookeeperDefenderDroneUnit,
+  zookeeperScoutDroneUnit,
+} from "./units/animalUnits.js";
 
 function cloneUnitConfig(config) {
   return {
@@ -7,6 +14,7 @@ function cloneUnitConfig(config) {
     attack: { ...(config.attack ?? {}) },
     stats: { ...(config.stats ?? {}) },
     abilities: Array.isArray(config.abilities) ? [...config.abilities] : [],
+    tags: Array.isArray(config.tags) ? [...config.tags] : [],
   };
 }
 
@@ -83,26 +91,22 @@ export const encounterDefinitions = {
     ],
     enemyUnits: [
       {
-        id: "enemy-raider-alpha",
-        name: "Raider Alpha",
-        archetype: "raider",
-        movement: { tilesPerTurn: 3 },
-        attack: { range: 1, baseDamage: 20, canAttackOverObstacles: false },
-        stats: { maxHp: 88, defense: 8 },
-        abilities: [],
+        ...cloneUnitConfig(zookeeperDefenderDroneUnit),
+        id: "enemy-zookeeper-defender-1",
         spawn: { x: 8, y: 3 },
-        color: 0xc45656,
+        color: 0xc06a6a,
       },
       {
-        id: "enemy-raider-beta",
-        name: "Raider Beta",
-        archetype: "raider",
-        movement: { tilesPerTurn: 3 },
-        attack: { range: 1, baseDamage: 18, canAttackOverObstacles: false },
-        stats: { maxHp: 78, defense: 7 },
-        abilities: [],
+        ...cloneUnitConfig(zookeeperScoutDroneUnit),
+        id: "enemy-zookeeper-scout-1",
         spawn: { x: 9, y: 5 },
-        color: 0xb14747,
+        color: 0xde8c8c,
+      },
+      {
+        ...cloneUnitConfig(zookeeperControllerDroneUnit),
+        id: "enemy-zookeeper-controller-1",
+        spawn: { x: 10, y: 2 },
+        color: 0xa65f9a,
       },
     ],
   },
