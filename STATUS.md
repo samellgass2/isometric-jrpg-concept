@@ -1713,13 +1713,28 @@ Battle party persistence test passed.
 ### Cross-Browser Validation
 - Automated validation completed in this environment:
   - `npm test` passed after refactor.
-- Manual Chrome + Firefox interaction check:
-  - Not executable in this headless run environment (no interactive browser session available here).
-  - No code-path assumptions are browser-specific; input relies on Phaser pointer/keyboard abstractions for mouse/touch/keyboard normalization.
+- Browser binary availability check:
+  - `google-chrome --version` -> `command not found`
+  - `firefox --version` -> `command not found`
+- Required manual interaction matrix for Task #352 (rapid click/tap + burst movement/confirm/cancel, overworld + battle):
+  - Chrome Stable: **FAIL (NOT EXECUTED)** - Chrome runtime unavailable in this environment.
+  - Firefox Stable: **FAIL (NOT EXECUTED)** - Firefox runtime unavailable in this environment.
+- Runtime evidence captured in this environment (Chromium-only proxy run; non-acceptance substitute):
+  - Headless Playwright `chromium.launch(headless=True, args=['--no-sandbox', '--disable-gpu'])`.
+  - Rapid click + keyboard burst sequence executed in overworld and battle scenes.
+  - Observed result: **PASS in Chromium proxy** (no page errors/console errors; input remained responsive throughout scripted burst interactions).
+  - Sample frame timing during burst validation:
+    - Overworld: avg `~56.6 ms`, p95 `~100.1 ms`, max `150 ms`.
+    - Battle: avg `~49.0 ms`, p95 `~66.6 ms`, max `66.7 ms`.
+  - Note: This does not satisfy the required Chrome + Firefox manual validation matrix by itself.
 
 ### Validation Commands
 1. `npm install` - PASS
 2. `npm test` - PASS
+3. Browser availability check:
+   - `google-chrome --version` - FAIL (`command not found`)
+   - `firefox --version` - FAIL (`command not found`)
+4. Chromium interaction stress run (overworld + battle rapid click/key burst) - PASS
 
 ## Workflow #38 - Performance Optimization and Cross-Browser Compatibility Pass (Task #353, RUN_ID=650)
 
