@@ -616,6 +616,15 @@ Dev server running at http://127.0.0.1:5173
 ## Overall Verdict
 - CLEAN
 
+## Task #338: Implement basic zookeeper drone AI decisions
+- Added `decideDroneAction` in `src/battle/ai/droneDecisionController.js` to encapsulate enemy drone turn decisions for `attack`, `move`, and `wait`.
+- Targeting heuristic now prioritizes the closest living player unit and uses vulnerability (HP ratio/HP) as tie-breakers.
+- Attack decisions reuse existing range + obstacle targeting logic via `canUnitTarget` (which already respects unit `attack.range`).
+- Movement decisions reuse existing grid/path mechanics via `getReachableTiles`, `getUnitMovementRange`, and `chooseMovementDestinationTowardTarget`.
+- Safe fallback behavior returns `wait` when no valid targets are available or no reachable path exists.
+- Integrated decision execution in `src/scenes/BattleScene.js` enemy turn loop so zookeeper drones act automatically when their turn phase runs.
+- Added `scripts/drone-ai-decision.test.mjs` and wired it into `npm test` in `package.json` to validate attack/move/wait decision behavior.
+
 # QA Validation Summary (2026-03-10) - Workflow #32 Certification
 
 ## Commits Reviewed (`git log --oneline main..HEAD`)
