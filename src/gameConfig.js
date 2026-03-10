@@ -1,4 +1,5 @@
 import * as Phaser from "../node_modules/phaser/dist/phaser.esm.js";
+import MainMenuScene from "./scenes/MainMenuScene.js";
 import OverworldScene from "./scenes/OverworldScene.js";
 import BattleScene from "./scenes/BattleScene.js";
 import { animalUnitList } from "./battle/units/animalUnits.js";
@@ -21,7 +22,7 @@ const gameConfig = {
       debug: false,
     },
   },
-  scene: [BattleScene, OverworldScene],
+  scene: [MainMenuScene, BattleScene, OverworldScene],
 };
 
 export default gameConfig;
