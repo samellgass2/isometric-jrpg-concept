@@ -184,6 +184,85 @@
 ## Overall Verdict
 - PASS
 
+## Tester Report - Workflow #31 (2026-03-10)
+
+### Scope
+- Branch: `workflow/31/dev`
+- Verified tasks: `#319`, `#320`, `#321`, `#322`
+
+### Tests Run
+
+1. `npm test` - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs
+
+Rollback test passed.
+Dog conditional behavior test passed.
+Battle grid stats test passed.
+```
+
+2. `timeout 20s npm run dev` - PASS (startup smoke)
+```text
+> workspace@1.0.0 dev
+> node scripts/dev-server.mjs
+
+Dev server running at http://127.0.0.1:5173
+```
+- Note: command ended by timeout (`exit 124`) after successful startup confirmation.
+
+### Per-Task Acceptance Verdict
+
+#### Task #319: Implement unified input abstraction layer
+- Verdict: PASS
+- Acceptance criteria check:
+  - `src/input/InputManager.js` exists and exports `InputManager` with `onAction` / `offAction`.
+  - Keyboard mapping present: Arrow/WASD -> `MOVE_*`, Enter/Space -> `CONFIRM`, Escape -> `CANCEL`.
+  - Pointer/touch mapping present: `pointerdown` -> `SELECT_TILE` with `tileX/tileY` and `normalizedX/normalizedY`.
+  - Integrated in existing scenes (`OverworldScene`, `BattleScene`) via semantic actions.
+  - Rebinding/unbinding API present (`rebindAction`, `unbindAction`) with no scene-level binding logic.
+  - `STATUS.md` documents module location, API, and wiring.
+
+#### Task #320: Wire input layer into overworld controls
+- Verdict: PASS
+- Acceptance criteria check:
+  - `OverworldScene` imports/uses `InputManager`.
+  - Overworld movement supports keyboard (`MOVE_*`) and pointer/touch (`SELECT_TILE` pathing).
+  - Interactions/dialogue flow through abstraction actions (`CONFIRM` and `SELECT_TILE`) rather than raw key codes/pointer listeners in scene logic.
+  - No direct Phaser keyboard keycode or pointer event listeners in `OverworldScene`.
+  - Binding changes are isolated to `InputManager` API by design.
+  - `STATUS.md` includes overworld integration notes and edge cases.
+
+#### Task #321: Connect input abstraction to battle actions
+- Verdict: PASS
+- Acceptance criteria check:
+  - `BattleScene` imports/uses `InputManager`.
+  - Keyboard navigation (`MOVE_*`) and pointer/touch tile selection (`SELECT_TILE`) both route through `InputManager`.
+  - Confirm/cancel behavior wired to `CONFIRM` / `CANCEL` semantic actions.
+  - No direct battle-scene raw keyboard/pointer listeners remain; device events are isolated in `InputManager`.
+  - Binding changes are isolated to `InputManager` API by design.
+  - `STATUS.md` documents battle input integration and supported actions.
+
+#### Task #322: Implement basic in-game HUD overlays
+- Verdict: PASS
+- Acceptance criteria check:
+  - `src/ui/HUDOverlay.js` exists and encapsulates HUD creation/update/destroy.
+  - Overworld HUD shows player label + HP and is refreshed from scene state (`syncHudOverlay`).
+  - Battle HUD shows active unit and phase/turn from battle state.
+  - HUD module contains no device-input event handling.
+  - HUD is fixed-position top-right in both scenes and does not overlap core center play area in current layout.
+  - `STATUS.md` includes HUD implementation summary and scene wiring.
+
+### Bugs Filed
+- None.
+
+### Integration/Regression Check
+- Input abstraction and HUD features work cohesively across overworld and battle scenes at code-integration level.
+- No automated test regressions observed.
+
+### Overall Verdict
+- CLEAN
+
 ---
 
 ## Task 322 - Implement basic in-game HUD overlays
