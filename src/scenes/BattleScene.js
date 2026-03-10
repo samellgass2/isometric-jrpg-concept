@@ -11,6 +11,11 @@ import {
 } from "../battle/grid.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
+import {
+  recordBattleOutcome,
+  updateOverworldPosition,
+  upsertPartyMember,
+} from "../state/playerProgress.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -57,9 +62,11 @@ class BattleScene extends Phaser.Scene {
     this.commandIndex = 0;
     this.currentActingUnitId = null;
     this.hudOverlay = null;
+    this.loadedProgress = null;
   }
 
   create(data = {}) {
+    this.loadedProgress = this.getProgressState();
     const encounterData = this.resolveEncounterData(data);
     this.encounterId = encounterData.id;
     this.encounterName = encounterData.name;
@@ -122,18 +129,39 @@ class BattleScene extends Phaser.Scene {
 
   createUnits(encounterData) {
     encounterData.friendlyUnits.forEach((unitConfig) => {
+      const persistedMember = this.getPersistedPartyMember(unitConfig.id);
+      const mergedUnitConfig = persistedMember
+        ? {
+            ...unitConfig,
+            name: persistedMember.name || unitConfig.name,
+            archetype: persistedMember.archetype ?? unitConfig.archetype,
+            level: persistedMember.level ?? unitConfig.level,
+            currentHp: persistedMember.currentHp,
+            stats: {
+              ...unitConfig.stats,
+              maxHp: persistedMember.maxHp,
+            },
+          }
+        : unitConfig;
+
       const unit = this.spawnUnit(
-        unitConfig,
+        mergedUnitConfig,
         "friendly",
-        unitConfig.spawn.x,
-        unitConfig.spawn.y,
-        unitConfig.color ?? 0x6aa9ff
+        mergedUnitConfig.spawn.x,
+        mergedUnitConfig.spawn.y,
+        mergedUnitConfig.color ?? 0x6aa9ff
       );
-      if (unitConfig.id === "protagonist") {
+      if (mergedUnitConfig.id === "protagonist") {
         this.protagonist = unit;
       }
-      if (Number.isFinite(unitConfig.currentHp)) {
-        unit.currentHp = Math.max(1, Math.min(unitConfig.currentHp, unit.stats.maxHp));
+      if (Number.isFinite(mergedUnitConfig.currentHp)) {
+        unit.currentHp = Math.max(0, Math.min(mergedUnitConfig.currentHp, unit.stats.maxHp));
+        unit.stats.hp = unit.currentHp;
+        unit.alive = unit.currentHp > 0;
+        if (!unit.alive) {
+          unit.sprite.setFillStyle(0x222222, 0.4);
+          unit.buffIcon.setVisible(false);
+        }
       }
     });
 
@@ -150,6 +178,29 @@ class BattleScene extends Phaser.Scene {
     if (!this.protagonist) {
       this.protagonist = this.getFriendlyUnits()[0] ?? null;
     }
+  }
+
+  getProgressState() {
+    return this.game?.registry?.get("playerProgress");
+  }
+
+  commitProgress(updater) {
+    const setPlayerProgress = this.game?.registry?.get("setPlayerProgress");
+    if (typeof setPlayerProgress !== "function") {
+      return null;
+    }
+
+    const current = this.getProgressState();
+    const next = typeof updater === "function" ? updater(current) : updater;
+    return setPlayerProgress(next);
+  }
+
+  getPersistedPartyMember(memberId) {
+    if (!this.loadedProgress?.party?.members || typeof memberId !== "string") {
+      return null;
+    }
+
+    return this.loadedProgress.party.members.find((member) => member.id === memberId) ?? null;
   }
 
   resolveEncounterData(data) {
@@ -957,12 +1008,41 @@ class BattleScene extends Phaser.Scene {
     this.updateTurnHeader();
     this.updateSelectionPanel();
     this.syncHudOverlay();
+    this.persistBattleProgress(result);
 
     this.time.delayedCall(450, () => {
       this.scene.start(this.returnSceneKey, {
         ...this.returnSceneData,
         battleResult: result,
         lastEncounterId: this.encounterId,
+      });
+    });
+  }
+
+  persistBattleProgress(result) {
+    this.commitProgress((current) => {
+      let next = current;
+
+      this.units
+        .filter((unit) => unit.faction === "friendly")
+        .forEach((unit) => {
+          next = upsertPartyMember(next, {
+            id: unit.id,
+            name: unit.name,
+            archetype: unit.archetype,
+            level: unit.level ?? 1,
+            currentHp: Math.max(0, Math.floor(unit.currentHp)),
+            maxHp: Math.max(1, Math.floor(unit.stats?.maxHp ?? unit.currentHp ?? 1)),
+          });
+        });
+
+      next = recordBattleOutcome(next, this.encounterId, {
+        result,
+        recordedAt: new Date().toISOString(),
+      });
+
+      return updateOverworldPosition(next, next?.overworld?.position, {
+        currentSceneKey: this.returnSceneKey,
       });
     });
   }

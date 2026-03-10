@@ -1,6 +1,7 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
+import { updateOverworldPosition } from "../state/playerProgress.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 16;
@@ -132,9 +133,16 @@ class OverworldScene extends Phaser.Scene {
     this.hudLastKey = "";
     this.playerDisplayName = "Pathfinder";
     this.playerStats = { hp: 100, maxHp: 100 };
+    this.lastSavedTileKey = "";
   }
 
   create(data) {
+    const progress = this.getProgressState();
+    const requestedSpawnPointId =
+      typeof data?.spawnPointId === "string" && data.spawnPointId.trim()
+        ? data.spawnPointId.trim()
+        : progress?.overworld?.spawnPointId;
+
     this.cameras.main.setBackgroundColor("#1f2228");
     this.physics.world.setBounds(0, 0, MAP_PIXEL_WIDTH, MAP_PIXEL_HEIGHT);
     this.cameras.main.setBounds(0, 0, MAP_PIXEL_WIDTH, MAP_PIXEL_HEIGHT);
@@ -149,7 +157,7 @@ class OverworldScene extends Phaser.Scene {
     this.renderTerrain();
     this.renderCollisionOverlay();
     this.createCollisionBodies();
-    const spawnTile = this.resolveSpawnTile(data?.spawnPointId);
+    const spawnTile = this.resolveSpawnTile(requestedSpawnPointId, progress?.overworld?.position);
     this.createPlayerCharacter(spawnTile);
     this.createNpcPlaceholders();
     this.createLevelSigns();
@@ -174,6 +182,12 @@ class OverworldScene extends Phaser.Scene {
       })
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
+
+    this.persistOverworldProgress({
+      force: true,
+      spawnPointId: requestedSpawnPointId,
+      currentSceneKey: this.scene.key,
+    });
   }
 
   createHudOverlay(data = {}) {
@@ -362,8 +376,68 @@ class OverworldScene extends Phaser.Scene {
     });
   }
 
-  resolveSpawnTile(spawnPointId) {
-    return OVERWORLD_SPAWN_BY_ID[spawnPointId] ?? OVERWORLD_SPAWN_BY_ID.default;
+  resolveSpawnTile(spawnPointId, fallbackPosition) {
+    if (typeof spawnPointId === "string" && OVERWORLD_SPAWN_BY_ID[spawnPointId]) {
+      return OVERWORLD_SPAWN_BY_ID[spawnPointId];
+    }
+
+    if (
+      Number.isFinite(fallbackPosition?.x) &&
+      Number.isFinite(fallbackPosition?.y) &&
+      this.isWalkableTile(Math.floor(fallbackPosition.x), Math.floor(fallbackPosition.y))
+    ) {
+      return {
+        x: Math.floor(fallbackPosition.x),
+        y: Math.floor(fallbackPosition.y),
+      };
+    }
+
+    return OVERWORLD_SPAWN_BY_ID.default;
+  }
+
+  getProgressState() {
+    return this.game?.registry?.get("playerProgress");
+  }
+
+  commitProgress(updater) {
+    const setPlayerProgress = this.game?.registry?.get("setPlayerProgress");
+    if (typeof setPlayerProgress !== "function") {
+      return null;
+    }
+
+    const current = this.getProgressState();
+    const next = typeof updater === "function" ? updater(current) : updater;
+    return setPlayerProgress(next);
+  }
+
+  persistOverworldProgress(options = {}) {
+    const tile = this.getPlayerTile();
+    if (!tile) {
+      return;
+    }
+
+    const tileKey = keyForTile(tile.x, tile.y);
+    const force = options.force === true;
+    const nextSceneKey =
+      typeof options.currentSceneKey === "string" && options.currentSceneKey.trim()
+        ? options.currentSceneKey.trim()
+        : this.scene.key;
+    const spawnPointId =
+      typeof options.spawnPointId === "string" && options.spawnPointId.trim()
+        ? options.spawnPointId.trim()
+        : undefined;
+
+    if (!force && tileKey === this.lastSavedTileKey) {
+      return;
+    }
+
+    this.commitProgress((current) =>
+      updateOverworldPosition(current, tile, {
+        spawnPointId,
+        currentSceneKey: nextSceneKey,
+      })
+    );
+    this.lastSavedTileKey = tileKey;
   }
 
   createPlayerCharacter(spawnTile) {
@@ -829,6 +903,10 @@ class OverworldScene extends Phaser.Scene {
     this.isTransitioning = true;
     this.clearPointerPath();
     this.hideDialogue();
+    this.persistOverworldProgress({
+      force: true,
+      currentSceneKey: sceneKey,
+    });
     this.cameras.main.fadeOut(160, 0, 0, 0);
     this.time.delayedCall(170, () => {
       this.scene.start(sceneKey);
@@ -935,6 +1013,7 @@ class OverworldScene extends Phaser.Scene {
       this.player.body.setVelocity(0, 0);
       this.player.anims.play("player-idle", true);
       this.syncHudOverlay();
+      this.persistOverworldProgress();
       return;
     }
 
@@ -949,17 +1028,20 @@ class OverworldScene extends Phaser.Scene {
 
       this.player.anims.play("player-walk", true);
       this.syncHudOverlay();
+      this.persistOverworldProgress();
       return;
     }
 
     if (this.moveAlongPointerPath()) {
       this.syncHudOverlay();
+      this.persistOverworldProgress();
       return;
     }
 
     this.player.body.setVelocity(0, 0);
     this.player.anims.play("player-idle", true);
     this.syncHudOverlay();
+    this.persistOverworldProgress();
   }
 }
 

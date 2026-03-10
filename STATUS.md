@@ -1,5 +1,50 @@
 # Status
 
+- Task: Add localStorage-based save and load layer (TASK_ID=327, RUN_ID=560)
+- State: Completed
+- Notes: Added browser persistence in `src/persistence/saveSystem.js` with exported `saveProgress(state)`, `loadProgress()`, and `clearProgress()` APIs.
+
+  Persistence details:
+  - Storage key: `playerProgress` (exported as `PLAYER_PROGRESS_STORAGE_KEY`).
+  - `saveProgress(state)`:
+    - Normalizes/serializes the provided progress state through the player progress model.
+    - Writes a JSON string into `window.localStorage` under `playerProgress`.
+    - Returns `false` (without throwing) when storage is unavailable or JSON/stringify/setItem fails.
+  - `loadProgress()`:
+    - Reads `playerProgress` from localStorage and deserializes it through the progress model.
+    - Returns `createInitialPlayerProgressState()` when the key is missing, localStorage is unavailable, or stored JSON is invalid/corrupt.
+  - `clearProgress()`:
+    - Removes `playerProgress` from localStorage.
+    - After clearing, `loadProgress()` returns the default initial progress model.
+
+  Startup integration:
+  - `src/main.js` now hydrates progress via `loadProgress()` before creating `Phaser.Game`.
+  - Hydrated state is stored in `game.registry` as `playerProgress`.
+  - A shared registry mutator `setPlayerProgress(nextState)` now normalizes + saves state centrally so scenes can update progress safely.
+
+  Scene integration:
+  - `src/scenes/MainMenuScene.js` now resumes from saved `overworld.currentSceneKey` when starting the game (defaults to `OverworldScene`).
+  - `src/scenes/OverworldScene.js` now:
+    - Spawns from saved overworld position when no explicit spawn point is supplied.
+    - Persists player tile movement + scene context by updating progress through `updateOverworldPosition(...)`.
+    - Persists intended scene transition target (`Level1Scene` / `Level2Scene`) before scene handoff.
+  - `src/scenes/BattleScene.js` now:
+    - Hydrates friendly unit fields (name/archetype/HP/max HP) from saved party data when available.
+    - Persists post-battle party HP snapshots and encounter outcomes via `upsertPartyMember(...)` and `recordBattleOutcome(...)`.
+
+  How other code should invoke save/load:
+  - Prefer the game-registry setter in scenes:
+    - Read: `this.game.registry.get("playerProgress")`
+    - Write: `this.game.registry.get("setPlayerProgress")(nextState)`
+  - Use `saveProgress/loadProgress/clearProgress` directly only for bootstrap/reset flows.
+
+  Manual verification (documented):
+  - Start dev server: `npm run dev`.
+  - Start game, enter overworld, move to a different tile.
+  - Refresh browser.
+  - Start game again and confirm resumed position/scene data reflects the last saved progress.
+  - Optional reset check: run `localStorage.removeItem("playerProgress")` in the browser console and refresh; progress reverts to default initial state.
+
 - Task: Implement core save data model (TASK_ID=326, RUN_ID=558)
 - State: Completed
 - Notes: Added a centralized player progress module at `src/state/playerProgress.js` for save/load foundations, with a JSON-safe schema and immutable update helpers.
