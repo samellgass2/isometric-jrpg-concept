@@ -75,6 +75,7 @@ class OverworldScene extends Phaser.Scene {
     this.dialogueText = null;
     this.dialogueHintText = null;
     this.activeDialogueNpcId = null;
+    this.battleSceneKey = null;
   }
 
   create() {
@@ -95,6 +96,7 @@ class OverworldScene extends Phaser.Scene {
     this.createNpcPlaceholders();
     this.setupMovementInput();
     this.createDialogueUi();
+    this.battleSceneKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
 
     this.add
       .text(16, 16, "Overworld Prototype", {
@@ -108,6 +110,15 @@ class OverworldScene extends Phaser.Scene {
     this.add
       .text(16, 40, "Move: Arrows/WASD  Interact: Space/Enter", {
         color: "#d7e0ef",
+        fontFamily: "monospace",
+        fontSize: "14px",
+      })
+      .setScrollFactor(0)
+      .setDepth(UI_DEPTH);
+
+    this.add
+      .text(16, 62, "Dev: Press B for Battle Scene", {
+        color: "#b8c8e8",
         fontFamily: "monospace",
         fontSize: "14px",
       })
@@ -402,6 +413,11 @@ class OverworldScene extends Phaser.Scene {
 
   update() {
     if (!this.player || !this.player.body) {
+      return;
+    }
+
+    if (this.battleSceneKey && Phaser.Input.Keyboard.JustDown(this.battleSceneKey)) {
+      this.scene.start("BattleScene");
       return;
     }
 

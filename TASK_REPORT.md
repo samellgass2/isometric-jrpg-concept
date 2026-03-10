@@ -1,38 +1,29 @@
 # TASK REPORT
 
 ## Task
-- TASK_ID: 281
-- RUN_ID: 482
-- Title: Add simple map collision and NPC placeholders
+- TASK_ID: 286
+- RUN_ID: 489
+- Title: Create battle scene and entry hook
 
 ## Summary of Changes
-- Updated `src/scenes/OverworldScene.js` to keep the player blocked by designated collision tiles and map-edge boundaries using Arcade static collision bodies.
-- Kept world bounds enabled so the player cannot leave the intended overworld play area.
-- Replaced non-interactive NPC circles with two distinct placeholder NPC sprites built from generated textures:
-  - `Ranger Sol` at tile `(8,4)`
-  - `Mechanic Ivo` at tile `(11,8)`
-- Added NPC physics bodies through a static physics group and player-vs-NPC collision so overlap/collision context is stable.
-- Added interaction controls on `Space` and `Enter`:
-  - If adjacent to an NPC, shows a fixed UI dialogue box with NPC-specific placeholder text.
-  - Pressing interaction again dismisses dialogue.
-- Added a small HUD hint showing movement and interaction controls.
-- Updated `STATUS.md` with a new task entry describing collision approach, NPC definitions, and dialogue trigger key.
+- Added new scene file `src/scenes/BattleScene.js` exporting a `Phaser.Scene` subclass with key `"BattleScene"`.
+- Implemented standard Phaser scene lifecycle methods (`preload`, `create`, `update`) for clean integration.
+- In `BattleScene.create()`, set a distinct background color and neutral camera setup, then rendered debug labels including `"Battle Scene"`.
+- Added temporary development return hook from battle to overworld: press `O` to `scene.start("OverworldScene")`.
+- Updated `src/gameConfig.js` to register `BattleScene` in the Phaser config scene list.
+- Updated `src/scenes/OverworldScene.js` with a development entry hook: press `B` to `scene.start("BattleScene")`, plus an on-screen hint.
+- Updated `STATUS.md` with a new TASK_ID=286 entry that documents the new scene and launch/transition path.
 
 ## Verification
-- `npm test` (existing rollback regression script)
+- `npm test` (PASS)
+- `npm run dev` + `curl -i http://127.0.0.1:5173/` (PASS: `HTTP/1.1 200 OK`)
 
 ## Acceptance Criteria Mapping
-1. Overworld scene contains at least one collidable region:
-   - Satisfied by collision tiles converted into Arcade static bodies and bound to a player collider.
-2. Player cannot walk off intended playable area:
-   - Satisfied by border collision layout + Arcade world bounds collision.
-3. At least two distinct NPC sprites visible:
-   - Satisfied by two generated NPC textures at fixed map positions.
-4. Adjacent interaction key press triggers NPC dialogue:
-   - Satisfied by proximity check + `Space/Enter` handling and NPC-specific text output.
-5. Dialogue can be dismissed:
-   - Satisfied by interaction-key toggle behavior (`press again` to close).
-6. No runtime errors on collisions/interactions:
-   - Addressed by explicit object setup for physics groups, key bindings, and null-safe update guards.
-7. STATUS.md documents collision/NPC/interaction setup:
-   - Satisfied by top status entry for TASK_ID=281.
+1. `src/scenes/BattleScene.js` exists and exports a Phaser scene subclass with key `"BattleScene"`:
+   - Satisfied by `class BattleScene extends Phaser.Scene` with `super("BattleScene")` and `export default BattleScene`.
+2. Game bootstrap can start or transition into `BattleScene` without runtime errors:
+   - Satisfied by registering `BattleScene` in `src/gameConfig.js` and adding a `B` key transition from `OverworldScene`.
+3. Active battle scene shows distinct background and debug text:
+   - Satisfied by `BattleScene.create()` background color and on-screen labels including `"Battle Scene"`.
+4. `STATUS.md` documents the scene and launch path:
+   - Satisfied by new top status entry for TASK_ID=286 describing `B` to enter battle and `O` to return.

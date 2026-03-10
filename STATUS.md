@@ -1,5 +1,9 @@
 # Status
 
+- Task: Create battle scene and entry hook (TASK_ID=286, RUN_ID=489)
+- State: Completed
+- Notes: Added `src/scenes/BattleScene.js` as a dedicated Phaser scene (`BattleScene`) with neutral camera setup, a distinct background color, and on-screen debug labels confirming the battle scene is active. Updated `src/gameConfig.js` to register `BattleScene` alongside `OverworldScene`. During development, start in overworld and press `B` to transition into battle; in battle, press `O` to return to overworld.
+
 - Task: Add simple map collision and NPC placeholders (TASK_ID=281, RUN_ID=482)
 - State: Completed
 - Notes: Enhanced `src/scenes/OverworldScene.js` with explicit collidable tile boundaries (border walls + interior obstacle tiles) backed by Arcade static bodies so the player cannot move through blocked regions or leave the playable map bounds. Replaced circle placeholders with two fixed-position physics NPC sprites (`Ranger Sol` at tile 8,4 and `Mechanic Ivo` at tile 11,8), each carrying NPC-specific placeholder dialogue metadata. Added interaction handling on `Space` or `Enter`: when the player is adjacent to an NPC, a fixed-screen dialogue box appears with NPC-specific text; pressing the interaction key again dismisses the message.

@@ -1,5 +1,6 @@
 import * as Phaser from "../node_modules/phaser/dist/phaser.esm.js";
 import OverworldScene from "./scenes/OverworldScene.js";
+import BattleScene from "./scenes/BattleScene.js";
 
 const gameConfig = {
   type: Phaser.AUTO,
@@ -15,7 +16,7 @@ const gameConfig = {
       debug: false,
     },
   },
-  scene: [OverworldScene],
+  scene: [OverworldScene, BattleScene],
 };
 
 export default gameConfig;
