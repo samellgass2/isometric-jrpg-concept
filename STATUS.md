@@ -1,5 +1,9 @@
 # Status
 
+- Task: Implement player sprite and movement controls (TASK_ID=280, RUN_ID=481)
+- State: Completed
+- Notes: Updated `src/gameConfig.js` to enable Arcade physics and replaced overworld player placeholder logic with a physics-driven sprite in `src/scenes/OverworldScene.js`. Added generated placeholder idle/walk textures and animations, cursor-key plus WASD controls, cardinal-only movement using Arcade velocity, and static collision bodies for blocked tiles. Player motion stops immediately on key release and is constrained by world bounds + collision tiles so the player cannot leave the overworld area.
+
 - Task: Create overworld scene and bootstrapping (TASK_ID=279, RUN_ID=478)
 - State: Completed
 - Notes: Added `src/scenes/OverworldScene.js` with a hard-coded tile layout and explicit terrain, collision, and character layers/groups (player + NPC placeholders). Updated `src/gameConfig.js` to register `OverworldScene` as the boot scene and updated `src/main.js` to instantiate `Phaser.Game` with that config. Added `scripts/dev-server.mjs` and npm scripts (`dev`/`start`) so loading `/` serves the Phaser app.

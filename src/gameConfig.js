@@ -8,6 +8,13 @@ const gameConfig = {
   parent: "app",
   backgroundColor: "#101218",
   pixelArt: true,
+  physics: {
+    default: "arcade",
+    arcade: {
+      gravity: { y: 0 },
+      debug: false,
+    },
+  },
   scene: [OverworldScene],
 };
 
