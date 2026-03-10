@@ -1,5 +1,6 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
+import HUDOverlay from "../ui/HUDOverlay.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 16;
@@ -127,6 +128,10 @@ class OverworldScene extends Phaser.Scene {
     this.npcTileSet = new Set();
     this.signTileSet = new Set();
     this.isTransitioning = false;
+    this.hudOverlay = null;
+    this.hudLastKey = "";
+    this.playerDisplayName = "Pathfinder";
+    this.playerStats = { hp: 100, maxHp: 100 };
   }
 
   create(data) {
@@ -150,6 +155,7 @@ class OverworldScene extends Phaser.Scene {
     this.createLevelSigns();
     this.setupInputManager();
     this.createDialogueUi();
+    this.createHudOverlay(data);
 
     this.add
       .text(16, 16, "Overworld Prototype", {
@@ -168,6 +174,52 @@ class OverworldScene extends Phaser.Scene {
       })
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
+  }
+
+  createHudOverlay(data = {}) {
+    const configuredName = typeof data.playerName === "string" ? data.playerName.trim() : "";
+    if (configuredName) {
+      this.playerDisplayName = configuredName;
+    }
+
+    const hp = Number.isFinite(data.playerHp) ? data.playerHp : this.playerStats.hp;
+    const maxHp = Number.isFinite(data.playerMaxHp) ? data.playerMaxHp : this.playerStats.maxHp;
+    this.playerStats.maxHp = Math.max(1, Math.floor(maxHp));
+    this.playerStats.hp = Phaser.Math.Clamp(Math.floor(hp), 0, this.playerStats.maxHp);
+
+    this.hudOverlay = new HUDOverlay(this, { x: 790, y: 12, width: 250, depth: UI_DEPTH + 20 });
+    this.hudOverlay.create();
+    this.syncHudOverlay(true);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyHudOverlay());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyHudOverlay());
+  }
+
+  syncHudOverlay(force = false) {
+    if (!this.hudOverlay) {
+      return;
+    }
+
+    const tile = this.getPlayerTile();
+    const tileLabel = tile ? `(${tile.x}, ${tile.y})` : "(n/a)";
+    const hudKey = `${this.playerDisplayName}|${this.playerStats.hp}|${this.playerStats.maxHp}|${tileLabel}`;
+    if (!force && hudKey === this.hudLastKey) {
+      return;
+    }
+
+    this.hudLastKey = hudKey;
+    this.hudOverlay.setData({
+      context: "OVERWORLD",
+      primary: `Unit: ${this.playerDisplayName}`,
+      secondary: `HP: ${this.playerStats.hp}/${this.playerStats.maxHp}`,
+      tertiary: `Tile: ${tileLabel}`,
+    });
+  }
+
+  destroyHudOverlay() {
+    this.hudOverlay?.destroy();
+    this.hudOverlay = null;
+    this.hudLastKey = "";
   }
 
   createPlayerTextures() {
@@ -882,6 +934,7 @@ class OverworldScene extends Phaser.Scene {
       this.clearPointerPath();
       this.player.body.setVelocity(0, 0);
       this.player.anims.play("player-idle", true);
+      this.syncHudOverlay();
       return;
     }
 
@@ -895,15 +948,18 @@ class OverworldScene extends Phaser.Scene {
       }
 
       this.player.anims.play("player-walk", true);
+      this.syncHudOverlay();
       return;
     }
 
     if (this.moveAlongPointerPath()) {
+      this.syncHudOverlay();
       return;
     }
 
     this.player.body.setVelocity(0, 0);
     this.player.anims.play("player-idle", true);
+    this.syncHudOverlay();
   }
 }
 

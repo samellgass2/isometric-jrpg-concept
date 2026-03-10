@@ -186,6 +186,36 @@
 
 ---
 
+## Task 322 - Implement basic in-game HUD overlays
+
+### Summary
+- Added a reusable HUD module at `src/ui/HUDOverlay.js` that encapsulates HUD panel creation, state-driven text updates, and cleanup.
+- Integrated the HUD into both `OverworldScene` and `BattleScene` using scene/game state values only (no keyboard/mouse/touch references in HUD logic).
+- Positioned HUD panels in the top-right viewport area (`x: 790`, `y: 12`) with fixed scroll to stay visible while leaving center/left gameplay space unobstructed.
+
+### HUD Elements and Scene Wiring
+- `OverworldScene` HUD:
+  - `Unit`: current player character display name (default `Pathfinder`, overridable through scene data).
+  - `HP`: `playerHp/playerMaxHp` scene state values.
+  - `Tile`: current player tile coordinate derived from player world position.
+  - Update model: `syncHudOverlay()` runs from scene update loop and refreshes only when the state snapshot changes (`name/hp/maxHp/tile` key comparison).
+- `BattleScene` HUD:
+  - `Active`: active unit name with HP (`currentHp/maxHp`) from battle unit state.
+  - `Phase`: derived from battle state (`Player Turn`, `Enemy Turn`, `Complete`).
+  - `Turn`: current turn counter from battle state.
+  - Update model: `syncHudOverlay()` is called from battle state transitions (`updateSelectionPanel`, enemy turn loop actor changes, battle finish), reading `selectedUnitId`, `currentActingUnitId`, `playerTurn`, `battleResolved`, and `turn`.
+
+### Input Abstraction Compliance
+- HUD module and HUD update functions do not subscribe to or handle device events.
+- Scene input remains routed through `InputManager`; HUD responds to resulting scene state changes only.
+
+### Validation Notes
+- `npm test` passes after HUD integration:
+  - Rollback test passed.
+  - Dog conditional behavior test passed.
+  - Battle grid stats test passed.
+- Manual placement check is implemented by fixed-screen top-right anchors and conservative panel sizing, keeping overlays out of primary movement/combat interaction lanes.
+
 ## Task 321 - Core UI, HUD, and Input Abstraction Layer
 
 ### Summary

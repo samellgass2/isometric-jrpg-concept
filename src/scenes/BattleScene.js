@@ -10,6 +10,7 @@ import {
   getUnitMovementRange,
 } from "../battle/grid.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
+import HUDOverlay from "../ui/HUDOverlay.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -54,6 +55,8 @@ class BattleScene extends Phaser.Scene {
     this.cursorTile = { x: 0, y: 0 };
     this.cursorIndicator = null;
     this.commandIndex = 0;
+    this.currentActingUnitId = null;
+    this.hudOverlay = null;
   }
 
   create(data = {}) {
@@ -74,6 +77,7 @@ class BattleScene extends Phaser.Scene {
     this.createUi();
     this.setupInput();
     this.refreshDogBuffVisuals();
+    this.createHudOverlay();
     this.updateTurnHeader();
     this.updateSelectionPanel();
     this.addLog(`Encounter: ${this.encounterName}`);
@@ -308,6 +312,64 @@ class BattleScene extends Phaser.Scene {
       })
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
+  }
+
+  createHudOverlay() {
+    this.hudOverlay = new HUDOverlay(this, { x: 790, y: 12, width: 260, depth: UI_DEPTH + 25 });
+    this.hudOverlay.create();
+    this.syncHudOverlay();
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyHudOverlay());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyHudOverlay());
+  }
+
+  destroyHudOverlay() {
+    this.hudOverlay?.destroy();
+    this.hudOverlay = null;
+  }
+
+  getActiveUnitForHud() {
+    if (this.currentActingUnitId) {
+      const acting = this.units.find((unit) => unit.id === this.currentActingUnitId && unit.alive);
+      if (acting) {
+        return acting;
+      }
+    }
+
+    const selected = this.getSelectedUnit();
+    if (selected) {
+      return selected;
+    }
+
+    if (this.playerTurn) {
+      return this.getFriendlyUnits().find((unit) => !unit.hasActed) ?? this.getFriendlyUnits()[0] ?? null;
+    }
+
+    return this.getEnemyUnits()[0] ?? null;
+  }
+
+  getPhaseLabelForHud() {
+    if (this.battleResolved) {
+      return "Complete";
+    }
+    return this.playerTurn ? "Player Turn" : "Enemy Turn";
+  }
+
+  syncHudOverlay() {
+    if (!this.hudOverlay) {
+      return;
+    }
+
+    const active = this.getActiveUnitForHud();
+    const activeUnitLabel = active
+      ? `${active.name} (${active.currentHp}/${active.stats.maxHp} HP)`
+      : "none";
+    this.hudOverlay.setData({
+      context: "BATTLE",
+      primary: `Active: ${activeUnitLabel}`,
+      secondary: `Phase: ${this.getPhaseLabelForHud()}`,
+      tertiary: `Turn: ${this.turn}`,
+    });
   }
 
   createCursorIndicator() {
@@ -797,6 +859,8 @@ class BattleScene extends Phaser.Scene {
       if (this.battleResolved) {
         return;
       }
+      this.currentActingUnitId = enemy.id;
+      this.syncHudOverlay();
 
       const friendly = this.getFriendlyUnits();
       const target = this.pickTargetForEnemy(enemy, friendly);
@@ -835,6 +899,7 @@ class BattleScene extends Phaser.Scene {
         enemy.sprite.x = destination.x * TILE_SIZE + TILE_SIZE / 2;
         enemy.sprite.y = destination.y * TILE_SIZE + TILE_SIZE / 2;
         this.addLog(`${enemy.name} advanced to (${destination.x}, ${destination.y}).`);
+        this.syncHudOverlay();
       }
     }
 
@@ -842,6 +907,7 @@ class BattleScene extends Phaser.Scene {
       return;
     }
 
+    this.currentActingUnitId = null;
     this.turn += 1;
     this.playerTurn = true;
     this.units.forEach((unit) => {
@@ -852,6 +918,7 @@ class BattleScene extends Phaser.Scene {
     this.refreshDogBuffVisuals();
     this.updateTurnHeader();
     this.addLog(`Turn ${this.turn}: your phase.`);
+    this.syncHudOverlay();
   }
 
   evaluateBattleOutcome() {
@@ -883,11 +950,13 @@ class BattleScene extends Phaser.Scene {
     this.playerTurn = false;
     this.mode = "idle";
     this.clearHighlights();
+    this.currentActingUnitId = null;
 
     const completionLabel = result === "victory" ? "Victory" : "Defeat";
     this.addLog(`${completionLabel}. Returning...`);
     this.updateTurnHeader();
     this.updateSelectionPanel();
+    this.syncHudOverlay();
 
     this.time.delayedCall(450, () => {
       this.scene.start(this.returnSceneKey, {
@@ -960,6 +1029,7 @@ class BattleScene extends Phaser.Scene {
     if (!selected) {
       this.selectionPanelText.setText(`Selected: none\n${cursorLine}`);
       this.actionMenuText.setText("Action menu: move cursor to a friendly unit and press confirm.");
+      this.syncHudOverlay();
       return;
     }
 
@@ -1000,6 +1070,7 @@ class BattleScene extends Phaser.Scene {
       actionLines.push("Buff: Loyal Fury active (danger-triggered).");
     }
     this.actionMenuText.setText(actionLines.join("\n"));
+    this.syncHudOverlay();
   }
 }
 
