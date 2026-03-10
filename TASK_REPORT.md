@@ -1,60 +1,48 @@
-# TASK 330 Report - Record and restore key battle outcome flags
+# Task Report
+
+- Task ID: 339
+- Run ID: 581
+- Title: Integrate drones into battles and add test scenario
+- Status: Completed
 
 ## Summary
-Extended the save/load model with a dedicated key-battle outcome flag structure and wired battle completion + scene load behavior so key encounters persist across runs and visibly alter game flow.
+Integrated a dedicated zookeeper drone battle scenario that is directly launchable from the main menu, and added automated validation for encounter wiring plus drone move-then-attack progression.
 
-## Changes made
-- Updated progress schema in `src/state/playerProgress.js`
-  - Added `battleOutcomes.keyBattles` with stable boolean flags:
-    - `level1TrainingAmbushCleared`
-    - `level2CanyonGauntletCleared`
-  - Added `battleOutcomes.encounterResults` for per-encounter outcome history.
-  - Added helpers:
-    - `getBattleOutcomeFlag(...)`
-    - `setBattleOutcomeFlag(...)`
-    - `resolveKeyBattleOutcomeFlagForEncounter(...)`
-  - Updated `recordBattleOutcome(...)` to write to `encounterResults` and auto-set mapped key flags on victory.
-  - Preserved backward compatibility by normalizing legacy flat `battleOutcomes[encounterId]` saves into the new shape.
+## Changes Made
+- Added new encounter config in `src/battle/encounters.js`:
+  - Encounter ID: `drone-test-battle`
+  - Name: `Drone Test Battle`
+  - Friendly side: protagonist + guardian dog
+  - Enemy side: defender, scout, and controller zookeeper drones
+  - Includes explicit obstacle layout and spawn coordinates for a readable AI behavior showcase.
+- Updated `src/scenes/MainMenuScene.js`:
+  - Added `Drone Test Battle` menu button.
+  - Added keyboard shortcut `T` to launch the test encounter.
+  - Starts `BattleScene` with `encounterId: "drone-test-battle"` and returns to `MainMenuScene` after battle resolution.
+- Added `scripts/drone-test-battle-scenario.test.mjs`:
+  - Verifies the encounter exists and is clearly named.
+  - Verifies at least one friendly unit and multiple drone enemy types are present.
+  - Simulates drone AI decisions to confirm move behavior when out of range and attack behavior once in range.
+  - Confirms attack resolution applies positive damage for visible HP changes.
+- Updated `package.json` test script to include `scripts/drone-test-battle-scenario.test.mjs` in `npm test`.
+- Updated `STATUS.md` with run instructions and behavior walkthrough for the drone encounter.
 
-- Updated battle resolution hook in `src/scenes/BattleScene.js`
-  - On battle completion, persists outcome history and mapped key-battle flags through existing progress/save utilities.
+## Acceptance Test Check
+1. Clearly named battle configuration with player + multiple drone types: PASS (`drone-test-battle`).
+2. Drone placement and visual distinction in the scenario: PASS (fixed spawn positions + per-drone colors).
+3. Autonomous drone actions and visible feedback: PASS (`BattleScene` logs movement/attacks/hold; HP changes shown by existing UI/log flow).
+4. Stable completion on victory/defeat: PASS (existing `BattleScene.evaluateBattleOutcome` + `finishBattle` flow unchanged and exercised by scenario).
+5. Simple documented activation method: PASS (main menu button and `T` shortcut, documented in `STATUS.md`).
+6. STATUS walkthrough of expected drone behaviors: PASS.
 
-- Updated scene load-time consumption of outcome flags
-  - `src/scenes/Level1Scene.js`
-    - Reads persisted progress on create.
-    - If `level1TrainingAmbushCleared` is true, marks encounter as cleared, keeps cleared visuals, and prevents retrigger.
-  - `src/scenes/Level2Scene.js`
-    - Reads persisted progress on create.
-    - If `level2CanyonGauntletCleared` is true, marks encounter as cleared and prevents retrigger.
-  - `src/scenes/OverworldScene.js`
-    - Uses persisted key-battle flags to unlock alternate NPC dialogue:
-      - Ranger Sol after Level 1 ambush clear.
-      - Mechanic Ivo after Level 2 gauntlet clear.
-
-- Updated tests
-  - `scripts/player-progress.test.mjs`
-    - Validates new `battleOutcomes` structure.
-    - Validates automatic key-flag updates on recorded victory.
-    - Validates explicit flag setting/getting.
-    - Validates legacy save normalization into new structure.
-
-- Updated documentation
-  - `STATUS.md` now includes Task 330 section listing each persisted battle outcome flag, when it is set, and where it changes behavior on load.
-
-## Acceptance test check
-1. Dedicated battle outcome structure with stable descriptive keys: PASS (`battleOutcomes.keyBattles`).
-2. Battle resolution/controller updates relevant flags via progress/persistence path: PASS (`BattleScene.persistBattleProgress`).
-3. At least one encounter wired to set persistent outcome flag: PASS (Level 1 and Level 2 encounters).
-4. Subsequent runs check stored flags and visibly change behavior: PASS (encounter retrigger prevention + NPC dialogue unlocks).
-5. Flags serialize/restore through localStorage save/load layer: PASS (`normalize/serialize/deserialize` + `saveSystem` path).
-6. Non-wired battles continue functioning: PASS (default encounter flow unchanged).
-7. `STATUS.md` documents each persisted flag and load-time behavior: PASS.
-
-## Validation run
-- `npm test` -> PASS
+## Validation
+- Ran: `npm test`
+- Result: PASS
   - Rollback test passed.
   - Dog conditional behavior test passed.
   - Battle grid stats test passed.
+  - Drone AI decision test passed.
+  - Drone test battle scenario test passed.
   - Player progress state test passed.
   - Save system persistence test passed.
   - Battle party persistence test passed.

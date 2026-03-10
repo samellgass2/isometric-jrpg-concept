@@ -1,14 +1,21 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
-import { cheetahUnit, elephantUnit, guardianDogUnit } from "../battle/units/animalUnits.js";
+import {
+  cheetahUnit,
+  elephantUnit,
+  guardianDogUnit,
+  zookeeperControllerDroneUnit,
+  zookeeperDefenderDroneUnit,
+  zookeeperScoutDroneUnit,
+} from "../battle/units/animalUnits.js";
 import { getEffectiveCombatStats, isDogDangerBuffActive, resolveAttack } from "../battle/combatResolver.js";
 import { getEncounterDefinition } from "../battle/encounters.js";
 import {
   canUnitTarget,
-  chooseMovementDestinationTowardTarget,
   getReachableTiles,
   getTargetableTiles,
   getUnitMovementRange,
 } from "../battle/grid.js";
+import { decideDroneAction } from "../battle/ai/droneDecisionController.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
 import {
@@ -278,26 +285,22 @@ class BattleScene extends Phaser.Scene {
       ],
       enemyUnits: [
         {
-          id: "enemy-raider-1",
-          name: "Raider Alpha",
-          archetype: "raider",
-          movement: { tilesPerTurn: 3 },
-          attack: { range: 1, baseDamage: 20, canAttackOverObstacles: false },
-          stats: { maxHp: 90, defense: 8 },
-          abilities: [],
+          ...zookeeperDefenderDroneUnit,
+          id: "enemy-zookeeper-defender-default",
           spawn: { x: 7, y: 3 },
-          color: 0xc45656,
+          color: 0xc06a6a,
         },
         {
-          id: "enemy-raider-2",
-          name: "Raider Beta",
-          archetype: "raider",
-          movement: { tilesPerTurn: 3 },
-          attack: { range: 1, baseDamage: 18, canAttackOverObstacles: false },
-          stats: { maxHp: 80, defense: 7 },
-          abilities: [],
+          ...zookeeperScoutDroneUnit,
+          id: "enemy-zookeeper-scout-default",
           spawn: { x: 9, y: 5 },
-          color: 0xb14747,
+          color: 0xde8c8c,
+        },
+        {
+          ...zookeeperControllerDroneUnit,
+          id: "enemy-zookeeper-controller-default",
+          spawn: { x: 10, y: 2 },
+          color: 0xa65f9a,
         },
       ],
     };
@@ -325,11 +328,14 @@ class BattleScene extends Phaser.Scene {
       id: config.id,
       name: config.name,
       faction,
+      role: config.role ?? null,
       archetype: config.archetype ?? null,
+      aiBehavior: config.aiBehavior ?? null,
       movement: { ...config.movement },
       attack: { ...config.attack },
       stats: { ...config.stats },
       abilities: Array.isArray(config.abilities) ? [...config.abilities] : [],
+      tags: Array.isArray(config.tags) ? [...config.tags] : [],
       currentHp: config.stats.maxHp,
       tileX,
       tileY,
@@ -945,45 +951,43 @@ class BattleScene extends Phaser.Scene {
       this.currentActingUnitId = enemy.id;
       this.syncHudOverlay();
 
+      const isObstacleAt = (x, y) => this.obstacleSet.has(keyFor(x, y));
+      const isOccupied = (x, y) => {
+        const occupant = this.getUnitAt(x, y);
+        return occupant && occupant.id !== enemy.id;
+      };
       const friendly = this.getFriendlyUnits();
-      const target = this.pickTargetForEnemy(enemy, friendly);
-      if (!target) {
-        continue;
-      }
-      if (this.canUnitAttackTarget(enemy, target)) {
-        this.attackTarget(enemy, target);
-        continue;
-      }
-
-      const reachable = getReachableTiles({
-        start: { x: enemy.tileX, y: enemy.tileY },
-        moveRange: getUnitMovementRange(enemy),
+      const decision = decideDroneAction({
+        drone: enemy,
+        playerUnits: friendly,
         inBounds,
-        isObstacleAt: (x, y) => this.obstacleSet.has(keyFor(x, y)),
-        isOccupied: (x, y) => {
-          const occupant = this.getUnitAt(x, y);
-          return occupant && occupant.id !== enemy.id;
-        },
+        isObstacleAt,
+        isOccupied,
       });
 
-      const destination = chooseMovementDestinationTowardTarget({
-        mover: enemy,
-        target,
-        reachableTiles: reachable,
-        isOccupied: (x, y) => {
-          const occupant = this.getUnitAt(x, y);
-          return occupant && occupant.id !== enemy.id;
-        },
-      });
-
-      if (destination) {
-        enemy.tileX = destination.x;
-        enemy.tileY = destination.y;
-        enemy.sprite.x = destination.x * TILE_SIZE + TILE_SIZE / 2;
-        enemy.sprite.y = destination.y * TILE_SIZE + TILE_SIZE / 2;
-        this.addLog(`${enemy.name} advanced to (${destination.x}, ${destination.y}).`);
-        this.syncHudOverlay();
+      if (decision.action === "attack" && decision.targetId) {
+        const target = friendly.find((unit) => unit.id === decision.targetId) ?? null;
+        if (target && this.canUnitAttackTarget(enemy, target)) {
+          this.attackTarget(enemy, target);
+          continue;
+        }
       }
+
+      if (decision.action === "move" && decision.destination) {
+        enemy.tileX = decision.destination.x;
+        enemy.tileY = decision.destination.y;
+        enemy.sprite.x = decision.destination.x * TILE_SIZE + TILE_SIZE / 2;
+        enemy.sprite.y = decision.destination.y * TILE_SIZE + TILE_SIZE / 2;
+        enemy.buffIcon.x = enemy.sprite.x - 12;
+        enemy.buffIcon.y = enemy.sprite.y - 24;
+        enemy.hasActed = true;
+        this.addLog(`${enemy.name} advanced to (${decision.destination.x}, ${decision.destination.y}).`);
+        this.syncHudOverlay();
+        continue;
+      }
+
+      enemy.hasActed = true;
+      this.addLog(`${enemy.name} is holding position.`);
     }
 
     if (this.evaluateBattleOutcome()) {
@@ -1068,23 +1072,6 @@ class BattleScene extends Phaser.Scene {
         currentSceneKey: this.returnSceneKey,
       });
     });
-  }
-
-  pickTargetForEnemy(enemy, friendlyUnits) {
-    if (!friendlyUnits.length) {
-      return null;
-    }
-
-    const protagonistAlive = this.protagonist?.alive ? this.protagonist : null;
-    if (protagonistAlive) {
-      return protagonistAlive;
-    }
-
-    return [...friendlyUnits].sort((a, b) => {
-      const aDistance = Math.abs(enemy.tileX - a.tileX) + Math.abs(enemy.tileY - a.tileY);
-      const bDistance = Math.abs(enemy.tileX - b.tileX) + Math.abs(enemy.tileY - b.tileY);
-      return aDistance - bDistance;
-    })[0];
   }
 
   toggleProtagonistDanger() {

@@ -1,4 +1,11 @@
-import { cheetahUnit, elephantUnit, guardianDogUnit } from "./units/animalUnits.js";
+import {
+  cheetahUnit,
+  elephantUnit,
+  guardianDogUnit,
+  zookeeperControllerDroneUnit,
+  zookeeperDefenderDroneUnit,
+  zookeeperScoutDroneUnit,
+} from "./units/animalUnits.js";
 
 function cloneUnitConfig(config) {
   return {
@@ -7,10 +14,63 @@ function cloneUnitConfig(config) {
     attack: { ...(config.attack ?? {}) },
     stats: { ...(config.stats ?? {}) },
     abilities: Array.isArray(config.abilities) ? [...config.abilities] : [],
+    tags: Array.isArray(config.tags) ? [...config.tags] : [],
   };
 }
 
 export const encounterDefinitions = {
+  "drone-test-battle": {
+    id: "drone-test-battle",
+    name: "Drone Test Battle",
+    triggerDescription: "Debug encounter for validating zookeeper drone AI behavior.",
+    victoryCondition: "defeat_all_enemies",
+    obstacles: [
+      { x: 5, y: 2 },
+      { x: 6, y: 2 },
+      { x: 6, y: 5 },
+      { x: 7, y: 5 },
+    ],
+    friendlyUnits: [
+      {
+        id: "protagonist",
+        name: "Protagonist",
+        archetype: "hero",
+        movement: { tilesPerTurn: 4 },
+        attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
+        stats: { maxHp: 120, defense: 14 },
+        abilities: [],
+        spawn: { x: 2, y: 4 },
+        color: 0x6aa9ff,
+        currentHp: 120,
+      },
+      {
+        ...cloneUnitConfig(guardianDogUnit),
+        id: "drone-test-guardian-dog",
+        spawn: { x: 3, y: 5 },
+        color: 0xc48e5a,
+      },
+    ],
+    enemyUnits: [
+      {
+        ...cloneUnitConfig(zookeeperDefenderDroneUnit),
+        id: "drone-test-defender-1",
+        spawn: { x: 9, y: 6 },
+        color: 0xc06a6a,
+      },
+      {
+        ...cloneUnitConfig(zookeeperScoutDroneUnit),
+        id: "drone-test-scout-1",
+        spawn: { x: 9, y: 2 },
+        color: 0xde8c8c,
+      },
+      {
+        ...cloneUnitConfig(zookeeperControllerDroneUnit),
+        id: "drone-test-controller-1",
+        spawn: { x: 10, y: 4 },
+        color: 0xa65f9a,
+      },
+    ],
+  },
   "level-1-training-ambush": {
     id: "level-1-training-ambush",
     name: "Training Ambush",
@@ -83,26 +143,22 @@ export const encounterDefinitions = {
     ],
     enemyUnits: [
       {
-        id: "enemy-raider-alpha",
-        name: "Raider Alpha",
-        archetype: "raider",
-        movement: { tilesPerTurn: 3 },
-        attack: { range: 1, baseDamage: 20, canAttackOverObstacles: false },
-        stats: { maxHp: 88, defense: 8 },
-        abilities: [],
+        ...cloneUnitConfig(zookeeperDefenderDroneUnit),
+        id: "enemy-zookeeper-defender-1",
         spawn: { x: 8, y: 3 },
-        color: 0xc45656,
+        color: 0xc06a6a,
       },
       {
-        id: "enemy-raider-beta",
-        name: "Raider Beta",
-        archetype: "raider",
-        movement: { tilesPerTurn: 3 },
-        attack: { range: 1, baseDamage: 18, canAttackOverObstacles: false },
-        stats: { maxHp: 78, defense: 7 },
-        abilities: [],
+        ...cloneUnitConfig(zookeeperScoutDroneUnit),
+        id: "enemy-zookeeper-scout-1",
         spawn: { x: 9, y: 5 },
-        color: 0xb14747,
+        color: 0xde8c8c,
+      },
+      {
+        ...cloneUnitConfig(zookeeperControllerDroneUnit),
+        id: "enemy-zookeeper-controller-1",
+        spawn: { x: 10, y: 2 },
+        color: 0xa65f9a,
       },
     ],
   },
