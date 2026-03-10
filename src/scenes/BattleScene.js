@@ -9,6 +9,8 @@ import {
   getTargetableTiles,
   getUnitMovementRange,
 } from "../battle/grid.js";
+import InputManager, { InputActions } from "../input/InputManager.js";
+import HUDOverlay from "../ui/HUDOverlay.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -20,6 +22,7 @@ const OBSTACLES = [
   { x: 8, y: 2 },
 ];
 const DEFAULT_RETURN_SCENE_KEY = "OverworldScene";
+const COMMAND_OPTIONS = Object.freeze(["move", "attack", "end-turn"]);
 
 function keyFor(x, y) {
   return `${x},${y}`;
@@ -47,6 +50,13 @@ class BattleScene extends Phaser.Scene {
     this.returnSceneKey = DEFAULT_RETURN_SCENE_KEY;
     this.returnSceneData = {};
     this.battleResolved = false;
+    this.inputManager = null;
+    this.inputUnsubscribe = null;
+    this.cursorTile = { x: 0, y: 0 };
+    this.cursorIndicator = null;
+    this.commandIndex = 0;
+    this.currentActingUnitId = null;
+    this.hudOverlay = null;
   }
 
   create(data = {}) {
@@ -62,9 +72,12 @@ class BattleScene extends Phaser.Scene {
     this.createGrid();
     this.createObstacles();
     this.createUnits(encounterData);
+    this.createCursorIndicator();
+    this.snapCursorToStartingTile();
     this.createUi();
     this.setupInput();
     this.refreshDogBuffVisuals();
+    this.createHudOverlay();
     this.updateTurnHeader();
     this.updateSelectionPanel();
     this.addLog(`Encounter: ${this.encounterName}`);
@@ -263,7 +276,7 @@ class BattleScene extends Phaser.Scene {
       .text(
         12,
         32,
-        "Click a friendly unit. Keys: [M] Move [A] Attack [E] End Turn [H] Toggle Danger HP",
+        "Battle input: Move cursor [WASD/Arrows], [Enter/Space] Confirm, [Esc] Cancel, tap/click tiles.",
         {
           color: "#d7dfef",
           fontFamily: "monospace",
@@ -301,58 +314,366 @@ class BattleScene extends Phaser.Scene {
       .setDepth(UI_DEPTH);
   }
 
-  setupInput() {
-    this.input.on("pointerdown", (pointer) => {
-      if (!this.playerTurn) {
-        return;
-      }
-      const tileX = Math.floor(pointer.worldX / TILE_SIZE);
-      const tileY = Math.floor(pointer.worldY / TILE_SIZE);
-      if (!inBounds(tileX, tileY)) {
-        return;
-      }
-      this.handleTileClick(tileX, tileY);
-    });
+  createHudOverlay() {
+    this.hudOverlay = new HUDOverlay(this, { x: 790, y: 12, width: 260, depth: UI_DEPTH + 25 });
+    this.hudOverlay.create();
+    this.syncHudOverlay();
 
-    this.input.keyboard.on("keydown-M", () => this.enterMoveMode());
-    this.input.keyboard.on("keydown-A", () => this.enterAttackMode());
-    this.input.keyboard.on("keydown-E", () => this.endPlayerTurn());
-    this.input.keyboard.on("keydown-H", () => this.toggleProtagonistDanger());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyHudOverlay());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyHudOverlay());
   }
 
-  handleTileClick(tileX, tileY) {
+  destroyHudOverlay() {
+    this.hudOverlay?.destroy();
+    this.hudOverlay = null;
+  }
+
+  getActiveUnitForHud() {
+    if (this.currentActingUnitId) {
+      const acting = this.units.find((unit) => unit.id === this.currentActingUnitId && unit.alive);
+      if (acting) {
+        return acting;
+      }
+    }
+
     const selected = this.getSelectedUnit();
+    if (selected) {
+      return selected;
+    }
+
+    if (this.playerTurn) {
+      return this.getFriendlyUnits().find((unit) => !unit.hasActed) ?? this.getFriendlyUnits()[0] ?? null;
+    }
+
+    return this.getEnemyUnits()[0] ?? null;
+  }
+
+  getPhaseLabelForHud() {
+    if (this.battleResolved) {
+      return "Complete";
+    }
+    return this.playerTurn ? "Player Turn" : "Enemy Turn";
+  }
+
+  syncHudOverlay() {
+    if (!this.hudOverlay) {
+      return;
+    }
+
+    const active = this.getActiveUnitForHud();
+    const activeUnitLabel = active
+      ? `${active.name} (${active.currentHp}/${active.stats.maxHp} HP)`
+      : "none";
+    this.hudOverlay.setData({
+      context: "BATTLE",
+      primary: `Active: ${activeUnitLabel}`,
+      secondary: `Phase: ${this.getPhaseLabelForHud()}`,
+      tertiary: `Turn: ${this.turn}`,
+    });
+  }
+
+  createCursorIndicator() {
+    this.cursorIndicator = this.add
+      .rectangle(0, 0, TILE_SIZE - 6, TILE_SIZE - 6, 0x6fbaff, 0.05)
+      .setStrokeStyle(2, 0xa9d8ff, 0.95)
+      .setDepth(12);
+  }
+
+  snapCursorToStartingTile() {
+    const origin = this.getFriendlyUnits()[0];
+    if (origin) {
+      this.setCursorTile(origin.tileX, origin.tileY);
+      return;
+    }
+    this.setCursorTile(0, 0);
+  }
+
+  setupInput() {
+    this.inputManager = new InputManager(this, { tileSize: TILE_SIZE, autoCleanup: false });
+    this.inputUnsubscribe = this.inputManager.onAction((event) => this.handleInputAction(event));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownInputManager());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.teardownInputManager());
+  }
+
+  teardownInputManager() {
+    if (this.inputUnsubscribe) {
+      this.inputUnsubscribe();
+      this.inputUnsubscribe = null;
+    }
+    if (this.inputManager) {
+      this.inputManager.destroy();
+      this.inputManager = null;
+    }
+  }
+
+  handleInputAction(event) {
+    if (!event) {
+      return;
+    }
+
+    if (event.action === InputActions.SELECT_TILE) {
+      if (!Number.isInteger(event.tileX) || !Number.isInteger(event.tileY)) {
+        return;
+      }
+      if (!inBounds(event.tileX, event.tileY)) {
+        return;
+      }
+      this.setCursorTile(event.tileX, event.tileY);
+      if (event.type === "pressed") {
+        this.handleConfirmAction({ fromPointerSelection: true });
+      }
+      return;
+    }
+
+    if (event.type !== "pressed") {
+      return;
+    }
+
+    if (
+      event.action === InputActions.MOVE_UP ||
+      event.action === InputActions.MOVE_DOWN ||
+      event.action === InputActions.MOVE_LEFT ||
+      event.action === InputActions.MOVE_RIGHT
+    ) {
+      this.handleMoveAction(event.action);
+      return;
+    }
+
+    if (event.action === InputActions.CONFIRM) {
+      this.handleConfirmAction();
+      return;
+    }
+
+    if (event.action === InputActions.CANCEL) {
+      this.handleCancelAction();
+    }
+  }
+
+  setCursorTile(tileX, tileY) {
+    const nextX = Phaser.Math.Clamp(tileX, 0, GRID_WIDTH - 1);
+    const nextY = Phaser.Math.Clamp(tileY, 0, GRID_HEIGHT - 1);
+    this.cursorTile = { x: nextX, y: nextY };
+
+    if (this.cursorIndicator) {
+      this.cursorIndicator.x = nextX * TILE_SIZE + TILE_SIZE / 2;
+      this.cursorIndicator.y = nextY * TILE_SIZE + TILE_SIZE / 2;
+    }
+
+    this.updateSelectionPanel();
+  }
+
+  handleMoveAction(action) {
+    if (!this.playerTurn || this.battleResolved) {
+      return;
+    }
+
+    if (this.mode === "command") {
+      if (action === InputActions.MOVE_UP || action === InputActions.MOVE_LEFT) {
+        this.adjustCommandSelection(-1);
+      } else {
+        this.adjustCommandSelection(1);
+      }
+      return;
+    }
+
+    if (action === InputActions.MOVE_UP) {
+      this.setCursorTile(this.cursorTile.x, this.cursorTile.y - 1);
+      return;
+    }
+    if (action === InputActions.MOVE_DOWN) {
+      this.setCursorTile(this.cursorTile.x, this.cursorTile.y + 1);
+      return;
+    }
+    if (action === InputActions.MOVE_LEFT) {
+      this.setCursorTile(this.cursorTile.x - 1, this.cursorTile.y);
+      return;
+    }
+    this.setCursorTile(this.cursorTile.x + 1, this.cursorTile.y);
+  }
+
+  handleConfirmAction({ fromPointerSelection = false } = {}) {
+    if (!this.playerTurn || this.battleResolved) {
+      return;
+    }
+
+    const selected = this.getSelectedUnit();
+    const tileX = this.cursorTile.x;
+    const tileY = this.cursorTile.y;
+    const tileUnit = this.getUnitAt(tileX, tileY);
 
     if (this.mode === "move" && selected) {
       const valid = this.highlightTileData.find((tile) => tile.x === tileX && tile.y === tileY);
       if (valid) {
         this.moveUnit(selected, tileX, tileY);
-        return;
       }
+      return;
     }
 
     if (this.mode === "attack" && selected) {
       const target = this.getUnitAt(tileX, tileY);
       if (target && target.faction === "enemy" && this.canUnitAttackTarget(selected, target)) {
         this.attackTarget(selected, target);
-        return;
       }
-    }
-
-    const clickedUnit = this.getUnitAt(tileX, tileY);
-    if (clickedUnit && clickedUnit.faction === "friendly" && clickedUnit.alive) {
-      this.selectUnit(clickedUnit.id);
       return;
     }
 
-    this.clearHighlights();
+    if (this.mode === "command") {
+      if (tileUnit && tileUnit.faction === "friendly" && tileUnit.alive && tileUnit.id !== selected?.id) {
+        this.selectUnit(tileUnit.id);
+        if (!tileUnit.hasActed) {
+          this.enterCommandMode();
+        }
+        return;
+      }
+      if (fromPointerSelection) {
+        if (selected && this.tryContextualPointerCommand(selected, tileX, tileY)) {
+          return;
+        }
+      }
+      this.confirmCommand();
+      return;
+    }
+
+    if (tileUnit && tileUnit.faction === "friendly" && tileUnit.alive) {
+      this.selectUnit(tileUnit.id);
+      if (!tileUnit.hasActed) {
+        this.enterCommandMode();
+      }
+      return;
+    }
+
+    if (selected && !selected.hasActed) {
+      this.enterCommandMode();
+      if (fromPointerSelection && this.tryContextualPointerCommand(selected, tileX, tileY)) {
+        return;
+      }
+      this.confirmCommand();
+      return;
+    }
+
+    this.selectedUnitId = null;
     this.mode = "idle";
+    this.clearHighlights();
+    this.updateSelectionPanel();
+  }
+
+  tryContextualPointerCommand(selected, tileX, tileY) {
+    const targetedUnit = this.getUnitAt(tileX, tileY);
+    if (targetedUnit && targetedUnit.faction === "enemy" && this.canUnitAttackTarget(selected, targetedUnit)) {
+      this.enterAttackMode();
+      this.attackTarget(selected, targetedUnit);
+      return true;
+    }
+
+    const canMoveTo = this.getReachableTiles(selected).find((tile) => tile.x === tileX && tile.y === tileY);
+    if (canMoveTo) {
+      this.enterMoveMode();
+      this.moveUnit(selected, tileX, tileY);
+      return true;
+    }
+
+    return false;
+  }
+
+  handleCancelAction() {
+    if (!this.playerTurn || this.battleResolved) {
+      return;
+    }
+
+    if (this.mode === "move" || this.mode === "attack") {
+      this.enterCommandMode();
+      return;
+    }
+
+    if (this.mode === "command") {
+      this.mode = "idle";
+      this.clearHighlights();
+      this.updateSelectionPanel();
+      return;
+    }
+
+    this.selectedUnitId = null;
+    this.mode = "idle";
+    this.clearHighlights();
+    this.updateSelectionPanel();
+  }
+
+  getCommandOptions(unit) {
+    if (!unit || unit.hasActed) {
+      return [];
+    }
+
+    const options = [];
+    const reachableTiles = this.getReachableTiles(unit);
+    if (reachableTiles.length > 0) {
+      options.push("move");
+    }
+
+    const canAttack = this.getEnemyUnits().some((enemy) => this.canUnitAttackTarget(unit, enemy));
+    if (canAttack) {
+      options.push("attack");
+    }
+
+    options.push("end-turn");
+    return options.filter((option) => COMMAND_OPTIONS.includes(option));
+  }
+
+  adjustCommandSelection(delta) {
+    const options = this.getCommandOptions(this.getSelectedUnit());
+    if (!options.length) {
+      return;
+    }
+    this.commandIndex = Phaser.Math.Wrap(this.commandIndex + delta, 0, options.length);
+    this.updateSelectionPanel();
+  }
+
+  confirmCommand() {
+    const selected = this.getSelectedUnit();
+    if (!selected || selected.hasActed) {
+      return;
+    }
+    const options = this.getCommandOptions(selected);
+    if (!options.length) {
+      return;
+    }
+    const chosen = options[this.commandIndex] ?? options[0];
+    if (chosen === "move") {
+      this.enterMoveMode();
+      return;
+    }
+    if (chosen === "attack") {
+      this.enterAttackMode();
+      return;
+    }
+    if (chosen === "end-turn") {
+      this.endPlayerTurn();
+    }
+  }
+
+  enterCommandMode() {
+    const selected = this.getSelectedUnit();
+    if (!selected || selected.hasActed || !this.playerTurn) {
+      this.mode = "idle";
+      this.clearHighlights();
+      this.updateSelectionPanel();
+      return;
+    }
+
+    this.mode = "command";
+    this.clearHighlights();
+    const options = this.getCommandOptions(selected);
+    this.commandIndex = Phaser.Math.Clamp(this.commandIndex, 0, Math.max(0, options.length - 1));
     this.updateSelectionPanel();
   }
 
   selectUnit(unitId) {
     this.selectedUnitId = unitId;
-    this.mode = "idle";
+    const selected = this.getSelectedUnit();
+    this.mode = selected && !selected.hasActed ? "command" : "idle";
+    if (selected) {
+      this.setCursorTile(selected.tileX, selected.tileY);
+    }
+    this.commandIndex = 0;
     this.clearHighlights();
     this.updateSelectionPanel();
   }
@@ -538,6 +859,8 @@ class BattleScene extends Phaser.Scene {
       if (this.battleResolved) {
         return;
       }
+      this.currentActingUnitId = enemy.id;
+      this.syncHudOverlay();
 
       const friendly = this.getFriendlyUnits();
       const target = this.pickTargetForEnemy(enemy, friendly);
@@ -576,6 +899,7 @@ class BattleScene extends Phaser.Scene {
         enemy.sprite.x = destination.x * TILE_SIZE + TILE_SIZE / 2;
         enemy.sprite.y = destination.y * TILE_SIZE + TILE_SIZE / 2;
         this.addLog(`${enemy.name} advanced to (${destination.x}, ${destination.y}).`);
+        this.syncHudOverlay();
       }
     }
 
@@ -583,6 +907,7 @@ class BattleScene extends Phaser.Scene {
       return;
     }
 
+    this.currentActingUnitId = null;
     this.turn += 1;
     this.playerTurn = true;
     this.units.forEach((unit) => {
@@ -593,6 +918,7 @@ class BattleScene extends Phaser.Scene {
     this.refreshDogBuffVisuals();
     this.updateTurnHeader();
     this.addLog(`Turn ${this.turn}: your phase.`);
+    this.syncHudOverlay();
   }
 
   evaluateBattleOutcome() {
@@ -624,11 +950,13 @@ class BattleScene extends Phaser.Scene {
     this.playerTurn = false;
     this.mode = "idle";
     this.clearHighlights();
+    this.currentActingUnitId = null;
 
     const completionLabel = result === "victory" ? "Victory" : "Defeat";
     this.addLog(`${completionLabel}. Returning...`);
     this.updateTurnHeader();
     this.updateSelectionPanel();
+    this.syncHudOverlay();
 
     this.time.delayedCall(450, () => {
       this.scene.start(this.returnSceneKey, {
@@ -697,9 +1025,11 @@ class BattleScene extends Phaser.Scene {
   updateSelectionPanel() {
     this.updateTurnHeader();
     const selected = this.getSelectedUnit();
+    const cursorLine = `Cursor: (${this.cursorTile.x}, ${this.cursorTile.y})`;
     if (!selected) {
-      this.selectionPanelText.setText("Selected: none");
-      this.actionMenuText.setText("Action menu: select a friendly unit.");
+      this.selectionPanelText.setText(`Selected: none\n${cursorLine}`);
+      this.actionMenuText.setText("Action menu: move cursor to a friendly unit and press confirm.");
+      this.syncHudOverlay();
       return;
     }
 
@@ -716,15 +1046,23 @@ class BattleScene extends Phaser.Scene {
       abilityLine = `Ability: Loyal Fury (${selected.buffActive ? "ACTIVE" : "inactive"})`;
     }
 
-    this.selectionPanelText.setText(`Selected: ${selected.name}\n${hpLine}\n${coreLine}\n${abilityLine}`);
+    this.selectionPanelText.setText(
+      `Selected: ${selected.name}\n${hpLine}\n${coreLine}\n${abilityLine}\n${cursorLine}`
+    );
 
-    const modeLabel = this.mode === "idle" ? "choose action" : this.mode;
-    const actionLines = [
-      `Mode: ${modeLabel}`,
-      "[M] Move",
-      "[A] Attack",
-      "[E] End turn",
-    ];
+    const modeLabel = this.mode === "idle" ? "idle" : this.mode;
+    const commandOptions = this.getCommandOptions(selected);
+    const commandLine =
+      this.mode === "command"
+        ? commandOptions
+            .map((option, index) => (index === this.commandIndex ? `[${option}]` : option))
+            .join(" | ")
+        : commandOptions.join(" | ");
+    const actionLines = [`Mode: ${modeLabel}`];
+    if (commandOptions.length > 0) {
+      actionLines.push(`Commands: ${commandLine}`);
+    }
+    actionLines.push("Controls: Move cursor (WASD/Arrows), Confirm (Enter/Space), Cancel (Esc)");
     if (selected.archetype === "elephant") {
       actionLines.push("Trait: Attack targeting ignores obstacle blocking.");
     }
@@ -732,6 +1070,7 @@ class BattleScene extends Phaser.Scene {
       actionLines.push("Buff: Loyal Fury active (danger-triggered).");
     }
     this.actionMenuText.setText(actionLines.join("\n"));
+    this.syncHudOverlay();
   }
 }
 

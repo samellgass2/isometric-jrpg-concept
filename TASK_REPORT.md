@@ -1,44 +1,38 @@
-# TASK 312 Report - Integrate simple battle encounters into levels
+# TASK 322 Report - Implement basic in-game HUD overlays
 
 ## Summary
-Integrated minimal end-to-end battle encounters into both Level 1 and Level 2 using the existing turn/grid/movement-targeting combat framework in `BattleScene`.
+Implemented a reusable HUD overlay module and integrated it into overworld and battle scenes with state-driven updates (no direct device input coupling).
 
 ## Changes made
-- Added `src/battle/encounters.js`:
-  - Introduced encounter definitions:
-    - `level-1-training-ambush`
-    - `level-2-canyon-gauntlet`
-  - Each encounter defines friendly/enemy units, spawn tiles, display name, and trigger description.
+- Added `src/ui/HUDOverlay.js`:
+  - Encapsulates HUD panel creation with Phaser primitives.
+  - Exposes `setData({ context, primary, secondary, tertiary })` for reusable updates.
+  - Caches previous payload to avoid unnecessary redraw updates.
+  - Handles teardown via `destroy()`.
+- Updated `src/scenes/OverworldScene.js`:
+  - Integrated `HUDOverlay` at top-right of viewport.
+  - HUD fields: `Unit`, `HP`, and player `Tile` coordinate.
+  - Added `syncHudOverlay()` to update from scene state and only when state snapshot changes.
+  - Wired cleanup on scene shutdown/destroy.
 - Updated `src/scenes/BattleScene.js`:
-  - Added data-driven encounter bootstrapping via `encounterId` and shared encounter definitions.
-  - Reused existing battle systems (movement range, targeting, enemy turn behavior, combat resolver).
-  - Added battle completion detection and resolution:
-    - Victory when all enemies are defeated.
-    - Defeat when all friendlies are defeated.
-  - Added return flow payload to caller scene (`battleResult`, `lastEncounterId`) and configurable return target (`returnSceneKey`, `returnSceneData`).
-- Updated `src/scenes/Level1Scene.js`:
-  - Added tile trigger at `(6,5)` marked `AMBUSH`.
-  - Stepping on this tile launches `BattleScene` encounter `level-1-training-ambush`.
-  - On return, player respawns near trigger and encounter is marked cleared on victory.
-- Updated `src/scenes/Level2Scene.js`:
-  - Added interaction trigger object (`TOTEM`) at `(5,5)`.
-  - Press `Enter`/`Space` near totem or click totem while nearby to launch `level-2-canyon-gauntlet`.
-  - On return, player respawns near totem and encounter is marked cleared on victory.
+  - Integrated `HUDOverlay` at top-right of viewport.
+  - HUD fields: `Active` unit (+ HP), `Phase`, and `Turn`.
+  - Added active-unit derivation from battle state (`selectedUnitId`, `currentActingUnitId`, unit lists).
+  - Updated HUD from battle state transitions (`updateSelectionPanel`, enemy-turn processing, battle completion).
+  - Wired cleanup on scene shutdown/destroy.
 - Updated `STATUS.md`:
-  - Documented trigger methods for Level 1 and Level 2, battle return behavior, and current limitations.
+  - Added Task 322 section documenting HUD elements, scene integration points, and state-driven update model.
 
 ## Acceptance test check
-1. Level 1 has documented battle trigger using existing battle system: PASS.
-2. Level 2 has documented trigger (interaction-based) using existing battle system: PASS.
-3. Player can perform battle actions and enemies respond via existing turn flow: PASS.
-4. Battle completion returns to level scenes without inconsistent state: PASS.
-5. No duplicate battle engine added; existing framework extended: PASS.
-6. `STATUS.md` updated with trigger locations and limitations: PASS.
+1. New HUD module exists and encapsulates HUD creation/update: PASS (`src/ui/HUDOverlay.js`).
+2. Overworld HUD shows character + HP/stat and updates when state changes: PASS (`Unit`, `HP`, `Tile`; refreshed via `syncHudOverlay()` with snapshot keying).
+3. Battle HUD shows active unit and turn/phase from battle state: PASS (`Active`, `Phase`, `Turn` from battle scene state).
+4. HUD code does not reference keyboard/mouse/touch directly: PASS (HUD module has no input listeners; scene HUD updates are state-driven).
+5. HUD remains visible and positioned away from critical play area: PASS (fixed top-right overlay, scroll-factor 0, compact panel sizing).
+6. `STATUS.md` includes HUD implementation summary and scene/state wiring: PASS.
 
 ## Validation run
 - `npm test` -> PASS
   - Rollback test passed.
   - Dog conditional behavior test passed.
   - Battle grid stats test passed.
-- Dev smoke check:
-  - `npm run dev` + `curl -i http://127.0.0.1:5173/` returned `HTTP/1.1 200 OK`.

@@ -1,4 +1,6 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
+import InputManager, { InputActions } from "../input/InputManager.js";
+import HUDOverlay from "../ui/HUDOverlay.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 16;
@@ -109,9 +111,8 @@ class OverworldScene extends Phaser.Scene {
     this.collisionTiles = new Set();
     this.player = null;
     this.collisionBodies = null;
-    this.cursors = null;
-    this.wasdKeys = null;
-    this.interactKeys = null;
+    this.inputManager = null;
+    this.inputUnsubscribe = null;
     this.npcGroup = null;
     this.signGroup = null;
     this.npcEntities = [];
@@ -127,6 +128,10 @@ class OverworldScene extends Phaser.Scene {
     this.npcTileSet = new Set();
     this.signTileSet = new Set();
     this.isTransitioning = false;
+    this.hudOverlay = null;
+    this.hudLastKey = "";
+    this.playerDisplayName = "Pathfinder";
+    this.playerStats = { hp: 100, maxHp: 100 };
   }
 
   create(data) {
@@ -148,9 +153,9 @@ class OverworldScene extends Phaser.Scene {
     this.createPlayerCharacter(spawnTile);
     this.createNpcPlaceholders();
     this.createLevelSigns();
-    this.setupMovementInput();
-    this.setupPointerInput();
+    this.setupInputManager();
     this.createDialogueUi();
+    this.createHudOverlay(data);
 
     this.add
       .text(16, 16, "Overworld Prototype", {
@@ -169,6 +174,52 @@ class OverworldScene extends Phaser.Scene {
       })
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
+  }
+
+  createHudOverlay(data = {}) {
+    const configuredName = typeof data.playerName === "string" ? data.playerName.trim() : "";
+    if (configuredName) {
+      this.playerDisplayName = configuredName;
+    }
+
+    const hp = Number.isFinite(data.playerHp) ? data.playerHp : this.playerStats.hp;
+    const maxHp = Number.isFinite(data.playerMaxHp) ? data.playerMaxHp : this.playerStats.maxHp;
+    this.playerStats.maxHp = Math.max(1, Math.floor(maxHp));
+    this.playerStats.hp = Phaser.Math.Clamp(Math.floor(hp), 0, this.playerStats.maxHp);
+
+    this.hudOverlay = new HUDOverlay(this, { x: 790, y: 12, width: 250, depth: UI_DEPTH + 20 });
+    this.hudOverlay.create();
+    this.syncHudOverlay(true);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyHudOverlay());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyHudOverlay());
+  }
+
+  syncHudOverlay(force = false) {
+    if (!this.hudOverlay) {
+      return;
+    }
+
+    const tile = this.getPlayerTile();
+    const tileLabel = tile ? `(${tile.x}, ${tile.y})` : "(n/a)";
+    const hudKey = `${this.playerDisplayName}|${this.playerStats.hp}|${this.playerStats.maxHp}|${tileLabel}`;
+    if (!force && hudKey === this.hudLastKey) {
+      return;
+    }
+
+    this.hudLastKey = hudKey;
+    this.hudOverlay.setData({
+      context: "OVERWORLD",
+      primary: `Unit: ${this.playerDisplayName}`,
+      secondary: `HP: ${this.playerStats.hp}/${this.playerStats.maxHp}`,
+      tertiary: `Tile: ${tileLabel}`,
+    });
+  }
+
+  destroyHudOverlay() {
+    this.hudOverlay?.destroy();
+    this.hudOverlay = null;
+    this.hudLastKey = "";
   }
 
   createPlayerTextures() {
@@ -371,10 +422,6 @@ class OverworldScene extends Phaser.Scene {
       sign.refreshBody();
       sign.body.setSize(32, 32);
       sign.body.setOffset(0, 0);
-      sign.setInteractive({ useHandCursor: true });
-      sign.on("pointerdown", (pointer, localX, localY, event) => {
-        this.handleSignPointerInteraction(sign, event);
-      });
       this.characterLayer.add(sign);
       this.levelSigns.push(sign);
       this.signTileSet.add(keyForTile(signConfig.tileX, signConfig.tileY));
@@ -393,46 +440,125 @@ class OverworldScene extends Phaser.Scene {
     });
   }
 
-  setupMovementInput() {
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasdKeys = this.input.keyboard.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.W,
-      down: Phaser.Input.Keyboard.KeyCodes.S,
-      left: Phaser.Input.Keyboard.KeyCodes.A,
-      right: Phaser.Input.Keyboard.KeyCodes.D,
-    });
-    this.interactKeys = this.input.keyboard.addKeys({
-      space: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
-    });
+  setupInputManager() {
+    this.inputManager = new InputManager(this, { tileSize: TILE_SIZE, autoCleanup: false });
+    this.inputUnsubscribe = this.inputManager.onAction((event) => this.handleInputAction(event));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownInputManager());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.teardownInputManager());
   }
 
-  setupPointerInput() {
-    this.input.on("pointerdown", (pointer) => {
-      if (!this.player || this.dialogueBox?.visible) {
+  teardownInputManager() {
+    if (this.inputUnsubscribe) {
+      this.inputUnsubscribe();
+      this.inputUnsubscribe = null;
+    }
+    if (this.inputManager) {
+      this.inputManager.destroy();
+      this.inputManager = null;
+    }
+  }
+
+  handleInputAction(event) {
+    if (!event || this.isTransitioning) {
+      return;
+    }
+
+    if (event.action === InputActions.SELECT_TILE) {
+      this.handleSelectTileAction(event);
+      return;
+    }
+
+    if (event.type !== "pressed") {
+      return;
+    }
+
+    if (event.action === InputActions.CONFIRM) {
+      this.handleConfirmAction();
+      return;
+    }
+
+    if (event.action === InputActions.CANCEL) {
+      if (this.dialogueBox?.visible) {
+        this.hideDialogue();
+      }
+      this.clearPointerPath();
+    }
+  }
+
+  handleSelectTileAction(event) {
+    if (!this.player || this.isTransitioning) {
+      return;
+    }
+
+    if (!Number.isInteger(event.tileX) || !Number.isInteger(event.tileY)) {
+      return;
+    }
+
+    const targetTile = { x: event.tileX, y: event.tileY };
+    if (this.handleTileInteractionSelection(targetTile)) {
+      return;
+    }
+
+    if (this.dialogueBox?.visible) {
+      return;
+    }
+
+    if (!this.isWalkableTile(targetTile.x, targetTile.y)) {
+      this.clearPointerPath();
+      return;
+    }
+
+    const startTile = this.getPlayerTile();
+    if (!startTile) {
+      return;
+    }
+
+    const tilePath = this.findTilePath(startTile, targetTile);
+    if (!tilePath || tilePath.length === 0) {
+      this.clearPointerPath();
+      return;
+    }
+
+    this.pointerPathTiles = tilePath;
+    this.pointerPath = tilePath.map((tile) => tileToWorld(tile.x, tile.y));
+  }
+
+  handleTileInteractionSelection(targetTile) {
+    const sign = this.findSignAtTile(targetTile.x, targetTile.y);
+    if (sign) {
+      return this.tryInteractWithSign(sign);
+    }
+
+    const npc = this.findNpcAtTile(targetTile.x, targetTile.y);
+    if (npc) {
+      return this.tryInteractWithNpc(npc);
+    }
+
+    return false;
+  }
+
+  handleConfirmAction() {
+    if (this.dialogueBox?.visible) {
+      if (this.activeDialogueSignId && this.awaitingSignEnterChoice) {
+        this.confirmLevelSignSelection();
         return;
       }
+      this.hideDialogue();
+      return;
+    }
 
-      const targetTile = worldToTile(pointer.worldX, pointer.worldY);
-      if (!this.isWalkableTile(targetTile.x, targetTile.y)) {
-        this.clearPointerPath();
-        return;
-      }
+    const nearbySign = this.findNearbySign();
+    if (nearbySign) {
+      this.showLevelSignPrompt(nearbySign);
+      return;
+    }
 
-      const startTile = this.getPlayerTile();
-      if (!startTile) {
-        return;
-      }
+    const nearbyNpc = this.findNearbyNpc();
+    if (!nearbyNpc) {
+      return;
+    }
 
-      const tilePath = this.findTilePath(startTile, targetTile);
-      if (!tilePath || tilePath.length === 0) {
-        this.clearPointerPath();
-        return;
-      }
-
-      this.pointerPathTiles = tilePath;
-      this.pointerPath = tilePath.map((tile) => tileToWorld(tile.x, tile.y));
-    });
+    this.showDialogue(nearbyNpc);
   }
 
   clearPointerPath() {
@@ -593,6 +719,71 @@ class OverworldScene extends Phaser.Scene {
     return closestSign;
   }
 
+  findSignAtTile(tileX, tileY) {
+    if (!Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+      return null;
+    }
+
+    return (
+      this.levelSigns.find((sign) => {
+        const signTile = worldToTile(sign.x, sign.y);
+        return signTile.x === tileX && signTile.y === tileY;
+      }) ?? null
+    );
+  }
+
+  findNpcAtTile(tileX, tileY) {
+    if (!Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+      return null;
+    }
+
+    return (
+      this.npcEntities.find((npc) => {
+        const npcTile = worldToTile(npc.x, npc.y);
+        return npcTile.x === tileX && npcTile.y === tileY;
+      }) ?? null
+    );
+  }
+
+  tryInteractWithSign(sign) {
+    if (!this.player || !sign) {
+      return false;
+    }
+
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, sign.x, sign.y);
+    if (distance > SIGN_INTERACTION_DISTANCE) {
+      return false;
+    }
+
+    if (
+      this.dialogueBox?.visible &&
+      this.awaitingSignEnterChoice &&
+      this.activeDialogueSignId === sign.getData("signId")
+    ) {
+      this.transitionToLevel(sign);
+      return true;
+    }
+
+    this.clearPointerPath();
+    this.showLevelSignPrompt(sign);
+    return true;
+  }
+
+  tryInteractWithNpc(npc) {
+    if (!this.player || !npc) {
+      return false;
+    }
+
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, npc.x, npc.y);
+    if (distance > INTERACTION_DISTANCE) {
+      return false;
+    }
+
+    this.clearPointerPath();
+    this.showDialogue(npc);
+    return true;
+  }
+
   showDialogue(npc) {
     const npcName = npc.getData("name") || "NPC";
     const npcDialogue = npc.getData("dialogue") || `${npcName}: Placeholder dialogue.`;
@@ -613,9 +804,9 @@ class OverworldScene extends Phaser.Scene {
     this.activeDialogueSignId = sign.getData("signId") || null;
     this.awaitingSignEnterChoice = true;
     this.dialogueText.setText(
-      `${signPrompt}\nPress Enter (or click sign again) to travel to ${signLabel}, or Space to close.`
+      `${signPrompt}\nPress Enter to travel to ${signLabel}. Tap/click the sign tile again to confirm. Space closes.`
     );
-    this.dialogueHintText.setText("Enter/click sign: travel  Space: close");
+    this.dialogueHintText.setText("Enter or sign-tile tap: travel  Space: close");
     this.dialogueBox.setVisible(true);
     this.dialogueText.setVisible(true);
     this.dialogueHintText.setVisible(true);
@@ -660,73 +851,15 @@ class OverworldScene extends Phaser.Scene {
     this.dialogueHintText.setVisible(false);
   }
 
-  handleSignPointerInteraction(sign, event) {
-    if (!this.player || this.isTransitioning) {
-      return;
-    }
-
-    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, sign.x, sign.y);
-    if (distance > SIGN_INTERACTION_DISTANCE) {
-      return;
-    }
-
-    if (event?.stopPropagation) {
-      event.stopPropagation();
-    }
-
-    if (
-      this.dialogueBox?.visible &&
-      this.awaitingSignEnterChoice &&
-      this.activeDialogueSignId === sign.getData("signId")
-    ) {
-      this.transitionToLevel(sign);
-      return;
-    }
-
-    this.clearPointerPath();
-    this.showLevelSignPrompt(sign);
-  }
-
-  handleInteractionInput() {
-    if (this.isTransitioning) {
-      return;
-    }
-
-    const spacePressed = Phaser.Input.Keyboard.JustDown(this.interactKeys.space);
-    const enterPressed = Phaser.Input.Keyboard.JustDown(this.interactKeys.enter);
-
-    if (!spacePressed && !enterPressed) {
-      return;
-    }
-
-    if (this.dialogueBox.visible) {
-      if (enterPressed && this.activeDialogueSignId && this.awaitingSignEnterChoice) {
-        this.confirmLevelSignSelection();
-        return;
-      }
-      this.hideDialogue();
-      return;
-    }
-
-    const nearbySign = this.findNearbySign();
-    if (nearbySign) {
-      this.showLevelSignPrompt(nearbySign);
-      return;
-    }
-
-    const nearbyNpc = this.findNearbyNpc();
-    if (!nearbyNpc) {
-      return;
-    }
-
-    this.showDialogue(nearbyNpc);
-  }
-
   getMovementVector() {
-    const leftPressed = this.cursors.left.isDown || this.wasdKeys.left.isDown;
-    const rightPressed = this.cursors.right.isDown || this.wasdKeys.right.isDown;
-    const upPressed = this.cursors.up.isDown || this.wasdKeys.up.isDown;
-    const downPressed = this.cursors.down.isDown || this.wasdKeys.down.isDown;
+    if (!this.inputManager) {
+      return { x: 0, y: 0 };
+    }
+
+    const leftPressed = this.inputManager.isActionActive(InputActions.MOVE_LEFT);
+    const rightPressed = this.inputManager.isActionActive(InputActions.MOVE_RIGHT);
+    const upPressed = this.inputManager.isActionActive(InputActions.MOVE_UP);
+    const downPressed = this.inputManager.isActionActive(InputActions.MOVE_DOWN);
 
     if (leftPressed && !rightPressed) {
       return { x: -1, y: 0 };
@@ -797,12 +930,11 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    this.handleInteractionInput();
-
     if (this.dialogueBox.visible) {
       this.clearPointerPath();
       this.player.body.setVelocity(0, 0);
       this.player.anims.play("player-idle", true);
+      this.syncHudOverlay();
       return;
     }
 
@@ -816,15 +948,18 @@ class OverworldScene extends Phaser.Scene {
       }
 
       this.player.anims.play("player-walk", true);
+      this.syncHudOverlay();
       return;
     }
 
     if (this.moveAlongPointerPath()) {
+      this.syncHudOverlay();
       return;
     }
 
     this.player.body.setVelocity(0, 0);
     this.player.anims.play("player-idle", true);
+    this.syncHudOverlay();
   }
 }
 
