@@ -1,5 +1,28 @@
 # Status
 
+- Task: Wire input layer into overworld controls (TASK_ID=320, RUN_ID=548)
+- State: Completed
+- Notes: Refactored `src/scenes/OverworldScene.js` to fully consume high-level `InputManager` actions for overworld control and interaction flow.
+
+  What changed:
+  - Removed direct per-sign Phaser pointer listeners (`sign.on("pointerdown", ...)`) so overworld interaction logic no longer depends on raw pointer events.
+  - Kept movement polling on semantic actions (`MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`) and interaction handling on semantic actions (`CONFIRM`, `CANCEL`), all sourced from `InputManager`.
+  - Preserved click/touch pathing through `SELECT_TILE` events emitted by `InputManager`.
+  - Added tile-selection interaction routing:
+    - Selecting a nearby sign tile now opens the sign prompt through scene logic driven by `InputManager` callbacks.
+    - Selecting that same nearby sign tile again while the prompt is active confirms travel (touch/click equivalent of confirm for sign travel UX).
+    - Selecting a nearby NPC tile opens dialogue through the same abstraction callback path.
+  - Updated sign prompt copy to reflect InputManager-driven controls (`Enter` or sign-tile tap/click to travel, `Space` to close).
+
+  Validation notes:
+  - Overworld scene continues to import and use `src/input/InputManager.js`.
+  - Overworld scene no longer references Phaser keyboard keycodes or direct pointer event listeners for movement/interaction.
+  - Input binding changes in `InputManager` remain decoupled from scene logic (e.g., rebinding `CONFIRM` does not require overworld scene edits).
+
+  Known limitations / edge cases:
+  - General touch interaction with nearby entities is implemented via `SELECT_TILE` on the NPC/sign tile; there is no separate on-screen touch-only `CONFIRM` button yet.
+  - Sign travel confirmation via touch/click is intentionally tile-targeted (tap/click sign tile again while prompt is open), which differs slightly from keyboard `CONFIRM` affordance but uses the same abstraction pathway.
+
 - Task: Implement unified input abstraction layer (TASK_ID=319, RUN_ID=546)
 - State: Completed
 - Notes: Added a new reusable input module at `src/input/InputManager.js` that normalizes raw Phaser keyboard/pointer/touch events into semantic actions: `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`, `CONFIRM`, `CANCEL`, and `SELECT_TILE`.

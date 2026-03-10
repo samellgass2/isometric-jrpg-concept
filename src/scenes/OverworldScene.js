@@ -370,10 +370,6 @@ class OverworldScene extends Phaser.Scene {
       sign.refreshBody();
       sign.body.setSize(32, 32);
       sign.body.setOffset(0, 0);
-      sign.setInteractive({ useHandCursor: true });
-      sign.on("pointerdown", (pointer, localX, localY, event) => {
-        this.handleSignPointerInteraction(sign, event);
-      });
       this.characterLayer.add(sign);
       this.levelSigns.push(sign);
       this.signTileSet.add(keyForTile(signConfig.tileX, signConfig.tileY));
@@ -438,7 +434,7 @@ class OverworldScene extends Phaser.Scene {
   }
 
   handleSelectTileAction(event) {
-    if (!this.player || this.dialogueBox?.visible) {
+    if (!this.player || this.isTransitioning) {
       return;
     }
 
@@ -447,6 +443,14 @@ class OverworldScene extends Phaser.Scene {
     }
 
     const targetTile = { x: event.tileX, y: event.tileY };
+    if (this.handleTileInteractionSelection(targetTile)) {
+      return;
+    }
+
+    if (this.dialogueBox?.visible) {
+      return;
+    }
+
     if (!this.isWalkableTile(targetTile.x, targetTile.y)) {
       this.clearPointerPath();
       return;
@@ -465,6 +469,20 @@ class OverworldScene extends Phaser.Scene {
 
     this.pointerPathTiles = tilePath;
     this.pointerPath = tilePath.map((tile) => tileToWorld(tile.x, tile.y));
+  }
+
+  handleTileInteractionSelection(targetTile) {
+    const sign = this.findSignAtTile(targetTile.x, targetTile.y);
+    if (sign) {
+      return this.tryInteractWithSign(sign);
+    }
+
+    const npc = this.findNpcAtTile(targetTile.x, targetTile.y);
+    if (npc) {
+      return this.tryInteractWithNpc(npc);
+    }
+
+    return false;
   }
 
   handleConfirmAction() {
@@ -649,6 +667,71 @@ class OverworldScene extends Phaser.Scene {
     return closestSign;
   }
 
+  findSignAtTile(tileX, tileY) {
+    if (!Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+      return null;
+    }
+
+    return (
+      this.levelSigns.find((sign) => {
+        const signTile = worldToTile(sign.x, sign.y);
+        return signTile.x === tileX && signTile.y === tileY;
+      }) ?? null
+    );
+  }
+
+  findNpcAtTile(tileX, tileY) {
+    if (!Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+      return null;
+    }
+
+    return (
+      this.npcEntities.find((npc) => {
+        const npcTile = worldToTile(npc.x, npc.y);
+        return npcTile.x === tileX && npcTile.y === tileY;
+      }) ?? null
+    );
+  }
+
+  tryInteractWithSign(sign) {
+    if (!this.player || !sign) {
+      return false;
+    }
+
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, sign.x, sign.y);
+    if (distance > SIGN_INTERACTION_DISTANCE) {
+      return false;
+    }
+
+    if (
+      this.dialogueBox?.visible &&
+      this.awaitingSignEnterChoice &&
+      this.activeDialogueSignId === sign.getData("signId")
+    ) {
+      this.transitionToLevel(sign);
+      return true;
+    }
+
+    this.clearPointerPath();
+    this.showLevelSignPrompt(sign);
+    return true;
+  }
+
+  tryInteractWithNpc(npc) {
+    if (!this.player || !npc) {
+      return false;
+    }
+
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, npc.x, npc.y);
+    if (distance > INTERACTION_DISTANCE) {
+      return false;
+    }
+
+    this.clearPointerPath();
+    this.showDialogue(npc);
+    return true;
+  }
+
   showDialogue(npc) {
     const npcName = npc.getData("name") || "NPC";
     const npcDialogue = npc.getData("dialogue") || `${npcName}: Placeholder dialogue.`;
@@ -669,9 +752,9 @@ class OverworldScene extends Phaser.Scene {
     this.activeDialogueSignId = sign.getData("signId") || null;
     this.awaitingSignEnterChoice = true;
     this.dialogueText.setText(
-      `${signPrompt}\nPress Enter (or click sign again) to travel to ${signLabel}, or Space to close.`
+      `${signPrompt}\nPress Enter to travel to ${signLabel}. Tap/click the sign tile again to confirm. Space closes.`
     );
-    this.dialogueHintText.setText("Enter/click sign: travel  Space: close");
+    this.dialogueHintText.setText("Enter or sign-tile tap: travel  Space: close");
     this.dialogueBox.setVisible(true);
     this.dialogueText.setVisible(true);
     this.dialogueHintText.setVisible(true);
@@ -714,33 +797,6 @@ class OverworldScene extends Phaser.Scene {
     this.dialogueBox.setVisible(false);
     this.dialogueText.setVisible(false);
     this.dialogueHintText.setVisible(false);
-  }
-
-  handleSignPointerInteraction(sign, event) {
-    if (!this.player || this.isTransitioning) {
-      return;
-    }
-
-    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, sign.x, sign.y);
-    if (distance > SIGN_INTERACTION_DISTANCE) {
-      return;
-    }
-
-    if (event?.stopPropagation) {
-      event.stopPropagation();
-    }
-
-    if (
-      this.dialogueBox?.visible &&
-      this.awaitingSignEnterChoice &&
-      this.activeDialogueSignId === sign.getData("signId")
-    ) {
-      this.transitionToLevel(sign);
-      return;
-    }
-
-    this.clearPointerPath();
-    this.showLevelSignPrompt(sign);
   }
 
   getMovementVector() {

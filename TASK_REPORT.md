@@ -1,50 +1,32 @@
-# TASK 319 Report - Implement unified input abstraction layer
+# TASK 320 Report - Wire input layer into overworld controls
 
 ## Summary
-Implemented a reusable Phaser input abstraction in `src/input/InputManager.js` that maps keyboard, mouse, and touch input into semantic game actions and exposes an observer API for scene systems.
+Refactored overworld controls to rely on `InputManager` action callbacks and removed the remaining direct sign pointer listeners from `OverworldScene`.
 
 ## Changes made
-- Added `src/input/InputManager.js`:
-  - Defines semantic actions:
-    - `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`
-    - `CONFIRM`, `CANCEL`, `SELECT_TILE`
-  - Default keyboard mappings:
-    - Movement: Arrow keys + WASD
-    - Confirm: Enter/Space
-    - Cancel: Escape
-  - Pointer/touch mapping:
-    - Emits `SELECT_TILE` with `worldX/worldY`, normalized viewport coordinates, and tile coordinates (`tileX/tileY`) using configurable tile resolution.
-  - Public API:
-    - `onAction(callback)` / `offAction(callback)`
-    - `isActionActive(action)`
-    - `setActionEnabled(action, enabled)`
-    - `rebindAction(action, keyNames)`
-    - `unbindAction(action)`
-    - `destroy()`
 - Updated `src/scenes/OverworldScene.js`:
-  - Replaced direct cursor/WASD key reads and raw scene pointer movement listener with `InputManager` actions.
-  - Movement now reads high-level `MOVE_*` action state.
-  - Interactions now use `CONFIRM` and `CANCEL` actions.
-  - Click/touch path target selection now uses `SELECT_TILE` action payload tile indices.
-- Updated `src/scenes/BattleScene.js`:
-  - Added `InputManager` integration for tile selection via `SELECT_TILE`.
-  - Added `CANCEL` action handling to reset mode/highlights.
-  - Kept existing battle hotkeys (`M`, `A`, `E`, `H`) unchanged.
+  - Removed direct per-sign pointer listeners (`sign.on("pointerdown", ...)`) and associated handler method.
+  - Kept movement driven by `InputManager` `MOVE_*` action state polling.
+  - Kept keyboard interaction flow driven by `CONFIRM` / `CANCEL` actions.
+  - Preserved pointer/touch movement through `SELECT_TILE` action handling.
+  - Added tile-target interaction routing through `SELECT_TILE` callbacks:
+    - Nearby sign tile selection opens sign prompt.
+    - Selecting the same nearby sign tile again while prompt is open confirms travel.
+    - Nearby NPC tile selection opens NPC dialogue.
+  - Updated sign prompt text to reflect current abstraction-driven controls.
 - Updated `STATUS.md`:
-  - Added TASK 319 entry documenting module location, API, and wiring points.
+  - Added TASK 320 entry documenting the integration, validation notes, and known edge cases.
 
 ## Acceptance test check
-1. New file `src/input/InputManager.js` exists and exports `InputManager` with subscription API: PASS.
-2. Keyboard mappings include Arrow/WASD -> `MOVE_*`, Enter/Space -> `CONFIRM`, Esc -> `CANCEL`: PASS.
-3. Pointer/touch maps to `SELECT_TILE` with normalized coordinates and tile indices: PASS.
-4. Existing scene integration uses high-level actions for movement/selection: PASS (`OverworldScene`, plus `BattleScene` tile select integration).
-5. Binding changes are isolated to `InputManager` (`rebindAction`/`unbindAction`) with no scene logic edits required: PASS.
-6. `STATUS.md` contains InputManager summary, API, and wiring usage notes: PASS.
+1. Overworld imports/uses `InputManager`: PASS.
+2. Overworld movement works via keyboard and pointer/touch abstraction semantics (`MOVE_*` + `SELECT_TILE`): PASS.
+3. Interaction no longer depends on scene keycodes/raw pointer listeners; keyboard uses `CONFIRM` and tile interactions come through `InputManager` action callbacks: PASS.
+4. Overworld contains no direct Phaser keyboard keycode usage or raw pointer event listeners for input logic: PASS.
+5. Input binding changes remain isolated in `InputManager`; overworld logic remains unchanged for rebinds: PASS.
+6. `STATUS.md` updated with overworld InputManager integration and limitations: PASS.
 
 ## Validation run
 - `npm test` -> PASS
   - Rollback test passed.
   - Dog conditional behavior test passed.
   - Battle grid stats test passed.
-- Dev startup smoke:
-  - `timeout 8s npm run dev` -> server started at `http://127.0.0.1:5173` before timeout.
