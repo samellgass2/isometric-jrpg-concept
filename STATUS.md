@@ -431,3 +431,60 @@ Dev server running at http://127.0.0.1:5173
 
 ## Overall Verdict
 - PASS
+
+## Tester Report - Workflow #28 (2026-03-10)
+
+### Scope
+- Project: isometric-strategy-game
+- Branch: `workflow/28/dev`
+- Verified tasks: #294, #295, #296, #297
+
+### Tests Run
+1. `npm install`
+- Result: PASS
+- Output: added 2 packages; 0 vulnerabilities.
+
+2. `npm test`
+- Result: PASS
+- Output:
+  - Rollback test passed.
+  - Dog conditional behavior test passed.
+  - Battle grid stats test passed.
+
+3. `timeout 20s npm run dev`
+- Result: PASS (startup smoke)
+- Output: Dev server running at `http://127.0.0.1:5173`
+
+4. `node -e "import('./src/battle/units/animalUnits.js').then(()=>console.log('animalUnits import ok')).catch((e)=>{console.error(e);process.exit(1);})"`
+- Result: PASS
+- Output: `animalUnits import ok`
+
+### Acceptance Verdicts
+- Task #294 Define animal unit stats and abilities: PASS
+  - Verified `src/battle/units/animalUnits.js` exports elephant/cheetah/dog configs with HP/DEF/movement/range/base damage and dog danger-trigger metadata.
+  - Verified elephant has high defense + low movement + obstacle-overriding attack flag; cheetah has highest movement and lower survivability.
+  - Verified import/dev startup checks pass and STATUS documentation exists.
+
+- Task #295 Integrate stats with movement and targeting logic: PASS
+  - Verified stat-driven movement/targeting in `src/battle/grid.js` and integration in `src/scenes/BattleScene.js` (`getUnitMovementRange`, `canUnitTarget`, `getTargetableTiles`, reachable tile usage in move/enemy turn).
+  - Verified elephant obstacle-ignoring targeting path and per-unit attack range enforcement.
+
+- Task #296 Implement dogs conditional battle behavior: PASS
+  - Verified protagonist low-HP trigger evaluation and dog-only conditional buff application/removal in `src/battle/combatResolver.js`.
+  - Verified aggression linkage in `src/battle/ai/allyDecisionController.js`.
+  - Verified behavior transitions and non-dog isolation covered by automated test script.
+
+- Task #297 Hook animal abilities into turn flow UI: PASS
+  - Verified selection panel/action text exposes name/stats/ability states in `src/scenes/BattleScene.js`.
+  - Verified elephant obstacle trait messaging, cheetah mobility visibility, and dog buff feedback (`FURY` label + tint + log lines).
+  - Verified no startup errors in battle scene smoke run.
+
+### Bugs Filed
+- None.
+
+### Integration / Regression Check
+- Cohesive behavior observed across unit config -> grid movement/targeting -> combat resolution -> ally AI -> battle UI feedback.
+- No regressions detected in available automated tests (`rollback`, `dog conditional`, `battle grid stats`).
+
+### Overall Verdict
+- CLEAN
