@@ -97,9 +97,20 @@ class MainMenuScene extends Phaser.Scene {
     }
 
     this.startTriggered = true;
+    const progress = this.game.registry.get("playerProgress");
+    const resumeSceneKey =
+      typeof progress?.overworld?.currentSceneKey === "string" &&
+      progress.overworld.currentSceneKey.trim()
+        ? progress.overworld.currentSceneKey
+        : "OverworldScene";
+    const resumeData =
+      resumeSceneKey === "OverworldScene"
+        ? { spawnPointId: progress?.overworld?.spawnPointId }
+        : {};
+
     this.cameras.main.fadeOut(200, 0, 0, 0);
     this.time.delayedCall(210, () => {
-      this.scene.start("OverworldScene");
+      this.scene.start(resumeSceneKey, resumeData);
     });
   }
 }

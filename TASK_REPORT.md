@@ -1,38 +1,60 @@
-# TASK 322 Report - Implement basic in-game HUD overlays
+# TASK 330 Report - Record and restore key battle outcome flags
 
 ## Summary
-Implemented a reusable HUD overlay module and integrated it into overworld and battle scenes with state-driven updates (no direct device input coupling).
+Extended the save/load model with a dedicated key-battle outcome flag structure and wired battle completion + scene load behavior so key encounters persist across runs and visibly alter game flow.
 
 ## Changes made
-- Added `src/ui/HUDOverlay.js`:
-  - Encapsulates HUD panel creation with Phaser primitives.
-  - Exposes `setData({ context, primary, secondary, tertiary })` for reusable updates.
-  - Caches previous payload to avoid unnecessary redraw updates.
-  - Handles teardown via `destroy()`.
-- Updated `src/scenes/OverworldScene.js`:
-  - Integrated `HUDOverlay` at top-right of viewport.
-  - HUD fields: `Unit`, `HP`, and player `Tile` coordinate.
-  - Added `syncHudOverlay()` to update from scene state and only when state snapshot changes.
-  - Wired cleanup on scene shutdown/destroy.
-- Updated `src/scenes/BattleScene.js`:
-  - Integrated `HUDOverlay` at top-right of viewport.
-  - HUD fields: `Active` unit (+ HP), `Phase`, and `Turn`.
-  - Added active-unit derivation from battle state (`selectedUnitId`, `currentActingUnitId`, unit lists).
-  - Updated HUD from battle state transitions (`updateSelectionPanel`, enemy-turn processing, battle completion).
-  - Wired cleanup on scene shutdown/destroy.
-- Updated `STATUS.md`:
-  - Added Task 322 section documenting HUD elements, scene integration points, and state-driven update model.
+- Updated progress schema in `src/state/playerProgress.js`
+  - Added `battleOutcomes.keyBattles` with stable boolean flags:
+    - `level1TrainingAmbushCleared`
+    - `level2CanyonGauntletCleared`
+  - Added `battleOutcomes.encounterResults` for per-encounter outcome history.
+  - Added helpers:
+    - `getBattleOutcomeFlag(...)`
+    - `setBattleOutcomeFlag(...)`
+    - `resolveKeyBattleOutcomeFlagForEncounter(...)`
+  - Updated `recordBattleOutcome(...)` to write to `encounterResults` and auto-set mapped key flags on victory.
+  - Preserved backward compatibility by normalizing legacy flat `battleOutcomes[encounterId]` saves into the new shape.
+
+- Updated battle resolution hook in `src/scenes/BattleScene.js`
+  - On battle completion, persists outcome history and mapped key-battle flags through existing progress/save utilities.
+
+- Updated scene load-time consumption of outcome flags
+  - `src/scenes/Level1Scene.js`
+    - Reads persisted progress on create.
+    - If `level1TrainingAmbushCleared` is true, marks encounter as cleared, keeps cleared visuals, and prevents retrigger.
+  - `src/scenes/Level2Scene.js`
+    - Reads persisted progress on create.
+    - If `level2CanyonGauntletCleared` is true, marks encounter as cleared and prevents retrigger.
+  - `src/scenes/OverworldScene.js`
+    - Uses persisted key-battle flags to unlock alternate NPC dialogue:
+      - Ranger Sol after Level 1 ambush clear.
+      - Mechanic Ivo after Level 2 gauntlet clear.
+
+- Updated tests
+  - `scripts/player-progress.test.mjs`
+    - Validates new `battleOutcomes` structure.
+    - Validates automatic key-flag updates on recorded victory.
+    - Validates explicit flag setting/getting.
+    - Validates legacy save normalization into new structure.
+
+- Updated documentation
+  - `STATUS.md` now includes Task 330 section listing each persisted battle outcome flag, when it is set, and where it changes behavior on load.
 
 ## Acceptance test check
-1. New HUD module exists and encapsulates HUD creation/update: PASS (`src/ui/HUDOverlay.js`).
-2. Overworld HUD shows character + HP/stat and updates when state changes: PASS (`Unit`, `HP`, `Tile`; refreshed via `syncHudOverlay()` with snapshot keying).
-3. Battle HUD shows active unit and turn/phase from battle state: PASS (`Active`, `Phase`, `Turn` from battle scene state).
-4. HUD code does not reference keyboard/mouse/touch directly: PASS (HUD module has no input listeners; scene HUD updates are state-driven).
-5. HUD remains visible and positioned away from critical play area: PASS (fixed top-right overlay, scroll-factor 0, compact panel sizing).
-6. `STATUS.md` includes HUD implementation summary and scene/state wiring: PASS.
+1. Dedicated battle outcome structure with stable descriptive keys: PASS (`battleOutcomes.keyBattles`).
+2. Battle resolution/controller updates relevant flags via progress/persistence path: PASS (`BattleScene.persistBattleProgress`).
+3. At least one encounter wired to set persistent outcome flag: PASS (Level 1 and Level 2 encounters).
+4. Subsequent runs check stored flags and visibly change behavior: PASS (encounter retrigger prevention + NPC dialogue unlocks).
+5. Flags serialize/restore through localStorage save/load layer: PASS (`normalize/serialize/deserialize` + `saveSystem` path).
+6. Non-wired battles continue functioning: PASS (default encounter flow unchanged).
+7. `STATUS.md` documents each persisted flag and load-time behavior: PASS.
 
 ## Validation run
 - `npm test` -> PASS
   - Rollback test passed.
   - Dog conditional behavior test passed.
   - Battle grid stats test passed.
+  - Player progress state test passed.
+  - Save system persistence test passed.
+  - Battle party persistence test passed.

@@ -1,4 +1,10 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
+import {
+  getBattleOutcomeFlag,
+  KEY_BATTLE_OUTCOME_FLAGS,
+  normalizePlayerProgressState,
+} from "../state/playerProgress.js";
+import { loadProgress } from "../persistence/saveSystem.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 14;
@@ -67,8 +73,12 @@ class Level1Scene extends Phaser.Scene {
   }
 
   create(data = {}) {
+    const progress = this.getProgressState();
     this.levelStartTile = data?.spawnTile ?? { ...START_TILE };
     this.clearedEncounterIds = new Set(data?.clearedEncounterIds ?? []);
+    if (getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED)) {
+      this.clearedEncounterIds.add(LEVEL1_BATTLE_ENCOUNTER_ID);
+    }
     if (data?.battleResult === "victory" && data?.lastEncounterId === LEVEL1_BATTLE_ENCOUNTER_ID) {
       this.clearedEncounterIds.add(LEVEL1_BATTLE_ENCOUNTER_ID);
     }
@@ -92,6 +102,15 @@ class Level1Scene extends Phaser.Scene {
     this.createUi();
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+  }
+
+  getProgressState() {
+    const fromRegistry = this.game?.registry?.get("playerProgress");
+    if (fromRegistry) {
+      return normalizePlayerProgressState(fromRegistry);
+    }
+
+    return normalizePlayerProgressState(loadProgress());
   }
 
   renderTerrain() {

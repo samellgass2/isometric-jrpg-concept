@@ -11,6 +11,22 @@ import {
 } from "../battle/grid.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
+import {
+  resolveKeyBattleOutcomeFlagForEncounter,
+  normalizePlayerProgressState,
+  recordBattleOutcome,
+  setBattleOutcomeFlag,
+  updateOverworldPosition,
+} from "../state/playerProgress.js";
+import {
+  loadProgress,
+  saveProgress,
+} from "../persistence/saveSystem.js";
+import {
+  hasPersistedProgressData,
+  reconcilePartyProgressWithBattleUnits,
+  resolveInitialFriendlyUnits,
+} from "../state/partyPersistence.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -57,9 +73,14 @@ class BattleScene extends Phaser.Scene {
     this.commandIndex = 0;
     this.currentActingUnitId = null;
     this.hudOverlay = null;
+    this.loadedProgress = null;
+    this.hasPersistedProgressSnapshot = false;
+    this.encounterFriendlyTemplateIds = [];
   }
 
   create(data = {}) {
+    this.loadedProgress = this.getProgressState();
+    this.hasPersistedProgressSnapshot = this.hasPersistedProgressData();
     const encounterData = this.resolveEncounterData(data);
     this.encounterId = encounterData.id;
     this.encounterName = encounterData.name;
@@ -121,7 +142,12 @@ class BattleScene extends Phaser.Scene {
   }
 
   createUnits(encounterData) {
-    encounterData.friendlyUnits.forEach((unitConfig) => {
+    const friendlyUnits = this.resolveInitialFriendlyUnits(encounterData.friendlyUnits);
+    this.encounterFriendlyTemplateIds = Array.isArray(encounterData.friendlyUnits)
+      ? encounterData.friendlyUnits.map((unit) => unit.id)
+      : [];
+
+    friendlyUnits.forEach((unitConfig) => {
       const unit = this.spawnUnit(
         unitConfig,
         "friendly",
@@ -133,7 +159,13 @@ class BattleScene extends Phaser.Scene {
         this.protagonist = unit;
       }
       if (Number.isFinite(unitConfig.currentHp)) {
-        unit.currentHp = Math.max(1, Math.min(unitConfig.currentHp, unit.stats.maxHp));
+        unit.currentHp = Math.max(0, Math.min(unitConfig.currentHp, unit.stats.maxHp));
+        unit.stats.hp = unit.currentHp;
+        unit.alive = unit.currentHp > 0;
+        if (!unit.alive) {
+          unit.sprite.setFillStyle(0x222222, 0.4);
+          unit.buffIcon.setVisible(false);
+        }
       }
     });
 
@@ -150,6 +182,57 @@ class BattleScene extends Phaser.Scene {
     if (!this.protagonist) {
       this.protagonist = this.getFriendlyUnits()[0] ?? null;
     }
+  }
+
+  getProgressState() {
+    const fromRegistry = this.game?.registry?.get("playerProgress");
+    if (fromRegistry) {
+      return normalizePlayerProgressState(fromRegistry);
+    }
+
+    return normalizePlayerProgressState(loadProgress());
+  }
+
+  hasPersistedProgressData() {
+    return hasPersistedProgressData();
+  }
+
+  commitProgress(updater) {
+    const setPlayerProgress = this.game?.registry?.get("setPlayerProgress");
+    const current = this.getProgressState();
+    const next = typeof updater === "function" ? updater(current) : updater;
+    const normalized = normalizePlayerProgressState(next);
+    this.loadedProgress = normalized;
+
+    if (typeof setPlayerProgress === "function") {
+      return setPlayerProgress(normalized);
+    }
+
+    this.game?.registry?.set?.("playerProgress", normalized);
+    saveProgress(normalized);
+    return normalized;
+  }
+
+  getPersistedPartyMember(memberId) {
+    if (!this.loadedProgress?.party?.members || typeof memberId !== "string") {
+      return null;
+    }
+
+    return this.loadedProgress.party.members.find((member) => member.id === memberId) ?? null;
+  }
+
+  resolveInitialFriendlyUnits(friendlyUnits) {
+    return resolveInitialFriendlyUnits(friendlyUnits, this.loadedProgress, {
+      hasPersistedData: this.hasPersistedProgressSnapshot,
+    });
+  }
+
+  reconcilePartyProgressWithBattle(previousState) {
+    return reconcilePartyProgressWithBattleUnits(
+      previousState,
+      this.units.filter((unit) => unit.faction === "friendly"),
+      this.encounterFriendlyTemplateIds
+    );
   }
 
   resolveEncounterData(data) {
@@ -957,12 +1040,32 @@ class BattleScene extends Phaser.Scene {
     this.updateTurnHeader();
     this.updateSelectionPanel();
     this.syncHudOverlay();
+    this.persistBattleProgress(result);
 
     this.time.delayedCall(450, () => {
       this.scene.start(this.returnSceneKey, {
         ...this.returnSceneData,
         battleResult: result,
         lastEncounterId: this.encounterId,
+      });
+    });
+  }
+
+  persistBattleProgress(result) {
+    this.commitProgress((current) => {
+      let next = this.reconcilePartyProgressWithBattle(current);
+
+      next = recordBattleOutcome(next, this.encounterId, {
+        result,
+        recordedAt: new Date().toISOString(),
+      });
+      const keyBattleFlag = resolveKeyBattleOutcomeFlagForEncounter(this.encounterId);
+      if (keyBattleFlag && result === "victory") {
+        next = setBattleOutcomeFlag(next, keyBattleFlag, true);
+      }
+
+      return updateOverworldPosition(next, next?.overworld?.position, {
+        currentSceneKey: this.returnSceneKey,
       });
     });
   }
