@@ -328,6 +328,24 @@
 ## Overall Verdict
 - PASS
 
+# Task 330 - Save/Load Key Battle Outcomes (2026-03-10)
+
+## Persisted Battle Outcome Flags
+- `battleOutcomes.keyBattles.level1TrainingAmbushCleared`
+  - Set when: `BattleScene` completes encounter `level-1-training-ambush` with `result === "victory"`.
+  - Consumed by:
+    - `Level1Scene` on scene create to mark the ambush as already cleared, recolor the trigger tile, and prevent retriggering after load.
+    - `OverworldScene` dialogue routing for `npc-ranger` to show post-training progression dialogue.
+- `battleOutcomes.keyBattles.level2CanyonGauntletCleared`
+  - Set when: `BattleScene` completes encounter `level-2-canyon-gauntlet` with `result === "victory"`.
+  - Consumed by:
+    - `Level2Scene` on scene create to mark the totem encounter as cleared and prevent retriggering after load.
+    - `OverworldScene` dialogue routing for `npc-mechanic` to unlock post-gauntlet dialogue.
+
+## Encounter Result History
+- `battleOutcomes.encounterResults[encounterId]` stores serialized result entries (`"victory"`/`"defeat"` or `{ result, recordedAt }`) for completed encounters.
+- Backward compatibility is preserved: legacy flat `battleOutcomes[encounterId]` saves are normalized into `encounterResults`, and victory results auto-populate matching `keyBattles` flags.
+
 ## Tester Report - Workflow #31 (2026-03-10)
 
 ### Scope

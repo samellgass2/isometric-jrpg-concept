@@ -7,6 +7,18 @@
  */
 
 const PLAYER_PROGRESS_SCHEMA_VERSION = 1;
+const KEY_BATTLE_OUTCOME_FLAGS = Object.freeze({
+  LEVEL1_TRAINING_AMBUSH_CLEARED: "level1TrainingAmbushCleared",
+  LEVEL2_CANYON_GAUNTLET_CLEARED: "level2CanyonGauntletCleared",
+});
+const KEY_BATTLE_OUTCOME_FLAG_DEFAULTS = Object.freeze({
+  [KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED]: false,
+  [KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED]: false,
+});
+const ENCOUNTER_ID_TO_KEY_BATTLE_FLAG = Object.freeze({
+  "level-1-training-ambush": KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED,
+  "level-2-canyon-gauntlet": KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED,
+});
 
 const DEFAULT_OVERWORLD_POSITION = Object.freeze({ x: 2, y: 2 });
 const DEFAULT_PARTY_MEMBERS = Object.freeze([
@@ -87,7 +99,7 @@ function normalizePartyMembers(members) {
   return normalized;
 }
 
-function normalizeBattleOutcomes(outcomes) {
+function normalizeEncounterResults(outcomes) {
   if (!isPlainObject(outcomes)) {
     return {};
   }
@@ -114,6 +126,57 @@ function normalizeBattleOutcomes(outcomes) {
   }, {});
 }
 
+function isOutcomeVictory(outcome) {
+  if (typeof outcome === "string") {
+    return outcome === "victory";
+  }
+  return isPlainObject(outcome) && outcome.result === "victory";
+}
+
+function normalizeKeyBattleFlags(keyBattles, encounterResults = {}) {
+  const normalized = { ...KEY_BATTLE_OUTCOME_FLAG_DEFAULTS };
+
+  if (isPlainObject(keyBattles)) {
+    Object.values(KEY_BATTLE_OUTCOME_FLAGS).forEach((flagKey) => {
+      normalized[flagKey] = keyBattles[flagKey] === true;
+    });
+  }
+
+  Object.entries(ENCOUNTER_ID_TO_KEY_BATTLE_FLAG).forEach(([encounterId, flagKey]) => {
+    if (normalized[flagKey]) {
+      return;
+    }
+
+    if (isOutcomeVictory(encounterResults[encounterId])) {
+      normalized[flagKey] = true;
+    }
+  });
+
+  return normalized;
+}
+
+function normalizeBattleOutcomes(outcomes) {
+  if (!isPlainObject(outcomes)) {
+    return {
+      keyBattles: { ...KEY_BATTLE_OUTCOME_FLAG_DEFAULTS },
+      encounterResults: {},
+    };
+  }
+
+  const hasStructuredShape = isPlainObject(outcomes.keyBattles) || isPlainObject(outcomes.encounterResults);
+  const legacyEncounterResults = hasStructuredShape ? {} : normalizeEncounterResults(outcomes);
+  const explicitEncounterResults = normalizeEncounterResults(outcomes.encounterResults);
+  const encounterResults = {
+    ...legacyEncounterResults,
+    ...explicitEncounterResults,
+  };
+
+  return {
+    keyBattles: normalizeKeyBattleFlags(outcomes.keyBattles, encounterResults),
+    encounterResults,
+  };
+}
+
 /**
  * Build the default player progress state.
  *
@@ -126,8 +189,9 @@ function normalizeBattleOutcomes(outcomes) {
  * - party: Battle party composition used by encounter systems.
  *   - memberOrder: Party order for future UI/turn-order style systems.
  *   - members: JSON-safe member summaries keyed by `id` values used in encounters.
- * - battleOutcomes: Encounter completion records by encounter ID (for clear flags,
- *   re-trigger prevention, and progression gates).
+ * - battleOutcomes:
+ *   - keyBattles: Small, stable booleans for story/tutorial/boss progression gates.
+ *   - encounterResults: Optional per-encounter history keyed by encounter ID.
  */
 export function createInitialPlayerProgressState(overrides = {}) {
   const defaultState = {
@@ -141,7 +205,10 @@ export function createInitialPlayerProgressState(overrides = {}) {
       memberOrder: DEFAULT_PARTY_MEMBERS.map((member) => member.id),
       members: cloneJsonValue(DEFAULT_PARTY_MEMBERS),
     },
-    battleOutcomes: {},
+    battleOutcomes: {
+      keyBattles: { ...KEY_BATTLE_OUTCOME_FLAG_DEFAULTS },
+      encounterResults: {},
+    },
   };
 
   return normalizePlayerProgressState({
@@ -186,6 +253,58 @@ export function normalizePlayerProgressState(state) {
       members: normalizedMembers,
     },
     battleOutcomes: normalizeBattleOutcomes(source.battleOutcomes),
+  };
+}
+
+function normalizeBattleOutcomeFlagKey(flagKey) {
+  const normalizedFlagKey = typeof flagKey === "string" ? flagKey.trim() : "";
+  if (!normalizedFlagKey) {
+    return null;
+  }
+
+  const allowed = Object.values(KEY_BATTLE_OUTCOME_FLAGS);
+  if (!allowed.includes(normalizedFlagKey)) {
+    return null;
+  }
+
+  return normalizedFlagKey;
+}
+
+export function resolveKeyBattleOutcomeFlagForEncounter(encounterId) {
+  const normalizedEncounterId = typeof encounterId === "string" ? encounterId.trim() : "";
+  if (!normalizedEncounterId) {
+    return null;
+  }
+
+  return ENCOUNTER_ID_TO_KEY_BATTLE_FLAG[normalizedEncounterId] ?? null;
+}
+
+export function getBattleOutcomeFlag(state, flagKey) {
+  const current = normalizePlayerProgressState(state);
+  const normalizedFlagKey = normalizeBattleOutcomeFlagKey(flagKey);
+  if (!normalizedFlagKey) {
+    return false;
+  }
+
+  return current.battleOutcomes.keyBattles[normalizedFlagKey] === true;
+}
+
+export function setBattleOutcomeFlag(previousState, flagKey, value = true) {
+  const current = normalizePlayerProgressState(previousState);
+  const normalizedFlagKey = normalizeBattleOutcomeFlagKey(flagKey);
+  if (!normalizedFlagKey) {
+    return current;
+  }
+
+  return {
+    ...current,
+    battleOutcomes: {
+      ...current.battleOutcomes,
+      keyBattles: {
+        ...current.battleOutcomes.keyBattles,
+        [normalizedFlagKey]: value === true,
+      },
+    },
   };
 }
 
@@ -291,13 +410,25 @@ export function recordBattleOutcome(previousState, encounterId, outcome) {
     return current;
   }
 
-  return {
+  let next = {
     ...current,
     battleOutcomes: {
       ...current.battleOutcomes,
-      [normalizedEncounterId]: normalizedOutcome,
+      encounterResults: {
+        ...current.battleOutcomes.encounterResults,
+        [normalizedEncounterId]: normalizedOutcome,
+      },
     },
   };
+
+  if (isOutcomeVictory(normalizedOutcome)) {
+    const keyBattleFlag = resolveKeyBattleOutcomeFlagForEncounter(normalizedEncounterId);
+    if (keyBattleFlag) {
+      next = setBattleOutcomeFlag(next, keyBattleFlag, true);
+    }
+  }
+
+  return next;
 }
 
 /**
@@ -319,4 +450,4 @@ export function deserializePlayerProgress(serializedState) {
   return normalizePlayerProgressState(parsed);
 }
 
-export { PLAYER_PROGRESS_SCHEMA_VERSION };
+export { KEY_BATTLE_OUTCOME_FLAGS, PLAYER_PROGRESS_SCHEMA_VERSION };

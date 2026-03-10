@@ -1,7 +1,12 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
-import { normalizePlayerProgressState, updateOverworldPosition } from "../state/playerProgress.js";
+import {
+  getBattleOutcomeFlag,
+  KEY_BATTLE_OUTCOME_FLAGS,
+  normalizePlayerProgressState,
+  updateOverworldPosition,
+} from "../state/playerProgress.js";
 import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
 
 const TILE_SIZE = 48;
@@ -135,10 +140,12 @@ class OverworldScene extends Phaser.Scene {
     this.playerDisplayName = "Pathfinder";
     this.playerStats = { hp: 100, maxHp: 100 };
     this.lastSavedTileKey = "";
+    this.progressSnapshot = normalizePlayerProgressState();
   }
 
   create(data) {
     const progress = this.getProgressState();
+    this.progressSnapshot = progress;
     const requestedSpawnPointId =
       typeof data?.spawnPointId === "string" && data.spawnPointId.trim() ? data.spawnPointId.trim() : null;
 
@@ -483,12 +490,33 @@ class OverworldScene extends Phaser.Scene {
       npc.setDataEnabled();
       npc.setData("npcId", npcConfig.id);
       npc.setData("name", npcConfig.name);
-      npc.setData("dialogue", npcConfig.dialogue);
+      npc.setData("dialogue", this.resolveNpcDialogue(npcConfig));
       npc.refreshBody();
       this.characterLayer.add(npc);
       this.npcEntities.push(npc);
       this.npcTileSet.add(keyForTile(npcConfig.tileX, npcConfig.tileY));
     });
+  }
+
+  resolveNpcDialogue(npcConfig) {
+    const baseDialogue = npcConfig?.dialogue || `${npcConfig?.name ?? "NPC"}: Placeholder dialogue.`;
+    const progress = this.progressSnapshot;
+
+    if (
+      npcConfig?.id === "npc-ranger" &&
+      getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED)
+    ) {
+      return "Ranger Sol: Nice work in the training ambush. Head to Canyon Crossing when you're ready.";
+    }
+
+    if (
+      npcConfig?.id === "npc-mechanic" &&
+      getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED)
+    ) {
+      return "Mechanic Ivo: You cleared the canyon gauntlet. I can tune your gear next time you visit.";
+    }
+
+    return baseDialogue;
   }
 
   createLevelSigns() {

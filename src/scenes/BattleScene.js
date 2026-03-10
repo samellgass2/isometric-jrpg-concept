@@ -12,8 +12,10 @@ import {
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
 import {
+  resolveKeyBattleOutcomeFlagForEncounter,
   normalizePlayerProgressState,
   recordBattleOutcome,
+  setBattleOutcomeFlag,
   updateOverworldPosition,
 } from "../state/playerProgress.js";
 import {
@@ -1057,6 +1059,10 @@ class BattleScene extends Phaser.Scene {
         result,
         recordedAt: new Date().toISOString(),
       });
+      const keyBattleFlag = resolveKeyBattleOutcomeFlagForEncounter(this.encounterId);
+      if (keyBattleFlag && result === "victory") {
+        next = setBattleOutcomeFlag(next, keyBattleFlag, true);
+      }
 
       return updateOverworldPosition(next, next?.overworld?.position, {
         currentSceneKey: this.returnSceneKey,

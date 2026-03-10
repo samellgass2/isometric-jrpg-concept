@@ -1,44 +1,54 @@
-# TASK 329 Report - Persist party composition across sessions
+# TASK 330 Report - Record and restore key battle outcome flags
 
 ## Summary
-Connected battle-party management to the progress/persistence stack so active party composition, order, and key member stats survive reloads while fresh profiles keep existing encounter defaults.
+Extended the save/load model with a dedicated key-battle outcome flag structure and wired battle completion + scene load behavior so key encounters persist across runs and visibly alter game flow.
 
 ## Changes made
-- Added new party persistence helper module: `src/state/partyPersistence.js`
-  - `hasPersistedProgressData(...)`: detects whether a real saved progress snapshot exists via `PLAYER_PROGRESS_STORAGE_KEY`.
-  - `resolveInitialFriendlyUnits(...)`: reconstructs encounter-friendly party from saved `party.memberOrder` + `party.members` when saved data exists; otherwise returns encounter defaults.
-  - `reconcilePartyProgressWithBattleUnits(...)`: upserts active units, removes encounter-template members no longer active, and rewrites member order with active members first.
-  - `serializeUnitToPartyMember(...)`: maps runtime unit state into JSON-friendly persisted fields (`id`, `name`, `archetype`, `level`, `currentHp`, `maxHp`).
+- Updated progress schema in `src/state/playerProgress.js`
+  - Added `battleOutcomes.keyBattles` with stable boolean flags:
+    - `level1TrainingAmbushCleared`
+    - `level2CanyonGauntletCleared`
+  - Added `battleOutcomes.encounterResults` for per-encounter outcome history.
+  - Added helpers:
+    - `getBattleOutcomeFlag(...)`
+    - `setBattleOutcomeFlag(...)`
+    - `resolveKeyBattleOutcomeFlagForEncounter(...)`
+  - Updated `recordBattleOutcome(...)` to write to `encounterResults` and auto-set mapped key flags on victory.
+  - Preserved backward compatibility by normalizing legacy flat `battleOutcomes[encounterId]` saves into the new shape.
 
-- Updated `src/scenes/BattleScene.js`
-  - Imports and uses `partyPersistence` helpers for initial party load and post-battle reconciliation.
-  - `getProgressState()` now supports registry-first read with `loadProgress()` fallback and normalization.
-  - `commitProgress()` now supports registry setter when available, otherwise fallback save path (`saveProgress(...)`) without throwing.
-  - On battle start:
-    - Uses saved party composition/order only when a saved snapshot exists.
-    - Keeps existing encounter default lineup on fresh profile.
-  - On battle end:
-    - Reconciles party add/remove/order into progress state, then records battle outcome and overworld scene key.
+- Updated battle resolution hook in `src/scenes/BattleScene.js`
+  - On battle completion, persists outcome history and mapped key-battle flags through existing progress/save utilities.
 
-- Added tests: `scripts/battle-party-persistence.test.mjs`
-  - Verifies fresh profile behavior keeps existing default composition.
-  - Verifies saved profile restores composition order and key stats.
-  - Verifies reconciliation add/remove/order logic and JSON round-trip safety.
+- Updated scene load-time consumption of outcome flags
+  - `src/scenes/Level1Scene.js`
+    - Reads persisted progress on create.
+    - If `level1TrainingAmbushCleared` is true, marks encounter as cleared, keeps cleared visuals, and prevents retrigger.
+  - `src/scenes/Level2Scene.js`
+    - Reads persisted progress on create.
+    - If `level2CanyonGauntletCleared` is true, marks encounter as cleared and prevents retrigger.
+  - `src/scenes/OverworldScene.js`
+    - Uses persisted key-battle flags to unlock alternate NPC dialogue:
+      - Ranger Sol after Level 1 ambush clear.
+      - Mechanic Ivo after Level 2 gauntlet clear.
 
-- Updated `package.json`
-  - Added new test script to `npm test` chain.
+- Updated tests
+  - `scripts/player-progress.test.mjs`
+    - Validates new `battleOutcomes` structure.
+    - Validates automatic key-flag updates on recorded victory.
+    - Validates explicit flag setting/getting.
+    - Validates legacy save normalization into new structure.
 
-- Updated `STATUS.md`
-  - Added Task 329 entry describing architecture, persisted field mapping, and in-memory reconstruction path.
+- Updated documentation
+  - `STATUS.md` now includes Task 330 section listing each persisted battle outcome flag, when it is set, and where it changes behavior on load.
 
 ## Acceptance test check
-1. Party management module imports progress + persistence utilities: PASS (`BattleScene` + `partyPersistence`).
-2. Party initializes from progress when saved data exists: PASS.
-3. Fresh profile preserves existing default composition/gameplay: PASS.
-4. Party add/remove reconciliation updates progress and triggers save path without errors: PASS.
-5. Reload restoration path implemented through localStorage-backed progress model: PASS.
-6. Persisted party data remains JSON-friendly and round-trippable: PASS.
-7. `STATUS.md` documents saved fields and conversion back to runtime units: PASS.
+1. Dedicated battle outcome structure with stable descriptive keys: PASS (`battleOutcomes.keyBattles`).
+2. Battle resolution/controller updates relevant flags via progress/persistence path: PASS (`BattleScene.persistBattleProgress`).
+3. At least one encounter wired to set persistent outcome flag: PASS (Level 1 and Level 2 encounters).
+4. Subsequent runs check stored flags and visibly change behavior: PASS (encounter retrigger prevention + NPC dialogue unlocks).
+5. Flags serialize/restore through localStorage save/load layer: PASS (`normalize/serialize/deserialize` + `saveSystem` path).
+6. Non-wired battles continue functioning: PASS (default encounter flow unchanged).
+7. `STATUS.md` documents each persisted flag and load-time behavior: PASS.
 
 ## Validation run
 - `npm test` -> PASS
