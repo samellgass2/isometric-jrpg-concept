@@ -1,3 +1,5 @@
+import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
+
 const DEFAULT_WIDTH = 250;
 const DEFAULT_PADDING = 10;
 
@@ -10,6 +12,7 @@ class HUDOverlay {
     this.padding = options.padding ?? DEFAULT_PADDING;
     this.anchorX = options.x ?? (scene.scale?.width ?? 800) - 12;
     this.anchorY = options.y ?? 12;
+    this.usesAutoAnchorX = options.x == null;
 
     this.background = null;
     this.contextText = null;
@@ -18,6 +21,7 @@ class HUDOverlay {
     this.tertiaryText = null;
 
     this.lastPayload = null;
+    this.resizeHandler = null;
   }
 
   create() {
@@ -65,6 +69,8 @@ class HUDOverlay {
       .setScrollFactor(0)
       .setDepth(this.depth + 1);
 
+    this.bindResizeListener();
+
     return this;
   }
 
@@ -106,7 +112,38 @@ class HUDOverlay {
     );
   }
 
+  bindResizeListener() {
+    if (!this.usesAutoAnchorX || this.resizeHandler || !this.scene?.scale) {
+      return;
+    }
+
+    this.resizeHandler = (gameSize) => {
+      const width = gameSize?.width ?? this.scene.scale.width;
+      this.anchorX = width - 12;
+      this.repositionElements();
+    };
+
+    this.scene.scale.on(Phaser.Scale.Events.RESIZE, this.resizeHandler);
+  }
+
+  repositionElements() {
+    if (!this.background) {
+      return;
+    }
+
+    this.background.setPosition(this.anchorX, this.anchorY);
+    this.contextText?.setPosition(this.anchorX - this.padding, this.anchorY + 6);
+    this.primaryText?.setPosition(this.anchorX - this.padding, this.anchorY + 24);
+    this.secondaryText?.setPosition(this.anchorX - this.padding, this.anchorY + 42);
+    this.tertiaryText?.setPosition(this.anchorX - this.padding, this.anchorY + 60);
+  }
+
   destroy() {
+    if (this.resizeHandler && this.scene?.scale) {
+      this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.resizeHandler);
+      this.resizeHandler = null;
+    }
+
     this.background?.destroy();
     this.contextText?.destroy();
     this.primaryText?.destroy();
@@ -118,6 +155,7 @@ class HUDOverlay {
     this.secondaryText = null;
     this.tertiaryText = null;
     this.lastPayload = null;
+    this.scene = null;
   }
 }
 

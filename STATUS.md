@@ -1687,3 +1687,95 @@ Battle party persistence test passed.
 ### Firefox Profiling Limitation
 - Firefox profiling was not executed in this run due runner environment limitations while provisioning Firefox (`@puppeteer/browsers install firefox@stable` failed because required `xz` runtime/tooling is unavailable).
 - Therefore, Chrome-vs-Firefox behavior/performance could not be measured here and remains to be validated on a suitable environment with Firefox runtime dependencies present.
+
+## Task 353 - Cross-Browser Compatibility Hardening (2026-03-10)
+
+### Scope
+- Workflow: Performance Optimization and Cross-Browser Compatibility Pass
+- Task: Validate cross-browser behavior and add compatibility fixes
+- Validation method in this environment: code-level review + targeted defensive fixes
+- Runtime browser testing status: **UNVERIFIED** (no runnable Chrome/Firefox/Edge runtime validation performed in this dev-runner)
+
+### Intended Browser Support Matrix (Target)
+- Google Chrome (latest stable desktop, target baseline: Chromium 122+): **intended support**
+- Mozilla Firefox (latest stable desktop, target baseline: Firefox 123+): **intended support**
+- Microsoft Edge (latest stable desktop, Chromium-based, target baseline: Edge 122+): **intended support**
+
+### Manual Runtime Check Status
+- Chrome: **NOT EXECUTED** in this environment (unverified)
+- Firefox: **NOT EXECUTED** in this environment (unverified)
+- Additional Chromium-based browser (Edge): **NOT EXECUTED** in this environment (unverified)
+- Reason: browser runtimes/system dependencies for end-to-end manual play validation are not available in current runner.
+
+### Compatibility Risks Reviewed (Code Analysis)
+- Rendering/scaling:
+  - Potential per-browser canvas DPI/scaling variance due `devicePixelRatio`.
+  - Potential viewport/layout mismatch during window resizes.
+- Input behavior:
+  - Pointer world-coordinate reliability across mouse/touch/pointer implementations.
+  - Secondary-button/context-menu interactions interfering with gameplay click paths.
+  - Touch gesture defaults (scroll/zoom/select) competing with canvas input.
+- Timing/lifecycle:
+  - Background tab behavior differences causing unnecessary update-loop execution.
+- Audio autoplay policy:
+  - Browser-dependent audio context unlock requirements after user gesture.
+
+### Implemented Compatibility Fixes
+1. `src/platform/browserCompat.js` (new)
+- Added shared browser-compat helpers:
+  - `resolveDevicePixelRatio(maxDpr)` to clamp DPR for stable pixel-art rendering cost/consistency.
+  - `getNormalizedPointerWorldPosition(scene, pointer)` to fallback through camera world-point conversion when `pointer.worldX/worldY` are unavailable/inconsistent.
+  - `shouldProcessPointerDown(pointer)` to ignore non-primary mouse button paths while preserving touch input.
+  - `applyCanvasInteractionGuards(game)` to enforce canvas interaction defaults (`touch-action: none`, disable context menu, selection/tap-highlight guards).
+  - `installVisibilityPauseGuard(game)` to sleep/wake loop on visibility/focus changes.
+  - `installAudioUnlockOnFirstGesture(scene)` to attempt safe audio-context resume/unlock on first pointer/key gesture.
+
+2. `src/gameConfig.js`
+- Added Phaser scale manager settings for cross-browser viewport consistency:
+  - `Phaser.Scale.FIT`, `CENTER_BOTH`, `autoRound`, `expandParent`.
+- Added bounded `resolution` from `devicePixelRatio` helper.
+- Added input defaults for cross-device consistency (`activePointers`, mouse prevent-default flags, touch capture, windowEvents).
+
+3. `src/main.js`
+- On preBoot:
+  - Re-resolves DPR (`game.config.resolution`) before startup.
+  - Applies canvas interaction guards.
+  - Installs visibility pause/wake guard.
+- Added unload cleanup for visibility guard teardown.
+
+4. `src/input/InputManager.js`
+- Pointer action pipeline now:
+  - filters non-primary pointer-down events,
+  - normalizes pointer world coordinates via compatibility helper before tile resolution.
+
+5. `src/scenes/Level1Scene.js` and `src/scenes/Level2Scene.js`
+- Direct pointer handlers now use the same normalized world-coordinate fallback and non-primary-click filtering.
+
+6. `src/scenes/BootScene.js`
+- Added first-gesture audio unlock/resume installation to better align with autoplay restrictions across browsers.
+
+7. `src/ui/HUDOverlay.js`, `src/scenes/OverworldScene.js`, `src/scenes/BattleScene.js`
+- HUD overlay now supports resize-driven auto-anchoring on scenes that omit explicit `x` anchor.
+- Overworld/Battle switched to auto-right-anchor so UI remains aligned under browser resize/scaling differences.
+
+8. `src/index.html`
+- Added shell CSS guards for browser interaction consistency:
+  - full-viewport app container,
+  - `touch-action: none`, `overscroll-behavior: none`,
+  - explicit canvas display/pixel rendering hints.
+
+### Cross-Browser Support Statement (Current)
+- The game code now includes targeted compatibility guards for rendering scale/DPR, pointer normalization, touch/mouse interaction defaults, resize-aware HUD positioning, lifecycle sleep/wake behavior, and audio unlock-on-gesture handling.
+- These changes are designed to support consistent behavior across Chrome, Firefox, and Edge (Chromium-based).
+- **Important limitation:** actual runtime verification in Chrome/Firefox/Edge was not possible in this environment, so all browser behavior checks remain **unverified** until manual browser runs are completed.
+
+### Known Unverified Areas / Caveats
+- Final visual parity (tile alignment, text rasterization, sprite interpolation) across Chrome/Firefox/Edge is not confirmed.
+- Real-device touch behavior (mobile Safari/Android Chrome) is not validated.
+- Audio playback initiation behavior remains browser-policy-dependent despite unlock mitigation.
+- No browser-specific branches were introduced; behavior relies on standards-based fallbacks and guards.
+
+### Regression Risk Assessment
+- Existing Node test suite remains green after changes (`npm test` PASS).
+- No syntax/API paths were introduced that are expected to break the primary Chrome execution path from a code perspective.
+- Runtime play-flow regression checks remain unverified without actual browser execution.

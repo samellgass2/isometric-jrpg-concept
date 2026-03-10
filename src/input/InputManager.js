@@ -1,4 +1,8 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
+import {
+  getNormalizedPointerWorldPosition,
+  shouldProcessPointerDown,
+} from "../platform/browserCompat.js";
 
 export const InputActions = Object.freeze({
   MOVE_UP: "MOVE_UP",
@@ -158,12 +162,17 @@ class InputManager {
     }
 
     this.pointerListener = (pointer) => {
+      if (!shouldProcessPointerDown(pointer)) {
+        return;
+      }
+
       if (!this.enabledActions.has(InputActions.SELECT_TILE)) {
         return;
       }
 
+      const worldPoint = getNormalizedPointerWorldPosition(this.scene, pointer);
       const tile = this.tileResolver
-        ? this.tileResolver(pointer.worldX, pointer.worldY, pointer)
+        ? this.tileResolver(worldPoint?.x ?? pointer.worldX, worldPoint?.y ?? pointer.worldY, pointer)
         : { tileX: null, tileY: null };
 
       this.emitAction(InputActions.SELECT_TILE, {

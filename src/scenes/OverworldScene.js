@@ -219,7 +219,7 @@ class OverworldScene extends Phaser.Scene {
     this.playerStats.maxHp = Math.max(1, Math.floor(maxHp));
     this.playerStats.hp = Phaser.Math.Clamp(Math.floor(hp), 0, this.playerStats.maxHp);
 
-    this.hudOverlay = new HUDOverlay(this, { x: 790, y: 12, width: 250, depth: UI_DEPTH + 20 });
+    this.hudOverlay = new HUDOverlay(this, { y: 12, width: 250, depth: UI_DEPTH + 20 });
     this.hudOverlay.create();
     this.syncHudOverlay(true);
 

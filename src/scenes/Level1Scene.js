@@ -11,6 +11,10 @@ import {
   normalizePlayerProgressState,
 } from "../state/playerProgress.js";
 import { loadProgress } from "../persistence/saveSystem.js";
+import {
+  getNormalizedPointerWorldPosition,
+  shouldProcessPointerDown,
+} from "../platform/browserCompat.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 14;
@@ -290,11 +294,18 @@ class Level1Scene extends Phaser.Scene {
     }
 
     this.pointerDownHandler = (pointer) => {
+      if (!shouldProcessPointerDown(pointer)) {
+        return;
+      }
+
       if (this.isReturning || !this.player) {
         return;
       }
 
-      const targetTile = worldToTile(pointer.worldX, pointer.worldY);
+      const worldPoint = getNormalizedPointerWorldPosition(this, pointer);
+      const targetTile = worldPoint
+        ? worldToTile(worldPoint.x, worldPoint.y)
+        : worldToTile(pointer.worldX, pointer.worldY);
       this.pendingPathRequest = { x: targetTile.x, y: targetTile.y };
     };
 

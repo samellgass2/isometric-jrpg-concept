@@ -409,7 +409,7 @@ class BattleScene extends Phaser.Scene {
   }
 
   createHudOverlay() {
-    this.hudOverlay = new HUDOverlay(this, { x: 790, y: 12, width: 260, depth: UI_DEPTH + 25 });
+    this.hudOverlay = new HUDOverlay(this, { y: 12, width: 260, depth: UI_DEPTH + 25 });
     this.hudOverlay.create();
     this.syncHudOverlay();
 
