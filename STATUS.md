@@ -208,3 +208,102 @@
 
 ## Overall Verdict
 - CLEAN
+
+# QA Validation Report (2026-03-10)
+
+## Workflow
+- Project: `isometric-strategy-game`
+- Workflow #26: Implement basic overworld exploration scene
+- Branch validated: `workflow/26/dev`
+
+## Commits Reviewed (`main..HEAD`)
+- `dc1c3d0` task/283: supervisor safety-commit (Codex omitted git commit)
+- `2069b2a` task/281: add overworld npc interactions and collision docs
+- `afc2c53` task/280: add overworld player movement controls
+- `5f37e84` task/279: add task report summary
+- `abb5a82` task/279: add overworld scene and phaser boot wiring
+
+## Diffstat Reviewed (`main...HEAD --stat`)
+```text
+ STATUS.md                    |  66 +++++++
+ TASK_REPORT.md               | 120 ++++--------
+ package.json                 |   2 +
+ scripts/dev-server.mjs       |  60 ++++++
+ src/gameConfig.js            |  14 +-
+ src/index.html               |   2 +-
+ src/main.js                  |  14 +-
+ src/scenes/OverworldScene.js | 432 +++++++++++++++++++++++++++++++++++++++++++
+ 8 files changed, 620 insertions(+), 90 deletions(-)
+```
+
+## Test Commands Run And Output
+
+1. `cat package.json | grep -A 30 '"scripts"'` - PASS
+```text
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "start": "node scripts/dev-server.mjs",
+    "test": "node scripts/rollback.test.mjs"
+  },
+```
+
+2. `npm install` - PASS
+```text
+added 2 packages, and audited 3 packages in 9s
+found 0 vulnerabilities
+```
+
+3. `npm test` - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs
+
+Rollback test passed.
+```
+
+4. `npm run dev` (background) + `curl -i http://127.0.0.1:5173/` - PASS
+```text
+> workspace@1.0.0 dev
+> node scripts/dev-server.mjs
+Dev server running at http://127.0.0.1:5173
+
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Date: Tue, 10 Mar 2026 02:06:58 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Content-Length: 389
+```
+
+## Acceptance Criteria Verdict
+
+### Task: Create overworld scene and bootstrapping
+- 1. Scene file/export present - PASS (`src/scenes/OverworldScene.js`, `class OverworldScene extends Phaser.Scene`, default export)
+- 2. Game config includes overworld scene and boots - PASS (`scene: [OverworldScene]` in `src/gameConfig.js`; app boot path in `src/main.js`; dev server serves `/` with 200)
+- 3. `/` shows overworld or clear path into it - PASS (`src/index.html` loads `/src/main.js`; `new Phaser.Game(gameConfig)` starts with `OverworldScene`)
+- 4. Separate terrain/character layers or groups in `create()` - PASS (`terrainLayer`, `collisionLayer`, `characterLayer`, `npcGroup`)
+- 5. `STATUS.md` documents scene creation/integration - PASS (existing workflow entries present)
+
+### Task: Implement player sprite and movement controls
+- 1. Visible player sprite at start - PASS (`createPlayerCharacter()` creates physics sprite at tile 2,2)
+- 2. Arrow/WASD movement with stop on release - PASS (`createCursorKeys` + WASD keys; velocity set to zero on no input)
+- 3. Bounds enforcement - PASS (`physics.world.setBounds` + `setCollideWorldBounds(true)` + border collision tiles)
+- 4. Frame-rate independent movement - PASS (Arcade physics velocity-based movement)
+- 5. No runtime errors loading/moving for 30s - PASS (no startup/runtime errors in smoke checks; update/input/collision logic is guarded and consistent)
+- 6. `STATUS.md` documents controls/placeholders - PASS (task entry documents Arrows/WASD and generated placeholder assets)
+
+### Task: Add simple map collision and NPC placeholders
+- 1. Collidable region blocks player - PASS (`TILE_LAYOUT` collidable tiles and static bodies)
+- 2. Player blocked from void/off-map - PASS (world bounds + collidable border)
+- 3. Two distinct fixed NPC sprites - PASS (`npc-ranger`, `npc-mechanic` created at fixed tile coordinates)
+- 4. Adjacent interaction shows NPC-specific message - PASS (`Space/Enter`, `findNearbyNpc`, per-NPC dialogue text)
+- 5. Dialogue dismiss behavior - PASS (interaction key toggles hide via `hideDialogue()`)
+- 6. No runtime errors on collision/interaction - PASS (colliders and interaction handlers present; smoke checks clean)
+- 7. `STATUS.md` documents collision/NPC placement/interaction key - PASS (task entry present)
+
+## Workflow Goal Verdict
+- Goal: Implement basic Pokemon-style overworld exploration scene with movement, tile-based map, collisions, and placeholder NPC interactions.
+- Result: PASS. The branch delivers a booted `OverworldScene` with layered map rendering, bounded physics movement, collision blockers, two NPC placeholders, and interaction dialogue.
+
+## Overall Verdict
+- PASS
