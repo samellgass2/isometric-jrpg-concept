@@ -184,6 +184,30 @@
 ## Overall Verdict
 - PASS
 
+---
+
+## Task 321 - Core UI, HUD, and Input Abstraction Layer
+
+### Summary
+- Battle input in `src/scenes/BattleScene.js` is now routed through `InputManager` high-level actions instead of direct battle key listeners.
+- The battle scene subscribes to `InputActions.SELECT_TILE`, `MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`, `CONFIRM`, and `CANCEL`.
+- Keyboard and pointer/touch now share the same action pipeline:
+  - `SELECT_TILE`: moves the battle cursor to a tile and triggers confirm-style selection for pointer/touch.
+  - `MOVE_*`: moves the tile cursor, or cycles command options when in command mode.
+  - `CONFIRM`: selects a unit, opens/accepts command mode, and confirms movement/attack targets.
+  - `CANCEL`: exits pending target mode (move/attack), backs out of command mode, or clears selection.
+
+### Battle Behaviors Now Driven By InputManager
+- Unit selection on friendly tiles.
+- Tile cursor navigation across the battle grid.
+- Command selection (move/attack/end-turn) without raw keycode checks in battle logic.
+- Move target confirmation and attack target confirmation.
+- Cancel/back behavior for pending move/attack targeting and command state.
+
+### Refactor Notes
+- Removed direct battle-scene Phaser keyboard listeners (`keydown-M`, `keydown-A`, `keydown-E`, `keydown-H`) from battle logic.
+- Any control remapping done via `InputManager` bindings now propagates to battle behavior without editing battle scene input rules.
+
 # QA Summary (2026-03-03)
 
 ## Tests

@@ -1,31 +1,31 @@
-# TASK 320 Report - Wire input layer into overworld controls
+# TASK 321 Report - Connect input abstraction to battle actions
 
 ## Summary
-Refactored overworld controls to rely on `InputManager` action callbacks and removed the remaining direct sign pointer listeners from `OverworldScene`.
+Integrated battle controls in `BattleScene` with `InputManager` high-level actions and removed direct battle key listeners.
 
 ## Changes made
-- Updated `src/scenes/OverworldScene.js`:
-  - Removed direct per-sign pointer listeners (`sign.on("pointerdown", ...)`) and associated handler method.
-  - Kept movement driven by `InputManager` `MOVE_*` action state polling.
-  - Kept keyboard interaction flow driven by `CONFIRM` / `CANCEL` actions.
-  - Preserved pointer/touch movement through `SELECT_TILE` action handling.
-  - Added tile-target interaction routing through `SELECT_TILE` callbacks:
-    - Nearby sign tile selection opens sign prompt.
-    - Selecting the same nearby sign tile again while prompt is open confirms travel.
-    - Nearby NPC tile selection opens NPC dialogue.
-  - Updated sign prompt text to reflect current abstraction-driven controls.
+- Updated `src/scenes/BattleScene.js`:
+  - Kept battle input subscription through `InputManager` action events.
+  - Removed direct Phaser keyboard listeners (`keydown-M`, `keydown-A`, `keydown-E`, `keydown-H`) from battle logic.
+  - Added action-driven cursor state for tile navigation (`MOVE_UP`, `MOVE_DOWN`, `MOVE_LEFT`, `MOVE_RIGHT`).
+  - Routed pointer/touch tile taps (`SELECT_TILE`) to the same confirm path used by keyboard.
+  - Added command mode and command selection (`move`, `attack`, `end-turn`) driven by `CONFIRM` and `MOVE_*`.
+  - Added target confirmation for move/attack modes via `CONFIRM`.
+  - Added cancel/back behavior via `CANCEL` for target mode and command mode.
+  - Updated battle HUD text so displayed controls match the InputManager-based actions.
 - Updated `STATUS.md`:
-  - Added TASK 320 entry documenting the integration, validation notes, and known edge cases.
+  - Added TASK 321 section documenting the battle input integration and supported action mappings.
 
 ## Acceptance test check
-1. Overworld imports/uses `InputManager`: PASS.
-2. Overworld movement works via keyboard and pointer/touch abstraction semantics (`MOVE_*` + `SELECT_TILE`): PASS.
-3. Interaction no longer depends on scene keycodes/raw pointer listeners; keyboard uses `CONFIRM` and tile interactions come through `InputManager` action callbacks: PASS.
-4. Overworld contains no direct Phaser keyboard keycode usage or raw pointer event listeners for input logic: PASS.
-5. Input binding changes remain isolated in `InputManager`; overworld logic remains unchanged for rebinds: PASS.
-6. `STATUS.md` updated with overworld InputManager integration and limitations: PASS.
+1. Primary battle scene imports/uses `InputManager`: PASS.
+2. Unit/tile selection supports pointer/touch (`SELECT_TILE`) and keyboard cursor navigation (`MOVE_*`) through InputManager: PASS.
+3. Confirm and cancel behavior uses `CONFIRM` / `CANCEL` in battle logic without raw key codes: PASS.
+4. Previous direct battle input listeners were removed from battle code: PASS.
+5. Control mapping remains binding-driven from `InputManager` action bindings: PASS.
+6. `STATUS.md` updated with integration summary and supported battle actions: PASS.
 
 ## Validation run
+- `npm install` -> PASS
 - `npm test` -> PASS
   - Rollback test passed.
   - Dog conditional behavior test passed.
