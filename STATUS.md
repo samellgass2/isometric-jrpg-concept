@@ -1840,3 +1840,39 @@ Executed on: **2026-03-10T23:27:38Z (UTC)** in the available Chrome-family runti
    - `brave-browser --version` - FAIL (`command not found`)
 4. Executed runtime matrix harness (Playwright Chromium):
    - `node scripts/dev-server.mjs` + Python Playwright (`p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-gpu'])`) - PASS (with noted level-route discrepancy)
+
+## Workflow #36 - Task #353 Input Consistency Validation Addendum (2026-03-10 UTC)
+
+### Scope
+- Goal: provide concrete runtime evidence for mouse/keyboard/touch input consistency checks and record browser-specific execution differences with mitigation.
+- Environment constraint for this run: only Playwright Chromium runtime is available in-container.
+
+### Browser Execution Matrix (Task #353)
+| Browser target | Execution result | Evidence |
+| --- | --- | --- |
+| Google Chrome (required) | **NOT EXECUTED** | `p.chromium.launch(channel='chrome', ...)` failed: `Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome`. |
+| Mozilla Firefox (required) | **NOT EXECUTED** | `p.firefox.launch(headless=True)` failed: Firefox executable missing (`.../ms-playwright/firefox-1509/firefox/firefox`). |
+| Additional Chromium browser (executed) | **PASS (Playwright Chromium 145.0.7632.6)** | Input checks completed with no runtime `pageerror`. |
+
+### Executed Input Checks (Playwright Chromium 145.0.7632.6)
+- Overworld keyboard movement:
+  - Start position: `(2,2)`
+  - After `ArrowRight`: `(3,2)` -> **PASS**
+- Overworld mouse/pointer movement:
+  - After canvas click pathing: `(5,2)` -> **PASS**
+- Overworld touch/pointer movement (mobile touch context):
+  - Start position: `(2,2)`
+  - After touchscreen tap pathing: `(4,2)` -> **PASS**
+- Battle input burst (`T` -> arrows + `Enter`/`Space`/`Escape` + mouse click):
+  - `pageerror_count = 0` -> **PASS**
+
+### Input Parity Status Update
+- Mouse/keyboard/touch consistency: **VERIFIED in executed Chromium runtime** (Playwright Chromium `145.0.7632.6`) for overworld movement and battle burst interactions.
+- Chrome and Firefox parity: **UNVERIFIED due missing browser runtimes in this environment** (recorded above with concrete failure evidence).
+
+### Browser Difference Record + Mitigation
+- Difference observed:
+  - Chrome and Firefox validations could not run because binaries are absent in this container.
+- Mitigation:
+  - Use the same Playwright harness flow in a CI/job image with Chrome Stable and Firefox installed.
+  - Re-run the same four checks (keyboard overworld movement, mouse pathing, touch pathing, battle burst) and append results to this matrix without changing gameplay logic.
