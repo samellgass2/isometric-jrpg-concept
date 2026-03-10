@@ -59,6 +59,17 @@ const LEVEL_SIGN_DEFINITIONS = [
   },
 ];
 
+const LEVEL_SCENE_BY_SIGN_ID = {
+  "sign-level-1": "Level1Scene",
+  "sign-level-2": "Level2Scene",
+};
+
+const OVERWORLD_SPAWN_BY_ID = {
+  default: { x: 2, y: 2 },
+  "level-1-return": { x: 3, y: 9 },
+  "level-2-return": { x: 12, y: 3 },
+};
+
 const TILE_LAYOUT = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
@@ -115,9 +126,10 @@ class OverworldScene extends Phaser.Scene {
     this.pointerPathTiles = [];
     this.npcTileSet = new Set();
     this.signTileSet = new Set();
+    this.isTransitioning = false;
   }
 
-  create() {
+  create(data) {
     this.cameras.main.setBackgroundColor("#1f2228");
     this.physics.world.setBounds(0, 0, MAP_PIXEL_WIDTH, MAP_PIXEL_HEIGHT);
     this.cameras.main.setBounds(0, 0, MAP_PIXEL_WIDTH, MAP_PIXEL_HEIGHT);
@@ -132,7 +144,8 @@ class OverworldScene extends Phaser.Scene {
     this.renderTerrain();
     this.renderCollisionOverlay();
     this.createCollisionBodies();
-    this.createPlayerCharacter();
+    const spawnTile = this.resolveSpawnTile(data?.spawnPointId);
+    this.createPlayerCharacter(spawnTile);
     this.createNpcPlaceholders();
     this.createLevelSigns();
     this.setupMovementInput();
@@ -298,11 +311,15 @@ class OverworldScene extends Phaser.Scene {
     });
   }
 
-  createPlayerCharacter() {
+  resolveSpawnTile(spawnPointId) {
+    return OVERWORLD_SPAWN_BY_ID[spawnPointId] ?? OVERWORLD_SPAWN_BY_ID.default;
+  }
+
+  createPlayerCharacter(spawnTile) {
     this.createPlayerTextures();
     this.createPlayerAnimations();
 
-    const playerStart = tileToWorld(2, 2);
+    const playerStart = tileToWorld(spawnTile.x, spawnTile.y);
     this.player = this.physics.add.sprite(playerStart.x, playerStart.y, PLAYER_TEXTURES.idle);
     this.player.setDepth(10);
     this.player.setSize(16, 18);
@@ -596,24 +613,42 @@ class OverworldScene extends Phaser.Scene {
     this.activeDialogueSignId = sign.getData("signId") || null;
     this.awaitingSignEnterChoice = true;
     this.dialogueText.setText(
-      `${signPrompt}\nPress Enter to choose ${signLabel}, or Space to close.`
+      `${signPrompt}\nPress Enter (or click sign again) to travel to ${signLabel}, or Space to close.`
     );
-    this.dialogueHintText.setText("Enter: select level  Space: close");
+    this.dialogueHintText.setText("Enter/click sign: travel  Space: close");
     this.dialogueBox.setVisible(true);
     this.dialogueText.setVisible(true);
     this.dialogueHintText.setVisible(true);
+  }
+
+  transitionToLevel(sign) {
+    if (!sign || this.isTransitioning) {
+      return;
+    }
+
+    const signId = sign.getData("signId");
+    const sceneKey = LEVEL_SCENE_BY_SIGN_ID[signId];
+    if (!sceneKey) {
+      this.dialogueText.setText("This sign is not mapped to a playable level yet.");
+      this.dialogueHintText.setText("Press Space or Enter to close");
+      this.awaitingSignEnterChoice = false;
+      return;
+    }
+
+    this.isTransitioning = true;
+    this.clearPointerPath();
+    this.hideDialogue();
+    this.cameras.main.fadeOut(160, 0, 0, 0);
+    this.time.delayedCall(170, () => {
+      this.scene.start(sceneKey);
+    });
   }
 
   confirmLevelSignSelection() {
     const sign = this.levelSigns.find(
       (entity) => entity.getData("signId") === this.activeDialogueSignId
     );
-    const signLabel = sign?.getData("label") || "this level";
-    this.awaitingSignEnterChoice = false;
-    this.dialogueText.setText(
-      `${signLabel} selected.\nLevel loading is not wired yet, but this sign marks the entry point.`
-    );
-    this.dialogueHintText.setText("Press Space or Enter to close");
+    this.transitionToLevel(sign);
   }
 
   hideDialogue() {
@@ -626,7 +661,7 @@ class OverworldScene extends Phaser.Scene {
   }
 
   handleSignPointerInteraction(sign, event) {
-    if (!this.player || this.dialogueBox?.visible) {
+    if (!this.player || this.isTransitioning) {
       return;
     }
 
@@ -638,11 +673,25 @@ class OverworldScene extends Phaser.Scene {
     if (event?.stopPropagation) {
       event.stopPropagation();
     }
+
+    if (
+      this.dialogueBox?.visible &&
+      this.awaitingSignEnterChoice &&
+      this.activeDialogueSignId === sign.getData("signId")
+    ) {
+      this.transitionToLevel(sign);
+      return;
+    }
+
     this.clearPointerPath();
     this.showLevelSignPrompt(sign);
   }
 
   handleInteractionInput() {
+    if (this.isTransitioning) {
+      return;
+    }
+
     const spacePressed = Phaser.Input.Keyboard.JustDown(this.interactKeys.space);
     const enterPressed = Phaser.Input.Keyboard.JustDown(this.interactKeys.enter);
 
@@ -744,7 +793,7 @@ class OverworldScene extends Phaser.Scene {
   }
 
   update() {
-    if (!this.player || !this.player.body) {
+    if (!this.player || !this.player.body || this.isTransitioning) {
       return;
     }
 

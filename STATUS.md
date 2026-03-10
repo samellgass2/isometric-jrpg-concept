@@ -443,3 +443,40 @@ Dev server running at http://127.0.0.1:5173
 
 ## Overall Verdict
 - PASS
+
+## TASK 311 - Wire sign interactions to level loading flow
+
+### What changed
+- Added dedicated playable level scenes:
+  - `src/scenes/Level1Scene.js` (`Level1Scene`)
+  - `src/scenes/Level2Scene.js` (`Level2Scene`)
+- Registered both scenes in `src/gameConfig.js` scene list.
+- Updated `src/scenes/OverworldScene.js` sign interaction flow:
+  - `sign-level-1` now starts `Level1Scene`
+  - `sign-level-2` now starts `Level2Scene`
+  - Enter key on sign prompt transitions to the mapped scene.
+  - Mouse flow also works by clicking a sign once to open the prompt and clicking the same sign again to travel.
+
+### Level transition structure
+- Overworld sign mapping (`LEVEL_SCENE_BY_SIGN_ID`):
+  - `sign-level-1 -> Level1Scene`
+  - `sign-level-2 -> Level2Scene`
+- Return spawn mapping (`OVERWORLD_SPAWN_BY_ID`):
+  - default spawn: `(2,2)`
+  - return from Level 1: `spawnPointId = "level-1-return"` -> `(3,9)`
+  - return from Level 2: `spawnPointId = "level-2-return"` -> `(12,3)`
+- `OverworldScene.create(data)` now reads `data.spawnPointId` and places the player at the mapped tile.
+
+### Return flow from levels
+- `Level1Scene` and `Level2Scene` are visually/layout distinct from overworld and include their own traversal grids.
+- In both level scenes, players can return to overworld by:
+  - pressing `Esc` from anywhere, or
+  - interacting (`Space`/`Enter`) near the exit marker.
+- Each level uses `scene.start("OverworldScene", { spawnPointId: ... })` for Phaser-managed return transitions.
+
+### Controls summary
+- Overworld level entry:
+  - Keyboard: approach sign, press `Space`/`Enter`, then `Enter` to travel.
+  - Mouse: click sign to open prompt, click same sign again to travel.
+- Level exit:
+  - `Esc` immediate return, or interact near the exit marker.
