@@ -1,41 +1,44 @@
 # TASK REPORT
 
 ## Task
-- TASK_ID: 308
-- RUN_ID: 524
-- Title: Implement main menu and level select UI
+- TASK_ID: 309
+- RUN_ID: 528
+- Title: Implement overworld map with movement controls
 
 ## Summary of Changes
-- Added `src/scenes/MainMenuScene.js` and registered it with scene key `MainMenuScene`.
-- Implemented a Phaser main menu UI with:
-  - game title text,
-  - a clearly labeled `Start Game` control (mouse click or Enter/Space),
-  - visible level availability labels: `Level 1` and `Level 2`.
-- Wired transition flow from menu to overworld:
-  - `MainMenuScene.startGame()` fades out and starts `OverworldScene`.
-- Updated `src/gameConfig.js` boot scene registration:
-  - imports `MainMenuScene`,
-  - updates scene order to `scene: [MainMenuScene, BattleScene, OverworldScene]` so the menu launches first.
-- Updated `STATUS.md` with a new TASK_ID=308 entry describing menu implementation and overworld entry flow.
+- Extended `src/scenes/OverworldScene.js` (dedicated overworld file) with click-to-move support in addition to existing keyboard controls.
+- Added tile/path helpers and pointer input handling:
+  - mouse click converts world position to tile,
+  - BFS pathfinding computes a cardinal route over walkable tiles,
+  - player follows waypoints via Arcade velocity until destination.
+- Preserved and clarified movement handoff behavior:
+  - Arrow keys/WASD still provide immediate manual movement,
+  - keyboard input cancels active click pathing.
+- Enforced map constraints for both movement modes:
+  - world bounds + collision tiles still block leaving map,
+  - click pathfinding treats collision tiles and NPC-occupied tiles as non-walkable.
+- Updated scene HUD instructions to include mouse movement controls.
+- Updated `STATUS.md` with TASK 309 implementation notes, controls, and technical limitations (placeholder tiles/sprites, no external tilemap asset yet).
 
 ## Verification
 - `npm test` - PASS
   - `Rollback test passed.`
   - `Dog conditional behavior test passed.`
   - `Battle grid stats test passed.`
-- `npm run dev` startup smoke - PASS
-  - Dev server reported startup and served `/` with HTTP `200`.
+- Dev server smoke test - PASS
+  - Started `node scripts/dev-server.mjs`,
+  - `curl -I http://127.0.0.1:5173/` returned `HTTP/1.1 200 OK`.
 
 ## Acceptance Criteria Mapping
-1. Main menu appears first:
-   - `gameConfig.scene` now begins with `MainMenuScene`.
-2. Menu displays title and `Start Game`:
-   - `MainMenuScene.create()` renders title text and button/label.
-3. Selecting `Start Game` transitions to overworld:
-   - `startGame()` triggers `this.scene.start("OverworldScene")`.
-4. Level labels represented and named consistently:
-   - Menu includes `Level 1` and `Level 2` labels.
-5. Scene imported/registered centrally:
-   - `src/gameConfig.js` imports `MainMenuScene` and adds it to scene list.
-6. Status document updated:
-   - `STATUS.md` includes TASK_ID=308 implementation entry.
+1. Main menu `Start Game` transitions to overworld with visible player:
+   - Existing `MainMenuScene.startGame()` still starts `OverworldScene`; player sprite creation unchanged in overworld.
+2. Keyboard movement works without errors:
+   - Arrow/WASD movement path retained (`getMovementVector` + physics velocity).
+3. Mouse click movement available:
+   - Implemented pointer click pathing (`setupPointerInput`, `findTilePath`, `moveAlongPointerPath`).
+4. Player cannot leave intended map:
+   - Physics world bounds/colliders remain; click path also bounded by `isInBounds` + walkability checks.
+5. Overworld scene remains dedicated/exported/registered:
+   - `src/scenes/OverworldScene.js` continues exporting `OverworldScene`; `src/gameConfig.js` scene graph already includes it.
+6. Status documentation updated:
+   - `STATUS.md` includes TASK_ID=309 entry describing controls and map/boundary notes.
