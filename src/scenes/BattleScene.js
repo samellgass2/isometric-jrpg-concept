@@ -19,6 +19,11 @@ import { decideDroneAction } from "../battle/ai/droneDecisionController.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
 import {
+  ensureSharedTextures,
+  isSharedTextureSetLoaded,
+  SHARED_TEXTURE_KEYS,
+} from "../graphics/sharedTextures.js";
+import {
   resolveKeyBattleOutcomeFlagForEncounter,
   normalizePlayerProgressState,
   recordBattleOutcome,
@@ -83,9 +88,14 @@ class BattleScene extends Phaser.Scene {
     this.loadedProgress = null;
     this.hasPersistedProgressSnapshot = false;
     this.encounterFriendlyTemplateIds = [];
+    this.highlightPool = [];
   }
 
   create(data = {}) {
+    if (!isSharedTextureSetLoaded(this)) {
+      ensureSharedTextures(this);
+    }
+
     this.loadedProgress = this.getProgressState();
     this.hasPersistedProgressSnapshot = this.hasPersistedProgressData();
     const encounterData = this.resolveEncounterData(data);
@@ -119,13 +129,11 @@ class BattleScene extends Phaser.Scene {
     this.gridLayer = this.add.layer();
     for (let y = 0; y < GRID_HEIGHT; y += 1) {
       for (let x = 0; x < GRID_WIDTH; x += 1) {
-        const baseColor = (x + y) % 2 === 0 ? 0x314458 : 0x2a3a4c;
-        const tile = this.add.rectangle(
+        const tileTexture = (x + y) % 2 === 0 ? SHARED_TEXTURE_KEYS.BATTLE_GRID_A : SHARED_TEXTURE_KEYS.BATTLE_GRID_B;
+        const tile = this.add.image(
           x * TILE_SIZE + TILE_SIZE / 2,
           y * TILE_SIZE + TILE_SIZE / 2,
-          TILE_SIZE - 2,
-          TILE_SIZE - 2,
-          baseColor
+          tileTexture
         );
         this.gridLayer.add(tile);
       }
@@ -136,14 +144,11 @@ class BattleScene extends Phaser.Scene {
     this.obstacleLayer = this.add.layer();
     this.encounterObstacles.forEach(({ x, y }) => {
       this.obstacleSet.add(keyFor(x, y));
-      const block = this.add.rectangle(
+      const block = this.add.image(
         x * TILE_SIZE + TILE_SIZE / 2,
         y * TILE_SIZE + TILE_SIZE / 2,
-        TILE_SIZE - 8,
-        TILE_SIZE - 8,
-        0x6f4f3b
+        SHARED_TEXTURE_KEYS.BATTLE_OBSTACLE
       );
-      block.setStrokeStyle(2, 0xb08a66, 0.9);
       this.obstacleLayer.add(block);
     });
   }
@@ -821,7 +826,10 @@ class BattleScene extends Phaser.Scene {
   }
 
   clearHighlights() {
-    this.tileHighlights.forEach((highlight) => highlight.destroy());
+    this.tileHighlights.forEach((highlight) => {
+      highlight.setVisible(false);
+      highlight.active = false;
+    });
     this.tileHighlights = [];
     this.highlightTileData = [];
   }
@@ -833,15 +841,22 @@ class BattleScene extends Phaser.Scene {
 
   appendHighlights(tiles, color, alpha) {
     tiles.forEach(({ x, y }) => {
-      const rect = this.add.rectangle(
-        x * TILE_SIZE + TILE_SIZE / 2,
-        y * TILE_SIZE + TILE_SIZE / 2,
-        TILE_SIZE - 10,
-        TILE_SIZE - 10,
-        color,
-        alpha
-      );
-      rect.setStrokeStyle(2, color, 0.9);
+      const highlight = this.highlightPool.find((entity) => !entity.active) ?? null;
+      const rect =
+        highlight ??
+        this.add
+          .image(0, 0, SHARED_TEXTURE_KEYS.BATTLE_HIGHLIGHT)
+          .setDepth(5);
+
+      if (!highlight) {
+        this.highlightPool.push(rect);
+      }
+
+      rect.active = true;
+      rect.setVisible(true);
+      rect.setPosition(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
+      rect.setTint(color);
+      rect.setAlpha(alpha);
       this.tileHighlights.push(rect);
     });
   }
@@ -857,7 +872,7 @@ class BattleScene extends Phaser.Scene {
         const occupant = this.getUnitAt(x, y);
         return occupant && occupant.id !== unit.id;
       },
-    }).map(({ x, y }) => ({ x, y }));
+    });
   }
 
   moveUnit(unit, tileX, tileY) {

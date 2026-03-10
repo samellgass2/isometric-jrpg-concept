@@ -2,6 +2,14 @@ import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
 import {
+  ensureSharedAnimations,
+  ensureSharedTextures,
+  isSharedTextureSetLoaded,
+  makeReusedVector2,
+  OVERWORLD_ACTOR_FRAMES,
+  SHARED_TEXTURE_KEYS,
+} from "../graphics/sharedTextures.js";
+import {
   getBattleOutcomeFlag,
   KEY_BATTLE_OUTCOME_FLAGS,
   normalizePlayerProgressState,
@@ -20,19 +28,11 @@ const UI_DEPTH = 40;
 const ARRIVAL_THRESHOLD = 4;
 const SIGN_INTERACTION_DISTANCE = TILE_SIZE;
 
-const PLAYER_TEXTURES = {
-  idle: "player-idle",
-  walkA: "player-walk-a",
-  walkB: "player-walk-b",
-};
-
 const NPC_DEFINITIONS = [
   {
     id: "npc-ranger",
     name: "Ranger Sol",
-    texture: "npc-ranger",
-    bodyColor: 0x3f8f7d,
-    accentColor: 0xc5f7d9,
+    textureFrame: OVERWORLD_ACTOR_FRAMES.NPC_RANGER,
     tileX: 8,
     tileY: 4,
     dialogue: "Ranger Sol: Trails ahead are rough. Stay inside the marked paths.",
@@ -40,9 +40,7 @@ const NPC_DEFINITIONS = [
   {
     id: "npc-mechanic",
     name: "Mechanic Ivo",
-    texture: "npc-mechanic",
-    bodyColor: 0x9d6ac9,
-    accentColor: 0xffd58a,
+    textureFrame: OVERWORLD_ACTOR_FRAMES.NPC_MECHANIC,
     tileX: 11,
     tileY: 8,
     dialogue: "Mechanic Ivo: Placeholder line... my workshop will open in a later build.",
@@ -53,7 +51,7 @@ const LEVEL_SIGN_DEFINITIONS = [
   {
     id: "sign-level-1",
     label: "Level 1",
-    texture: "sign-level-1",
+    textureFrame: OVERWORLD_ACTOR_FRAMES.SIGN_LEVEL_1,
     tileX: 4,
     tileY: 9,
     prompt: "Level 1: Training Grounds",
@@ -61,7 +59,7 @@ const LEVEL_SIGN_DEFINITIONS = [
   {
     id: "sign-level-2",
     label: "Level 2",
-    texture: "sign-level-2",
+    textureFrame: OVERWORLD_ACTOR_FRAMES.SIGN_LEVEL_2,
     tileX: 13,
     tileY: 3,
     prompt: "Level 2: Canyon Crossing",
@@ -132,8 +130,15 @@ class OverworldScene extends Phaser.Scene {
     this.awaitingSignEnterChoice = false;
     this.pointerPath = [];
     this.pointerPathTiles = [];
+    this.pointerPathIndex = 0;
     this.npcTileSet = new Set();
     this.signTileSet = new Set();
+    this.collisionTileCoords = [];
+    this.cullableWorldObjects = [];
+    this.cullPadding = TILE_SIZE * 2;
+    this.nextCullUpdateAt = 0;
+    this.reusableMovementVector = { x: 0, y: 0 };
+    this.reusableDirectionVector = makeReusedVector2();
     this.isTransitioning = false;
     this.hudOverlay = null;
     this.hudLastKey = "";
@@ -144,6 +149,11 @@ class OverworldScene extends Phaser.Scene {
   }
 
   create(data) {
+    if (!isSharedTextureSetLoaded(this)) {
+      ensureSharedTextures(this);
+    }
+    ensureSharedAnimations(this);
+
     const progress = this.getProgressState();
     this.progressSnapshot = progress;
     const requestedSpawnPointId =
@@ -170,6 +180,7 @@ class OverworldScene extends Phaser.Scene {
     this.setupInputManager();
     this.createDialogueUi();
     this.createHudOverlay(data);
+    this.updateCulledObjectVisibility(true);
 
     this.add
       .text(16, 16, "Overworld Prototype", {
@@ -242,141 +253,52 @@ class OverworldScene extends Phaser.Scene {
     this.hudLastKey = "";
   }
 
-  createPlayerTextures() {
-    if (
-      this.textures.exists(PLAYER_TEXTURES.idle) &&
-      this.textures.exists(PLAYER_TEXTURES.walkA) &&
-      this.textures.exists(PLAYER_TEXTURES.walkB)
-    ) {
-      return;
-    }
-
-    const drawFrame = (textureKey, bodyColor, accentColor) => {
-      const frame = this.make.graphics({ x: 0, y: 0, add: false });
-      frame.fillStyle(0x1f1f2b, 1);
-      frame.fillRect(8, 1, 8, 8);
-      frame.fillStyle(bodyColor, 1);
-      frame.fillRoundedRect(4, 10, 16, 16, 3);
-      frame.fillStyle(accentColor, 1);
-      frame.fillRect(6, 13, 12, 2);
-      frame.fillStyle(0x111111, 1);
-      frame.fillRect(6, 28, 5, 3);
-      frame.fillRect(13, 28, 5, 3);
-      frame.generateTexture(textureKey, 24, 32);
-      frame.destroy();
-    };
-
-    drawFrame(PLAYER_TEXTURES.idle, 0x2f71ff, 0x8cb3ff);
-    drawFrame(PLAYER_TEXTURES.walkA, 0x3c7cff, 0xa8c6ff);
-    drawFrame(PLAYER_TEXTURES.walkB, 0x2b66e0, 0x7ea8ff);
-  }
-
-  createPlayerAnimations() {
-    if (!this.anims.exists("player-idle")) {
-      this.anims.create({
-        key: "player-idle",
-        frames: [{ key: PLAYER_TEXTURES.idle }],
-        frameRate: 1,
-        repeat: -1,
-      });
-    }
-
-    if (!this.anims.exists("player-walk")) {
-      this.anims.create({
-        key: "player-walk",
-        frames: [
-          { key: PLAYER_TEXTURES.walkA },
-          { key: PLAYER_TEXTURES.walkB },
-          { key: PLAYER_TEXTURES.walkA },
-          { key: PLAYER_TEXTURES.idle },
-        ],
-        frameRate: 10,
-        repeat: -1,
-      });
-    }
-  }
-
-  createNpcTexture(textureKey, bodyColor, accentColor) {
-    if (this.textures.exists(textureKey)) {
-      return;
-    }
-
-    const frame = this.make.graphics({ x: 0, y: 0, add: false });
-    frame.fillStyle(0x1f1f2b, 1);
-    frame.fillRoundedRect(6, 0, 12, 10, 3);
-    frame.fillStyle(bodyColor, 1);
-    frame.fillRoundedRect(4, 10, 16, 16, 4);
-    frame.fillStyle(accentColor, 1);
-    frame.fillRect(6, 14, 12, 3);
-    frame.fillStyle(0x111111, 1);
-    frame.fillRect(6, 28, 5, 3);
-    frame.fillRect(13, 28, 5, 3);
-    frame.generateTexture(textureKey, 24, 32);
-    frame.destroy();
-  }
-
-  createSignTexture(textureKey, postColor, boardColor) {
-    if (this.textures.exists(textureKey)) {
-      return;
-    }
-
-    const frame = this.make.graphics({ x: 0, y: 0, add: false });
-    frame.fillStyle(postColor, 1);
-    frame.fillRect(10, 14, 4, 14);
-    frame.fillStyle(boardColor, 1);
-    frame.fillRoundedRect(2, 2, 20, 14, 3);
-    frame.fillStyle(0x1a1a1a, 0.25);
-    frame.fillRect(4, 6, 16, 2);
-    frame.fillRect(4, 10, 16, 2);
-    frame.generateTexture(textureKey, 24, 32);
-    frame.destroy();
-  }
-
   renderTerrain() {
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
         const tileType = TILE_LAYOUT[y][x];
-        const color = tileType === 1 ? 0x5a4b3d : 0x4c8f5e;
-
-        const tile = this.add.rectangle(
+        const textureKey =
+          tileType === 1 ? SHARED_TEXTURE_KEYS.OVERWORLD_TILE_WALL : SHARED_TEXTURE_KEYS.OVERWORLD_TILE_FLOOR;
+        const tile = this.add.image(
           x * TILE_SIZE + TILE_SIZE / 2,
           y * TILE_SIZE + TILE_SIZE / 2,
-          TILE_SIZE - 2,
-          TILE_SIZE - 2,
-          color
+          textureKey
         );
 
         this.terrainLayer.add(tile);
+        this.cullableWorldObjects.push(tile);
 
         if (tileType === 1) {
-          this.collisionTiles.add(`${x},${y}`);
+          const tileKey = keyForTile(x, y);
+          this.collisionTiles.add(tileKey);
+          this.collisionTileCoords.push({ x, y });
         }
       }
     }
   }
 
   renderCollisionOverlay() {
-    this.collisionTiles.forEach((key) => {
-      const [tileX, tileY] = key.split(",").map(Number);
-      const marker = this.add.rectangle(
-        tileX * TILE_SIZE + TILE_SIZE / 2,
-        tileY * TILE_SIZE + TILE_SIZE / 2,
-        TILE_SIZE - 10,
-        TILE_SIZE - 10,
-        0xcc3344,
-        0.25
+    this.collisionTileCoords.forEach(({ x, y }) => {
+      const marker = this.add.image(
+        x * TILE_SIZE + TILE_SIZE / 2,
+        y * TILE_SIZE + TILE_SIZE / 2,
+        SHARED_TEXTURE_KEYS.OVERWORLD_COLLISION_OVERLAY
       );
       this.collisionLayer.add(marker);
+      this.cullableWorldObjects.push(marker);
     });
   }
 
   createCollisionBodies() {
     this.collisionBodies = this.physics.add.staticGroup();
 
-    this.collisionTiles.forEach((key) => {
-      const [tileX, tileY] = key.split(",").map(Number);
-      const world = tileToWorld(tileX, tileY);
-      const blocker = this.add.zone(world.x, world.y, TILE_SIZE - 2, TILE_SIZE - 2);
+    this.collisionTileCoords.forEach(({ x, y }) => {
+      const blocker = this.add.zone(
+        x * TILE_SIZE + TILE_SIZE / 2,
+        y * TILE_SIZE + TILE_SIZE / 2,
+        TILE_SIZE - 2,
+        TILE_SIZE - 2
+      );
       this.physics.add.existing(blocker, true);
       this.collisionBodies.add(blocker);
     });
@@ -462,11 +384,13 @@ class OverworldScene extends Phaser.Scene {
   }
 
   createPlayerCharacter(spawnTile) {
-    this.createPlayerTextures();
-    this.createPlayerAnimations();
-
     const playerStart = tileToWorld(spawnTile.x, spawnTile.y);
-    this.player = this.physics.add.sprite(playerStart.x, playerStart.y, PLAYER_TEXTURES.idle);
+    this.player = this.physics.add.sprite(
+      playerStart.x,
+      playerStart.y,
+      SHARED_TEXTURE_KEYS.OVERWORLD_ACTORS_ATLAS,
+      OVERWORLD_ACTOR_FRAMES.PLAYER_IDLE
+    );
     this.player.setDepth(10);
     this.player.setSize(16, 18);
     this.player.setOffset(4, 12);
@@ -483,9 +407,13 @@ class OverworldScene extends Phaser.Scene {
 
   createNpcPlaceholders() {
     NPC_DEFINITIONS.forEach((npcConfig) => {
-      this.createNpcTexture(npcConfig.texture, npcConfig.bodyColor, npcConfig.accentColor);
       const world = tileToWorld(npcConfig.tileX, npcConfig.tileY);
-      const npc = this.npcGroup.create(world.x, world.y, npcConfig.texture);
+      const npc = this.npcGroup.create(
+        world.x,
+        world.y,
+        SHARED_TEXTURE_KEYS.OVERWORLD_ACTORS_ATLAS,
+        npcConfig.textureFrame
+      );
       npc.setDepth(9);
       npc.setDataEnabled();
       npc.setData("npcId", npcConfig.id);
@@ -493,6 +421,7 @@ class OverworldScene extends Phaser.Scene {
       npc.setData("dialogue", this.resolveNpcDialogue(npcConfig));
       npc.refreshBody();
       this.characterLayer.add(npc);
+      this.cullableWorldObjects.push(npc);
       this.npcEntities.push(npc);
       this.npcTileSet.add(keyForTile(npcConfig.tileX, npcConfig.tileY));
     });
@@ -520,16 +449,14 @@ class OverworldScene extends Phaser.Scene {
   }
 
   createLevelSigns() {
-    LEVEL_SIGN_DEFINITIONS.forEach((signConfig, index) => {
-      const boardColors = [
-        { post: 0x7c5a3a, board: 0xffe6a8 },
-        { post: 0x4b658f, board: 0xbee3ff },
-      ];
-      const colorSet = boardColors[index % boardColors.length];
-      this.createSignTexture(signConfig.texture, colorSet.post, colorSet.board);
-
+    LEVEL_SIGN_DEFINITIONS.forEach((signConfig) => {
       const world = tileToWorld(signConfig.tileX, signConfig.tileY);
-      const sign = this.signGroup.create(world.x, world.y, signConfig.texture);
+      const sign = this.signGroup.create(
+        world.x,
+        world.y,
+        SHARED_TEXTURE_KEYS.OVERWORLD_ACTORS_ATLAS,
+        signConfig.textureFrame
+      );
       sign.setDepth(8);
       sign.setDataEnabled();
       sign.setData("signId", signConfig.id);
@@ -539,6 +466,7 @@ class OverworldScene extends Phaser.Scene {
       sign.body.setSize(32, 32);
       sign.body.setOffset(0, 0);
       this.characterLayer.add(sign);
+      this.cullableWorldObjects.push(sign);
       this.levelSigns.push(sign);
       this.signTileSet.add(keyForTile(signConfig.tileX, signConfig.tileY));
 
@@ -553,6 +481,7 @@ class OverworldScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(12);
       this.characterLayer.add(signLabel);
+      this.cullableWorldObjects.push(signLabel);
     });
   }
 
@@ -637,6 +566,7 @@ class OverworldScene extends Phaser.Scene {
 
     this.pointerPathTiles = tilePath;
     this.pointerPath = tilePath.map((tile) => tileToWorld(tile.x, tile.y));
+    this.pointerPathIndex = 0;
   }
 
   handleTileInteractionSelection(targetTile) {
@@ -680,6 +610,7 @@ class OverworldScene extends Phaser.Scene {
   clearPointerPath() {
     this.pointerPath = [];
     this.pointerPathTiles = [];
+    this.pointerPathIndex = 0;
   }
 
   getPlayerTile() {
@@ -707,6 +638,28 @@ class OverworldScene extends Phaser.Scene {
       return false;
     }
     return true;
+  }
+
+  updateCulledObjectVisibility(force = false) {
+    const now = this.time.now;
+    if (!force && now < this.nextCullUpdateAt) {
+      return;
+    }
+
+    this.nextCullUpdateAt = now + 220;
+    const worldView = this.cameras.main.worldView;
+    const minX = worldView.x - this.cullPadding;
+    const minY = worldView.y - this.cullPadding;
+    const maxX = worldView.right + this.cullPadding;
+    const maxY = worldView.bottom + this.cullPadding;
+
+    this.cullableWorldObjects.forEach((obj) => {
+      if (!obj || !obj.active) {
+        return;
+      }
+      const visible = obj.x >= minX && obj.x <= maxX && obj.y >= minY && obj.y <= maxY;
+      obj.setVisible(visible);
+    });
   }
 
   findTilePath(startTile, targetTile) {
@@ -972,8 +925,12 @@ class OverworldScene extends Phaser.Scene {
   }
 
   getMovementVector() {
+    const movement = this.reusableMovementVector;
+    movement.x = 0;
+    movement.y = 0;
+
     if (!this.inputManager) {
-      return { x: 0, y: 0 };
+      return movement;
     }
 
     const leftPressed = this.inputManager.isActionActive(InputActions.MOVE_LEFT);
@@ -982,30 +939,34 @@ class OverworldScene extends Phaser.Scene {
     const downPressed = this.inputManager.isActionActive(InputActions.MOVE_DOWN);
 
     if (leftPressed && !rightPressed) {
-      return { x: -1, y: 0 };
+      movement.x = -1;
+      return movement;
     }
 
     if (rightPressed && !leftPressed) {
-      return { x: 1, y: 0 };
+      movement.x = 1;
+      return movement;
     }
 
     if (upPressed && !downPressed) {
-      return { x: 0, y: -1 };
+      movement.y = -1;
+      return movement;
     }
 
     if (downPressed && !upPressed) {
-      return { x: 0, y: 1 };
+      movement.y = 1;
+      return movement;
     }
 
-    return { x: 0, y: 0 };
+    return movement;
   }
 
   moveAlongPointerPath() {
-    if (!this.player?.body || this.pointerPath.length === 0) {
+    if (!this.player?.body || this.pointerPathIndex >= this.pointerPath.length) {
       return false;
     }
 
-    const nextWaypoint = this.pointerPath[0];
+    const nextWaypoint = this.pointerPath[this.pointerPathIndex];
     const distance = Phaser.Math.Distance.Between(
       this.player.x,
       this.player.y,
@@ -1015,20 +976,17 @@ class OverworldScene extends Phaser.Scene {
 
     if (distance <= ARRIVAL_THRESHOLD) {
       this.player.setPosition(nextWaypoint.x, nextWaypoint.y);
-      this.pointerPath.shift();
-      this.pointerPathTiles.shift();
-      if (this.pointerPath.length === 0) {
+      this.pointerPathIndex += 1;
+      if (this.pointerPathIndex >= this.pointerPath.length) {
         this.player.body.setVelocity(0, 0);
         this.player.anims.play("player-idle", true);
         return false;
       }
     }
 
-    const targetWaypoint = this.pointerPath[0];
-    const direction = new Phaser.Math.Vector2(
-      targetWaypoint.x - this.player.x,
-      targetWaypoint.y - this.player.y
-    );
+    const targetWaypoint = this.pointerPath[this.pointerPathIndex];
+    const direction = this.reusableDirectionVector;
+    direction.set(targetWaypoint.x - this.player.x, targetWaypoint.y - this.player.y);
 
     if (direction.lengthSq() === 0) {
       this.player.body.setVelocity(0, 0);
@@ -1049,6 +1007,7 @@ class OverworldScene extends Phaser.Scene {
     if (!this.player || !this.player.body || this.isTransitioning) {
       return;
     }
+    this.updateCulledObjectVisibility();
 
     if (this.dialogueBox.visible) {
       this.clearPointerPath();

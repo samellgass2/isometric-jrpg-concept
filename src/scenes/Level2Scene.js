@@ -1,5 +1,11 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import {
+  ensureSharedTextures,
+  isSharedTextureSetLoaded,
+  makeReusedVector2,
+  SHARED_TEXTURE_KEYS,
+} from "../graphics/sharedTextures.js";
+import {
   getBattleOutcomeFlag,
   KEY_BATTLE_OUTCOME_FLAGS,
   normalizePlayerProgressState,
@@ -60,6 +66,7 @@ class Level2Scene extends Phaser.Scene {
     this.exitBeacon = null;
     this.pointerPath = [];
     this.pointerPathTiles = [];
+    this.pointerPathIndex = 0;
     this.cursors = null;
     this.wasdKeys = null;
     this.interactKeys = null;
@@ -69,9 +76,19 @@ class Level2Scene extends Phaser.Scene {
     this.clearedEncounterIds = new Set();
     this.battleTotem = null;
     this.battleStartLock = false;
+    this.collisionTileCoords = [];
+    this.cullableWorldObjects = [];
+    this.cullPadding = TILE_SIZE * 2;
+    this.nextCullUpdateAt = 0;
+    this.reusableMovementVector = { x: 0, y: 0 };
+    this.reusableDirectionVector = makeReusedVector2();
   }
 
   create(data = {}) {
+    if (!isSharedTextureSetLoaded(this)) {
+      ensureSharedTextures(this);
+    }
+
     const progress = this.getProgressState();
     this.levelStartTile = data?.spawnTile ?? { ...START_TILE };
     this.clearedEncounterIds = new Set(data?.clearedEncounterIds ?? []);
@@ -98,6 +115,7 @@ class Level2Scene extends Phaser.Scene {
     this.setupInput();
     this.setupPointerInput();
     this.createUi();
+    this.updateCulledObjectVisibility(true);
 
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
   }
@@ -117,19 +135,23 @@ class Level2Scene extends Phaser.Scene {
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
         const isBlocked = TILE_LAYOUT[y][x] === 1;
-        const floorShade = (x + y) % 2 === 0 ? 0x6e4a2d : 0x5a3d26;
-        const tile = this.add.rectangle(
+        const textureKey = isBlocked
+          ? SHARED_TEXTURE_KEYS.LEVEL2_TILE_WALL
+          : (x + y) % 2 === 0
+            ? SHARED_TEXTURE_KEYS.LEVEL2_TILE_FLOOR_A
+            : SHARED_TEXTURE_KEYS.LEVEL2_TILE_FLOOR_B;
+        const tile = this.add.image(
           x * TILE_SIZE + TILE_SIZE / 2,
           y * TILE_SIZE + TILE_SIZE / 2,
-          TILE_SIZE - 3,
-          TILE_SIZE - 3,
-          isBlocked ? 0x2f2620 : floorShade
+          textureKey
         );
-        tile.setStrokeStyle(1, isBlocked ? 0x8f7660 : 0xc09468, 0.85);
         this.terrainLayer.add(tile);
+        this.cullableWorldObjects.push(tile);
 
         if (isBlocked) {
-          this.collisionTiles.add(tileKey(x, y));
+          const key = tileKey(x, y);
+          this.collisionTiles.add(key);
+          this.collisionTileCoords.push({ x, y });
         }
       }
     }
@@ -137,10 +159,8 @@ class Level2Scene extends Phaser.Scene {
 
   createCollisionBodies() {
     this.collisionBodies = this.physics.add.staticGroup();
-    this.collisionTiles.forEach((key) => {
-      const [tileX, tileY] = key.split(",").map(Number);
-      const world = tileToWorld(tileX, tileY);
-      const body = this.add.zone(world.x, world.y, TILE_SIZE - 3, TILE_SIZE - 3);
+    this.collisionTileCoords.forEach(({ x, y }) => {
+      const body = this.add.zone(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, TILE_SIZE - 3, TILE_SIZE - 3);
       this.physics.add.existing(body, true);
       this.collisionBodies.add(body);
     });
@@ -158,8 +178,8 @@ class Level2Scene extends Phaser.Scene {
 
   createExitBeacon() {
     const exit = tileToWorld(EXIT_TILE.x, EXIT_TILE.y);
-    this.exitBeacon = this.add.rectangle(exit.x, exit.y, 22, 22, 0x90e5ff, 0.9).setDepth(6);
-    this.exitBeacon.setStrokeStyle(2, 0xd7f6ff, 1);
+    this.exitBeacon = this.add.image(exit.x, exit.y, SHARED_TEXTURE_KEYS.LEVEL2_EXIT_BEACON).setDepth(6);
+    this.cullableWorldObjects.push(this.exitBeacon);
     this.add
       .text(exit.x, exit.y - 30, "OVERWORLD", {
         color: "#dbf7ff",
@@ -217,9 +237,9 @@ class Level2Scene extends Phaser.Scene {
   createBattleTotem() {
     const world = tileToWorld(LEVEL2_BATTLE_TOTEM_TILE.x, LEVEL2_BATTLE_TOTEM_TILE.y);
     this.battleTotem = this.add
-      .triangle(world.x, world.y, 0, 20, 11, 0, 22, 20, 0x8b2f2f, 0.95)
-      .setDepth(6)
-      .setStrokeStyle(2, 0xffc2c2, 1);
+      .image(world.x, world.y, SHARED_TEXTURE_KEYS.LEVEL2_BATTLE_TOTEM)
+      .setDepth(6);
+    this.cullableWorldObjects.push(this.battleTotem);
 
     this.add
       .text(world.x, world.y - 28, "TOTEM", {
@@ -248,8 +268,7 @@ class Level2Scene extends Phaser.Scene {
     if (!this.battleTotem) {
       return;
     }
-    this.battleTotem.setFillStyle(0x2a7a5d, 0.95);
-    this.battleTotem.setStrokeStyle(2, 0xb0ffd9, 1);
+    this.battleTotem.setTint(0x5cdba0);
   }
 
   setupInput() {
@@ -288,6 +307,7 @@ class Level2Scene extends Phaser.Scene {
 
       this.pointerPathTiles = tilePath;
       this.pointerPath = tilePath.map((tile) => tileToWorld(tile.x, tile.y));
+      this.pointerPathIndex = 0;
     });
   }
 
@@ -358,28 +378,51 @@ class Level2Scene extends Phaser.Scene {
   clearPointerPath() {
     this.pointerPath = [];
     this.pointerPathTiles = [];
+    this.pointerPathIndex = 0;
+  }
+
+  updateCulledObjectVisibility(force = false) {
+    const now = this.time.now;
+    if (!force && now < this.nextCullUpdateAt) {
+      return;
+    }
+
+    this.nextCullUpdateAt = now + 220;
+    const worldView = this.cameras.main.worldView;
+    const minX = worldView.x - this.cullPadding;
+    const minY = worldView.y - this.cullPadding;
+    const maxX = worldView.right + this.cullPadding;
+    const maxY = worldView.bottom + this.cullPadding;
+
+    this.cullableWorldObjects.forEach((obj) => {
+      if (!obj || !obj.active) {
+        return;
+      }
+      const visible = obj.x >= minX && obj.x <= maxX && obj.y >= minY && obj.y <= maxY;
+      obj.setVisible(visible);
+    });
   }
 
   moveAlongPointerPath() {
-    if (!this.player?.body || !this.pointerPath.length) {
+    if (!this.player?.body || this.pointerPathIndex >= this.pointerPath.length) {
       return false;
     }
 
-    const nextWaypoint = this.pointerPath[0];
+    const nextWaypoint = this.pointerPath[this.pointerPathIndex];
     const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, nextWaypoint.x, nextWaypoint.y);
 
     if (distance <= ARRIVAL_THRESHOLD) {
       this.player.setPosition(nextWaypoint.x, nextWaypoint.y);
-      this.pointerPath.shift();
-      this.pointerPathTiles.shift();
-      if (!this.pointerPath.length) {
+      this.pointerPathIndex += 1;
+      if (this.pointerPathIndex >= this.pointerPath.length) {
         this.player.body.setVelocity(0, 0);
         return false;
       }
     }
 
-    const targetWaypoint = this.pointerPath[0];
-    const direction = new Phaser.Math.Vector2(targetWaypoint.x - this.player.x, targetWaypoint.y - this.player.y);
+    const targetWaypoint = this.pointerPath[this.pointerPathIndex];
+    const direction = this.reusableDirectionVector;
+    direction.set(targetWaypoint.x - this.player.x, targetWaypoint.y - this.player.y);
     if (direction.lengthSq() === 0) {
       this.player.body.setVelocity(0, 0);
       return true;
@@ -391,24 +434,32 @@ class Level2Scene extends Phaser.Scene {
   }
 
   getMovementVector() {
+    const movement = this.reusableMovementVector;
+    movement.x = 0;
+    movement.y = 0;
+
     const leftPressed = this.cursors.left.isDown || this.wasdKeys.left.isDown;
     const rightPressed = this.cursors.right.isDown || this.wasdKeys.right.isDown;
     const upPressed = this.cursors.up.isDown || this.wasdKeys.up.isDown;
     const downPressed = this.cursors.down.isDown || this.wasdKeys.down.isDown;
 
     if (leftPressed && !rightPressed) {
-      return { x: -1, y: 0 };
+      movement.x = -1;
+      return movement;
     }
     if (rightPressed && !leftPressed) {
-      return { x: 1, y: 0 };
+      movement.x = 1;
+      return movement;
     }
     if (upPressed && !downPressed) {
-      return { x: 0, y: -1 };
+      movement.y = -1;
+      return movement;
     }
     if (downPressed && !upPressed) {
-      return { x: 0, y: 1 };
+      movement.y = 1;
+      return movement;
     }
-    return { x: 0, y: 0 };
+    return movement;
   }
 
   playerIsNearExit() {
@@ -495,6 +546,7 @@ class Level2Scene extends Phaser.Scene {
     if (!this.player?.body || this.isReturning) {
       return;
     }
+    this.updateCulledObjectVisibility();
 
     this.handleReturnInput();
 

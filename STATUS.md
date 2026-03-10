@@ -1,5 +1,52 @@
 # Status
 
+- Task: Optimize rendering and asset loading paths (TASK_ID=351, RUN_ID=596)
+- State: Completed
+- Notes: Implemented rendering-path and asset-loading optimizations across Phaser configuration and primary scenes, including centralized shared texture loading, reduced per-frame allocations, and pooled highlight rendering.
+
+  Before/after frame-time sample (same headless Chromium scenario):
+  - Scenario: load menu -> press `Enter` -> sample `requestAnimationFrame` timing for 6 seconds in overworld.
+  - Before (pre-change): `avgFrameMs 174.751`, `p95FrameMs 483.3`, `~5.72 FPS` (`frameCount 35`).
+  - After (post-change): `avgFrameMs 34.864`, `p95FrameMs 66.7`, `~28.68 FPS` (`frameCount 174`).
+  - Interpretation: substantial reduction in frame time under constrained headless rendering; confirms no regression and clear improvement for this benchmark path.
+
+  Code-level optimizations:
+  - Added boot-time shared asset pipeline:
+    - `src/scenes/BootScene.js`:
+      - New scene that creates shared textures once at startup, then starts `MainMenuScene`.
+    - `src/graphics/sharedTextures.js`:
+      - Centralized runtime generation for common textures and atlas frames (`overworld actors`, level tile textures, battle tile/highlight textures).
+      - Added shared player animation creation (`ensureSharedAnimations`).
+  - Updated game renderer configuration for 2D performance:
+    - `src/gameConfig.js`:
+      - Explicit renderer settings: `type: Phaser.WEBGL`, `pixelArt`, `antialias: false`, `antialiasGL: false`, `roundPixels: true`, `powerPreference: "high-performance"`, `desynchronized: true`.
+      - Explicit FPS config (`target: 60`, `smoothStep: false`).
+      - Boot sequence now starts with `BootScene`.
+  - Removed redundant per-scene texture generation and centralized asset use:
+    - `src/scenes/OverworldScene.js`:
+      - Removed local `createPlayerTextures`, `createNpcTexture`, and `createSignTexture`.
+      - Uses shared actor atlas + shared tile textures.
+    - `src/scenes/Level1Scene.js`, `src/scenes/Level2Scene.js`:
+      - Switched terrain/markers to shared texture keys generated once in boot.
+  - Reduced runtime allocation churn in update loops:
+    - `src/scenes/OverworldScene.js`, `src/scenes/Level1Scene.js`, `src/scenes/Level2Scene.js`:
+      - Reused movement vector objects instead of returning new `{x,y}` each update tick.
+      - Reused direction `Vector2` in pointer-path movement instead of allocating each frame.
+      - Replaced path `shift()` churn with index-based traversal (`pointerPathIndex`).
+  - Reduced object churn during tactical highlighting:
+    - `src/scenes/BattleScene.js`:
+      - Added highlight pooling (`highlightPool`) and converted highlight clear from destroy/recreate to hide/reuse.
+      - Switched grid and obstacle rendering from per-tile rectangles to shared textures for better batching.
+      - Removed unnecessary `map` copy in `getReachableTiles`.
+  - Off-screen visibility culling:
+    - `src/scenes/OverworldScene.js`, `src/scenes/Level1Scene.js`, `src/scenes/Level2Scene.js`:
+      - Added periodic camera-window culling for static world objects (`updateCulledObjectVisibility`) to reduce draw workload outside the viewport.
+
+  Validation:
+  - Automated tests: `npm test` passed.
+  - Browser smoke checks (headless Playwright) for both startup flows:
+    - `MainMenu -> Overworld` and `MainMenu -> BattleScene` reported no console/page errors.
+
 - Task: Integrate drones into battles and add test scenario (TASK_ID=339, RUN_ID=581)
 - State: Completed
 - Notes: Added a dedicated debug encounter path for zookeeper drone combat verification, with both manual playtest flow and automated scenario coverage.
