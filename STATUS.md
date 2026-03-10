@@ -499,3 +499,52 @@ Dev server running at http://127.0.0.1:5173
   - Mouse: click sign to open prompt, click same sign again to travel.
 - Level exit:
   - `Esc` immediate return, or interact near the exit marker.
+
+## Tester Report - Workflow #30 (2026-03-10)
+
+### Tests Run
+1. `npm test` (before install) - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs
+
+Rollback test passed.
+Dog conditional behavior test passed.
+Battle grid stats test passed.
+```
+2. `npm install` - PASS
+```text
+added 2 packages, and audited 3 packages in 8s
+found 0 vulnerabilities
+```
+3. `npm test` (after install) - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs
+
+Rollback test passed.
+Dog conditional behavior test passed.
+Battle grid stats test passed.
+```
+4. `npm run dev` smoke check + `curl http://127.0.0.1:5173/` - PASS
+```text
+curl_status=0
+Dev server running at http://127.0.0.1:5173
+```
+
+### Per-Task Acceptance Verdict
+- Task #308 (main menu and level select UI): PASS
+- Task #309 (overworld map with movement controls): PASS
+- Task #310 (overworld signs for level 1 and level 2): PASS
+- Task #311 (wire sign interactions to level loading flow): PASS
+- Task #312 (integrate simple battle encounters into levels): PASS
+
+### Bugs Filed
+- None
+
+### Integration/Regression Check
+- Feature flow is cohesive: `MainMenuScene -> OverworldScene -> Level1Scene/Level2Scene -> BattleScene -> return to level/overworld`.
+- No obvious regressions found in scripted tests or startup smoke checks.
+
+### Overall Verdict
+- CLEAN
