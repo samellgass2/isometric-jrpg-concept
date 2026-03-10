@@ -1093,3 +1093,92 @@ Dev server running at http://127.0.0.1:5173
 
 ## Overall Verdict
 - PASS
+
+# Tester Report (2026-03-10) - Workflow #32
+
+## Workflow
+- Project: `isometric-strategy-game`
+- Workflow #32: Save/Load System and Persistent Player Progress
+- Branch validated: `workflow/32/dev`
+
+## Tests Run And Results
+1. `cat package.json | sed -n '/"scripts"/,/}/p'` - PASS
+   - Confirmed `test` script runs:
+     - `scripts/rollback.test.mjs`
+     - `scripts/dog-conditional-behavior.test.mjs`
+     - `scripts/battle-grid-stats.test.mjs`
+     - `scripts/player-progress.test.mjs`
+     - `scripts/save-system.test.mjs`
+     - `scripts/battle-party-persistence.test.mjs`
+2. `npm install` - PASS
+   - Output: `added 2 packages, and audited 3 packages ... found 0 vulnerabilities`
+3. `npm test` - PASS
+   - Output:
+     - `Rollback test passed.`
+     - `Dog conditional behavior test passed.`
+     - `Battle grid stats test passed.`
+     - `Player progress state test passed.`
+     - `Save system persistence test passed.`
+     - `Battle party persistence test passed.`
+
+## Per-Task Acceptance Verdict
+
+### Task #326: Implement core save data model
+- Verdict: PASS
+- Acceptance checks verified:
+  - `src/state/playerProgress.js` exists and imports cleanly.
+  - Exports default progress constructor with required modeled areas (`overworld`, `party`, `battleOutcomes`).
+  - Exports immutable update helpers for overworld position, party add/remove, and battle outcome recording.
+  - Exports JSON serialization/deserialization helpers with round-trip-safe normalization.
+  - Includes JSDoc-style field usage documentation.
+  - `STATUS.md` documents modeled persisted fields and interaction expectations.
+
+### Task #327: Add localStorage-based save and load layer
+- Verdict: PASS
+- Acceptance checks verified:
+  - `src/persistence/saveSystem.js` exists with `saveProgress`, `loadProgress`, `clearProgress` exports.
+  - Stable storage key `playerProgress` used (`PLAYER_PROGRESS_STORAGE_KEY`).
+  - Missing/invalid/corrupt localStorage data safely falls back to `createInitialPlayerProgressState()`.
+  - `clearProgress` removes stored key and allows default-state reload path.
+  - Startup hydration wired in `src/main.js` before game boot and exposed via registry (`playerProgress`, `setPlayerProgress`).
+  - Manual QA flow for move/refresh persistence documented in `STATUS.md`.
+  - `STATUS.md` describes key, reset conditions, and expected save/load invocation pattern.
+
+### Task #328: Wire overworld position into save system
+- Verdict: PASS
+- Acceptance checks verified:
+  - `OverworldScene` imports progress model + persistence helpers.
+  - Spawn resolution prefers persisted `overworld.position` (then spawn-point fallback, then default).
+  - Fresh profile fallback spawn remains default (`2,2`).
+  - Movement triggers persisted state updates through `updateOverworldPosition` + save commit path.
+  - Reload behavior supported by hydration + spawn resolver integration.
+  - Corrupt/missing storage paths are guarded by `loadProgress` fallback behavior.
+  - `STATUS.md` includes explicit QA walkthrough for move/refresh position persistence.
+
+### Task #329: Persist party composition across sessions
+- Verdict: PASS
+- Acceptance checks verified:
+  - Party persistence flow is wired through `BattleScene` + `src/state/partyPersistence.js` with progress/persistence integration.
+  - Initial friendly battle party is reconstructed from saved progress when persisted data exists.
+  - Fresh-profile behavior preserves existing encounter default party composition.
+  - Party persistence updates route through progress mutations and save commit path without runtime errors.
+  - Persisted party representation is JSON-safe (IDs/basic scalar stats; no Phaser/circular objects).
+  - Save/load round-trip for party data is covered by implementation and tests.
+  - `STATUS.md` documents persisted member fields and conversion mapping back to in-memory units.
+
+### Task #330: Record and restore key battle outcome flags
+- Verdict: PASS
+- Acceptance checks verified:
+  - Progress schema includes dedicated `battleOutcomes` with stable `keyBattles` and `encounterResults` structures.
+  - `BattleScene` updates persistent battle outcomes during battle resolution.
+  - Named encounters (`level-1-training-ambush`, `level-2-canyon-gauntlet`) set persistent outcome/flag state.
+  - Stored flags are consumed on later runs (e.g., level trigger clear behavior and overworld NPC dialogue changes).
+  - Flags are JSON-serializable and loaded via existing save/load path.
+  - Non-wired battles continue functioning (default encounter path unaffected).
+  - `STATUS.md` documents current flags, set points, and behavior controlled on load.
+
+## Bugs Filed
+- None.
+
+## Overall Verdict
+- CLEAN
