@@ -820,3 +820,114 @@ Dev server running at http://127.0.0.1:5173
 
 ## Overall Verdict
 - PASS
+
+# QA Validation Report (2026-03-10) - Workflow #31
+
+## Workflow
+- Project: `isometric-strategy-game`
+- Workflow #31: Core UI, HUD, and Input Abstraction Layer
+- Branch validated: `workflow/31/dev`
+
+## Commits Reviewed (`main..HEAD`)
+- `dc549c2` task/323: supervisor safety-commit (Codex omitted git commit)
+- `4b6fa77` task/322: implement basic state-driven HUD overlays
+- `a0d7906` task/321: wire battle actions through input manager
+- `f133deb` task/320: wire overworld controls to input manager actions
+- `9d37cc5` task/319: add unified input manager and scene wiring
+
+## Diffstat Reviewed (`main...HEAD --stat`)
+```text
+ STATUS.md                    | 174 +++++++++++++++++++
+ TASK_REPORT.md               |  54 +++---
+ src/input/InputManager.js    | 286 +++++++++++++++++++++++++++++++
+ src/scenes/BattleScene.js    | 395 ++++++++++++++++++++++++++++++++++++++++---
+ src/scenes/OverworldScene.js | 353 ++++++++++++++++++++++++++------------
+ src/ui/HUDOverlay.js         | 124 ++++++++++++++
+ 6 files changed, 1219 insertions(+), 167 deletions(-)
+```
+
+## Test Commands Run And Output
+
+1. `cat package.json | grep -A 30 '"scripts"'` - PASS
+```text
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "start": "node scripts/dev-server.mjs",
+    "test": "node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs"
+  },
+```
+
+2. `npm install` - PASS
+```text
+added 2 packages, and audited 3 packages in 8s
+found 0 vulnerabilities
+```
+
+3. `npm test` - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs
+
+Rollback test passed.
+Dog conditional behavior test passed.
+Battle grid stats test passed.
+```
+
+4. `timeout 20s npm run dev` - PASS (startup smoke)
+```text
+> workspace@1.0.0 dev
+> node scripts/dev-server.mjs
+
+Dev server running at http://127.0.0.1:5173
+```
+- Note: command exited with code `124` due timeout after successful startup confirmation.
+
+## Per-Task Acceptance Verdict
+
+### Task: Implement unified input abstraction layer
+- Verdict: PASS
+- Criteria checks:
+  - `src/input/InputManager.js` exists and exports `InputManager` with scene subscription API (`onAction`, `offAction`).
+  - Keyboard mapping implemented: Arrow/WASD -> `MOVE_*`, Enter/Space -> `CONFIRM`, Escape -> `CANCEL`.
+  - Pointer/touch mapping implemented via `pointerdown` -> `SELECT_TILE` with normalized (`normalizedX`, `normalizedY`) and tile (`tileX`, `tileY`) payload data.
+  - Scene integration present in both `OverworldScene` and `BattleScene` using high-level actions.
+  - Hardware binding changes isolated to `InputManager` (`rebindAction`, `unbindAction`) with no required scene logic edits.
+  - `STATUS.md` includes InputManager documentation and usage notes.
+
+### Task: Wire input layer into overworld controls
+- Verdict: PASS
+- Criteria checks:
+  - `OverworldScene` imports and uses `InputManager`.
+  - Keyboard movement uses `MOVE_*`; pointer/touch movement/selection uses `SELECT_TILE` pathing.
+  - Dialogue/interaction flow uses `CONFIRM` (and `SELECT_TILE` tile interactions) rather than direct scene keycode/pointer listeners.
+  - Overworld logic contains no direct raw Phaser keycode/pointer listener wiring; raw device events are handled in `InputManager`.
+  - Binding decoupling is satisfied by action-based scene handling.
+  - `STATUS.md` contains overworld integration notes and documented edge cases.
+
+### Task: Connect input abstraction to battle actions
+- Verdict: PASS
+- Criteria checks:
+  - `BattleScene` imports and uses `InputManager`.
+  - Keyboard navigation (`MOVE_*`) and pointer/touch tile selection (`SELECT_TILE`) both route through `InputManager`.
+  - Confirm and cancel behavior is action-driven (`CONFIRM`, `CANCEL`) without direct raw keycode checks.
+  - Direct scene-level input listeners for battle controls are removed; device binding logic is centralized in `InputManager`.
+  - Binding changes remain isolated to `InputManager` by architecture.
+  - `STATUS.md` documents battle input integration and action coverage.
+
+### Task: Implement basic in-game HUD overlays
+- Verdict: PASS
+- Criteria checks:
+  - `src/ui/HUDOverlay.js` exists and encapsulates HUD creation/update/destroy.
+  - Overworld HUD shows player identity/stat snapshot (`Unit`, `HP`, `Tile`) and syncs from scene state.
+  - Battle HUD shows active unit and phase/turn from battle state.
+  - HUD module has no keyboard/mouse/touch event references; it is state-driven.
+  - HUD is fixed and visible in both scenes (`setScrollFactor(0)`, top-right placement) and does not cover primary center gameplay area.
+  - `STATUS.md` includes HUD implementation and state wiring details.
+
+## Workflow Goal Verification
+- Goal: implement a basic HUD plus input abstraction layer for keyboard/mouse/touch, connected to overworld and battle without device-coupled gameplay logic.
+- Verdict: PASS
+- Rationale: input handling is centralized in `InputManager`, scenes consume semantic actions, and HUD overlays are state-driven in both overworld and battle.
+
+## Overall Verdict
+- PASS
