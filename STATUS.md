@@ -327,3 +327,69 @@ Content-Length: 389
 
 ## Overall Verdict
 - PASS
+
+# Tester Report (2026-03-10)
+
+## Scope
+- Project: `isometric-strategy-game`
+- Workflow #27: Implement core isometric battle scene and turn framework
+- Branch verified: `workflow/27/dev`
+
+## Tests Run
+- `npm install` - PASS
+  - Output: `added 2 packages, and audited 3 packages in 8s` / `found 0 vulnerabilities`
+- `npm test` - PASS
+  - Output:
+    - `> workspace@1.0.0 test`
+    - `> node scripts/rollback.test.mjs`
+    - `Rollback test passed.`
+- `npm run dev` (smoke) - PASS
+  - Output: `Dev server running at http://127.0.0.1:5173`
+- `curl -i http://127.0.0.1:5173/` - PASS
+  - Output: HTTP `200`
+
+## Acceptance Verification
+
+### Task #286: Create battle scene and entry hook
+- 1. `src/scenes/BattleScene.js` exists and exports Phaser scene key `BattleScene`: PASS
+- 2. Game bootstrap/config can reach BattleScene without wiring errors: PASS (`src/gameConfig.js` registers `BattleScene`; `OverworldScene` supports `B` key transition)
+- 3. BattleScene has distinct background and debug label: PASS (`setBackgroundColor("#243145")`, UI text `Battle Scene`)
+- 4. `STATUS.md` documents scene and launch path: PASS
+
+### Task #287: Render core isometric battle grid
+- 1. Isometric diamond grid rendering present: PASS (`isoProject`, diamond polygons)
+- 2. Fixed logical size defined in code: PASS (`GRID_ROWS = 8`, `GRID_COLS = 8`)
+- 3. Tile logical coordinates stored/accessibly: PASS (`setData("row"|"col"|"tileId")`)
+- 4. Grid is visible without manual scroll via camera/centering setup: PASS (`computeGridOrigin`, centered camera)
+- 5. `STATUS.md` documents grid size/coordinate decisions: PASS
+
+### Task #288: Implement unit placement on battle grid
+- 1. At least one player + one enemy unit on distinct tiles: PASS (`player-vanguard` at `6,2`; `enemy-skirmisher` at `1,5`)
+- 2. Logical coordinate changes map to projected placement: PASS (`setUnitGridPosition` + `syncUnitScreenPosition` using `gridToWorld`)
+- 3. Player/enemy visually distinct: PASS (green `P` vs red `E` style)
+- 4. Placement logic encapsulated in dedicated structure: PASS (`BattleUnitManager`)
+- 5. `STATUS.md` documents unit model and mapping: PASS
+
+### Task #289: Add basic turn-based loop and input
+- 1. Explicit current turn owner exists: PASS (`currentTurnOwner`, `TURN_OWNER`)
+- 2. Player can select and end turn via documented input: PASS (click player unit; `E`/`Enter` ends turn)
+- 3. AI turn executes then returns control: PASS (`startAiTurn` + delayed `startPlayerTurn`)
+- 4. Loop supports repeated cycles without invalid state: PASS (turn counter increment, cleanup guards, timer management)
+- 5. `STATUS.md` explains sequence and AI action: PASS
+
+### Task #290: Enable basic tile and unit interaction
+- 1. Player unit click selection during player turn: PASS (`handleUnitPointerDown`/`trySelectPlayerUnit`)
+- 2. Tile click reports logical coordinates: PASS (`handleTilePointerDown`/`trySelectTargetTile`, UI + console history)
+- 3. Interaction gated during AI turn: PASS (early returns + ignored-action feedback)
+- 4. Selection logic is structured in dedicated handlers: PASS
+- 5. `STATUS.md` documents interaction model and limits: PASS
+
+## Integration / Regression Check
+- Tasks #286–#290 are cohesive in `BattleScene`: scene entry, isometric grid, unit placement, turn loop, and interaction handlers are integrated and consistent.
+- Existing automated test coverage (`npm test`) still passes; no obvious regressions detected in bootstrap/runtime smoke checks.
+
+## Bugs Filed
+- None
+
+## Overall Verdict
+- CLEAN
