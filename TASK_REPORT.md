@@ -1,45 +1,48 @@
-# TASK REPORT
+# TASK 311 Report - Wire sign interactions to level loading flow
 
-## Task
-- TASK_ID: 310
-- RUN_ID: 531
-- Title: Add overworld signs for level 1 and level 2
+## Summary
+Implemented full overworld level-sign transition flow for Level 1 and Level 2 using dedicated Phaser scenes, with return routing back to overworld and documented navigation flow.
 
-## Summary of Changes
-- Extended `src/scenes/OverworldScene.js` with two visible level signposts:
-  - `Level 1` sign at tile `(4,9)`
-  - `Level 2` sign at tile `(13,3)`
-- Added sign rendering and setup using generated sign textures and static physics bodies via a new `signGroup`.
-- Added visible in-world labels above each sign (`Level 1`, `Level 2`).
-- Added sign tile occupancy tracking (`signTileSet`) and integrated it with walkability/pathfinding so click-to-move does not target sign tiles.
-- Added collision between player and sign group for reliable proximity-based interaction positioning.
-- Implemented sign interaction behavior in the existing dialogue flow:
-  - Keyboard: `Space` or `Enter` while near a sign opens a prompt for that level.
-  - Prompt offers entry choice: `Enter` selects the shown level (placeholder confirmation), `Space` closes.
-  - Mouse: clicking a sign opens prompt only when player is within sign interaction distance.
-- Preserved existing NPC interaction behavior and used the same dialogue UI pattern.
+## Changes made
+- Added `src/scenes/Level1Scene.js` (`Level1Scene`):
+  - Distinct Training Grounds layout, visuals, camera behavior, and movement grid.
+  - Keyboard + mouse movement.
+  - Return to overworld via `Esc` or interact (`Space`/`Enter`) near exit marker.
+  - Returns with `scene.start("OverworldScene", { spawnPointId: "level-1-return" })`.
+- Added `src/scenes/Level2Scene.js` (`Level2Scene`):
+  - Distinct Canyon Crossing layout, visuals, and traversal setup.
+  - Keyboard + mouse movement.
+  - Return to overworld via `Esc` or interact (`Space`/`Enter`) near exit marker.
+  - Returns with `scene.start("OverworldScene", { spawnPointId: "level-2-return" })`.
+- Updated `src/scenes/OverworldScene.js`:
+  - Added sign-to-scene mapping:
+    - `sign-level-1 -> Level1Scene`
+    - `sign-level-2 -> Level2Scene`
+  - Replaced placeholder sign confirmation with real Phaser scene transitions.
+  - Added mouse travel confirmation by clicking the same sign again while prompt is open.
+  - Added return spawn routing with `spawnPointId` support in `create(data)`.
+  - Added spawn map for sensible return tiles near each sign.
+- Updated `src/gameConfig.js`:
+  - Registered `Level1Scene` and `Level2Scene` in scene config.
+- Updated `STATUS.md`:
+  - Documented level loading structure, scene names, sign wiring, and return flow.
 
-## STATUS Documentation
-- Updated `STATUS.md` with a new top entry for TASK_ID=310 documenting:
-  - Sign existence and map positions
-  - Keyboard and click interaction behavior
-  - Proximity restriction behavior
-  - Playtesting steps
+## Acceptance test check
+1. Level 1 sign interaction now transitions to a distinct `Level1Scene` (PASS).
+2. Level 2 sign interaction now transitions to a distinct `Level2Scene` (PASS).
+3. Level 1 returns to overworld via `Esc` or exit interaction with sensible spawn (PASS).
+4. Level 2 returns similarly via `Esc` or exit interaction with sensible spawn (PASS).
+5. Phaser scene transitions are used consistently (`scene.start`) with fade handoff flow (PASS).
+6. Both scenes are in dedicated files and registered centrally in `gameConfig.js` (PASS).
+7. `STATUS.md` documents wiring and navigation flow (PASS).
 
-## Acceptance Criteria Check
-1. Two distinct visible sign/marker objects labeled `Level 1` and `Level 2`: **PASS**.
-2. Near `Level 1` sign + interaction key/click triggers message referencing `Level 1`: **PASS**.
-3. Near `Level 2` sign + interaction key/click triggers message referencing `Level 2`: **PASS**.
-4. Far-away interaction does not trigger sign prompt: **PASS** (distance gate in sign pointer handler and nearby-sign lookup).
-5. Interaction logic encapsulated cleanly in `OverworldScene` and follows existing interaction/dialogue patterns: **PASS**.
-6. `STATUS.md` updated with behavior and playtesting usage: **PASS**.
+## Validation run
+- `npm test` -> PASS
+  - Rollback test passed.
+  - Dog conditional behavior test passed.
+  - Battle grid stats test passed.
+- Dev server smoke check:
+  - `npm run dev` + HTTP check to `http://127.0.0.1:5173/` returned `200`.
 
-## Test Execution
-- Ran: `npm test`
-- Result: **PASS**
-  - `Rollback test passed.`
-  - `Dog conditional behavior test passed.`
-  - `Battle grid stats test passed.`
-
-## Notes
-- Level entry is intentionally a placeholder confirmation message (`selected`) and does not transition scenes yet.
+## Commit
+- `0063017` - `task/311: wire overworld signs to level scene flow`
