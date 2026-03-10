@@ -1,52 +1,36 @@
 # TASK REPORT
 
 ## Task
-- TASK_ID: 294
-- RUN_ID: 499
-- Title: Define animal unit stats and abilities
+- TASK_ID: 296
+- RUN_ID: 501
+- Title: Implement dogs conditional battle behavior
 
 ## Summary of Changes
-- Added a new battle unit data module at `src/battle/units/animalUnits.js`.
-- Implemented a structured config schema for animal units with shared fields:
-  - `stats.maxHp`
-  - `stats.defense`
-  - `movement.tilesPerTurn`
-  - `attack.range`
-  - `attack.baseDamage`
-  - ability trigger/effect metadata
-- Added concrete exports for required units:
-  - `elephantUnit`
-  - `cheetahUnit`
-  - `guardianDogUnit` (plus `scoutDogUnit` as an additional dog variant)
-- Encoded narrative-specific rules in data:
-  - Elephant: very high defense, slow movement, and `attack.canAttackOverObstacles: true`
-  - Cheetah: very high movement with lower HP/defense than elephant and dogs
-  - Dogs: conditional protagonist-danger ability with low-HP trigger (`thresholdPercent: 35`) and combat boost effect metadata
-- Added aggregate exports for future battle/turn integration:
-  - `animalUnits`
-  - `animalUnitList`
-  - `getAnimalUnitConfig(unitKey)`
-  - default export (`animalUnits`)
-- Updated `src/gameConfig.js` to import the new module through `battleUnitCatalog.animals`, ensuring startup-time import compatibility.
-- Updated `STATUS.md` with a new task entry summarizing where the unit model lives and how it is intended to be used.
+- Added `src/battle/combatResolver.js` with dog conditional-passive evaluation based on ability metadata (`source: protagonist`, `condition: low_hp`, threshold/comparator from trigger).
+- Implemented dynamic combat stat derivation so dog buffs are active only while protagonist HP is in danger and automatically removed after recovery.
+- Added attack resolution wiring in `resolveAttack(...)` using effective combat stats (including temporary dog damage/defense multipliers).
+- Added `src/battle/ai/allyDecisionController.js` and connected it to danger-state detection so buffed dog allies switch to aggressive stance and aggressive target preference.
+- Added automated validation in `scripts/dog-conditional-behavior.test.mjs` for threshold checks, buff activation/removal, observable damage increase, non-dog isolation (elephant/cheetah), and no JS runtime errors while crossing the threshold.
+- Updated `package.json` test script to execute both rollback and dog conditional behavior tests.
+- Updated `STATUS.md` with trigger logic, selected buff effects, and implementation file locations.
 
 ## Verification
-- `node --input-type=module -e "import('./src/battle/units/animalUnits.js')..."` - PASS (module imports and exports resolved)
-- `npm test` - PASS (`Rollback test passed.`)
-- `npm run dev` + `curl -i http://127.0.0.1:5173/` - PASS (`HTTP/1.1 200 OK`)
+- `npm test` - PASS
+  - `Rollback test passed.`
+  - `Dog conditional behavior test passed.`
 
 ## Acceptance Criteria Mapping
-1. Animal unit module exists with elephant/cheetah/dog exports:
-   - Satisfied by `src/battle/units/animalUnits.js` named exports.
-2. Unit configs include HP, defense, movement, attack range, and base damage:
-   - Satisfied via structured `stats`, `movement`, and `attack` objects.
-3. Elephant has high defense, lower movement, and obstacle-over attack capability:
-   - Satisfied (`defense: 24`, `tilesPerTurn: 2`, `canAttackOverObstacles: true`).
-4. Cheetah has significantly higher movement and lower survivability:
-   - Satisfied (`tilesPerTurn: 7`, `maxHp: 95`, `defense: 6`).
-5. Dog unit references protagonist danger/low HP and combat boost effect:
-   - Satisfied by `loyal-fury` and `pack-protect` conditional triggers/effects.
-6. No runtime errors when importing module / running dev:
-   - Satisfied by import smoke check and dev startup test.
-7. STATUS.md includes summary of new definitions/location:
-   - Satisfied by top entry for TASK_ID=294.
+1. Protagonist danger/low-HP check exists in battle logic:
+   - Implemented in `evaluateLowHpTrigger(...)` within `src/battle/combatResolver.js` and driven by ability trigger metadata.
+2. Dogs use normal stats above threshold:
+   - Verified in tests via `getEffectiveCombatStats(...)` with safe protagonist HP.
+3. Dogs gain observable boost below threshold:
+   - Verified in tests with increased effective damage/defense and larger `resolveAttack(...)` damage output.
+4. Boost removed after recovery:
+   - Verified with recovered protagonist HP returning dog effective stats to baseline.
+5. Non-dogs unaffected:
+   - Verified by comparing elephant/cheetah effective stats under the same danger state.
+6. No JS runtime errors crossing threshold:
+   - Verified with repeated combat resolution calls across safe/danger/recovered states.
+7. STATUS document updated:
+   - Added TASK_ID=296 entry in `STATUS.md` describing trigger, effect, and code locations.
