@@ -1,82 +1,48 @@
-# Task Report
+# TASK REPORT
 
-- Task: Initialize Project Structure
-- Result: Completed
-- Changes:
-  - Added src, assets, dist directories with placeholders.
-  - Created src/index.html and src/main.js.
-  - Updated .gitignore to keep dist/.gitkeep.
-  - Added STATUS.md.
-- Tests: Not run (not provided).
+## Task
+- TASK_ID: 279
+- RUN_ID: 478
+- Title: Create overworld scene and bootstrapping
 
-- Task: Install Phaser Dependency
-- Result: Completed
-- Changes:
-  - Initialized npm project with package.json.
-  - Installed phaser and generated package-lock.json.
-- Tests: Ran `npm list phaser`.
+## Summary of Changes
+- Added a dedicated Phaser overworld scene at `src/scenes/OverworldScene.js`.
+- Implemented a hard-coded tile-based map layout with explicit layer separation:
+  - `terrainLayer`
+  - `collisionLayer`
+  - `characterLayer`
+- Added character placeholders:
+  - `player` placeholder
+  - `npcGroup` with NPC placeholders
+- Wired the new scene into game bootstrapping:
+  - Updated `src/gameConfig.js` to register `OverworldScene` in `scene` list.
+  - Updated `src/main.js` to instantiate `new Phaser.Game(gameConfig)`.
+- Ensured `/` boot path works in this scaffold by:
+  - updating `src/index.html` to load `/src/main.js`
+  - adding `scripts/dev-server.mjs`
+  - adding `npm` scripts: `dev` and `start`
+- Updated `STATUS.md` with a new completed entry for this task.
 
-- Task: Install NPM and Phaser (TASK_ID=6, RUN_ID=43)
-- Result: Completed
-- Changes:
-  - Verified npm install completes successfully with phaser listed in package.json.
-  - Updated STATUS.md with task completion entry.
-- Tests: Ran `npm install`.
+## Verification
+- `npm test` passed (`Rollback test passed.`).
+- `npm run dev` served expected files successfully:
+  - `/` -> 200
+  - `/src/main.js` -> 200
+  - `/src/gameConfig.js` -> 200
+  - `/src/scenes/OverworldScene.js` -> 200
+  - `/node_modules/phaser/dist/phaser.esm.js` -> 200
 
-- Task: Set up minimal game config.JS (TASK_ID=8, RUN_ID=45)
-- Result: Completed
-- Changes:
-  - Added src/config.js with a minimal Phaser configuration export.
-  - Updated STATUS.md with task completion entry.
-- Tests: Not run (not provided).
+## Acceptance Criteria Mapping
+1. New scene file exists and exports a Phaser.Scene subclass:
+   - Satisfied by `src/scenes/OverworldScene.js` (`class OverworldScene extends Phaser.Scene`, exported default).
+2. `gameConfig.js` updated to include overworld scene and boot without runtime wiring errors:
+   - Satisfied by scene registration in `src/gameConfig.js` and game instantiation in `src/main.js`.
+3. `npm run dev` and loading `/` shows a path into overworld scene:
+   - Satisfied by dev server + index boot path; overworld scene is first registered scene.
+4. Overworld scene creates separate layers/groups for terrain and characters:
+   - Satisfied by `terrainLayer`, `collisionLayer`, `characterLayer`, and `npcGroup` in `create()`.
+5. `STATUS.md` updated with integration details:
+   - Satisfied by top status entry for TASK_ID=279 / RUN_ID=478.
 
-- Task: Rename config.js to gameConfig.js (TASK_ID=10, RUN_ID=47)
-- Result: Completed
-- Changes:
-  - Renamed src/config.js to src/gameConfig.js.
-  - Updated the exported config name to gameConfig.
-- Tests: Not run (not provided).
-
-- Task: Define Game State Structure (TASK_ID=38, RUN_ID=92)
-- Result: Completed
-- Changes:
-  - Added GAME_STATE.md to document the game state structure.
-  - Added src/gameState.js with a concrete example state and factory.
-- Tests: Not run (not provided).
-
-- Task: Implement State Rollback Functionality (TASK_ID=39, RUN_ID=97)
-- Result: Completed
-- Changes:
-  - Added src/stateHistory.js with snapshot history and rollback support.
-  - Added scripts/rollback.test.mjs to validate rollback behavior.
-  - Updated package.json to run rollback test and enable ESM.
-- Tests: Ran `npm test`.
-
-- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=99)
-- Result: Completed
-- Changes:
-  - Added status entry describing game logic engine progress.
-  - Added QA summary for current task verification.
-- Tests: Ran `npm test`.
-
-- Task: Implement State Preview Functionality (TASK_ID=40, RUN_ID=101)
-- Result: Completed
-- Changes:
-  - Added preview support to state history for non-destructive future state inspection.
-  - Extended rollback tests to validate preview behavior and immutability.
-- Tests: Ran `npm test`.
-
-- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=103)
-- Result: Completed
-- Changes:
-  - Added a fresh STATUS.md entry noting current game logic engine progress.
-  - Added a QA summary covering the latest status update.
-- Tests: Ran `npm test`.
-
-- Task: Change Board Size to 10 x 10 (TASK_ID=43, RUN_ID=106)
-- Result: Completed
-- Changes:
-  - Updated the example game state grid to 10 x 10 in src/gameState.js.
-  - Documented the 10 x 10 board size in GAME_STATE.md.
-  - Added a STATUS.md entry for the board size update.
-- Tests: Ran `npm test`.
+## Commit
+- `abb5a82` - `task/279: add overworld scene and phaser boot wiring`
