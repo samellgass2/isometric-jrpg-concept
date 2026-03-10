@@ -1,5 +1,31 @@
 # Status
 
+- Task: Wire overworld position into save system (TASK_ID=328, RUN_ID=562)
+- State: Completed
+- Notes: Updated `src/scenes/OverworldScene.js` so overworld spawn restoration now prefers persisted tile coordinates from player progress when no explicit scene spawn override is provided.
+
+  What changed:
+  - `OverworldScene` now imports both player progress helpers and persistence utilities:
+    - `normalizePlayerProgressState`, `updateOverworldPosition` from `src/state/playerProgress.js`
+    - `loadProgress`, `saveProgress` from `src/persistence/saveSystem.js`
+  - Spawn resolution order was corrected to avoid dropping the saved position:
+    1. Explicit `data.spawnPointId` passed by scene transition (for intentional level-return routing).
+    2. Saved `overworld.position` from persisted progress (primary resume behavior).
+    3. Saved `overworld.spawnPointId` marker.
+    4. Legacy/default overworld spawn (`default`).
+  - Progress reads/writes in the scene are now resilient:
+    - Reads use registry state when available, otherwise safe-load via `loadProgress()` and normalize.
+    - Writes use shared registry setter (`setPlayerProgress`) when available, otherwise normalize + `saveProgress(...)` fallback.
+  - Movement persistence remains tile-change-based via `persistOverworldProgress(...)`; updated coordinates continue to be committed through `updateOverworldPosition(...)`, which stores into localStorage through the existing persistence layer.
+
+  Manual QA walkthrough:
+  1. Run `npm run dev` and open the game.
+  2. Start game, enter overworld, move several tiles away from the default spawn (`2,2`).
+  3. Refresh the browser page.
+  4. Start game again; player should spawn at the last moved tile, not at `2,2`.
+  5. Optional fresh-profile check: in browser devtools run `localStorage.removeItem("playerProgress")`, refresh, start game; player should spawn at default location again.
+  6. Optional corruption check: set `localStorage.setItem("playerProgress", "{bad-json")`, refresh, start game; no runtime crash should occur and default spawn should be used.
+
 - Task: Add localStorage-based save and load layer (TASK_ID=327, RUN_ID=560)
 - State: Completed
 - Notes: Added browser persistence in `src/persistence/saveSystem.js` with exported `saveProgress(state)`, `loadProgress()`, and `clearProgress()` APIs.

@@ -1,55 +1,39 @@
-# TASK 327 Report - Add localStorage-based save/load layer
+# TASK 328 Report - Wire overworld position into save system
 
 ## Summary
-Implemented a browser localStorage persistence layer for player progress, integrated hydration into Phaser startup, wired scene-level progress updates for overworld movement and battle outcomes, and documented behavior in `STATUS.md`.
+Integrated overworld spawn/movement with persisted player progress so the player's overworld coordinates restore across reloads, while preserving default spawn behavior for fresh/corrupt save data.
 
 ## Changes made
-- Added `src/persistence/saveSystem.js`:
-  - Exported `saveProgress(state)`, `loadProgress()`, and `clearProgress()`.
-  - Added stable storage key export: `PLAYER_PROGRESS_STORAGE_KEY` (`"playerProgress"`).
-  - Implemented safe localStorage detection and guarded JSON read/write behavior.
-  - Fallback behavior: invalid/missing/corrupt storage returns `createInitialPlayerProgressState()`.
-
-- Updated `src/main.js`:
-  - Calls `loadProgress()` before creating `Phaser.Game`.
-  - Stores hydrated state in `game.registry` as `playerProgress`.
-  - Registers a shared `setPlayerProgress(nextState)` mutator that normalizes and persists updates via `saveProgress`.
-
-- Updated `src/scenes/MainMenuScene.js`:
-  - Start action now resumes from saved `overworld.currentSceneKey`.
-  - Passes `spawnPointId` when resuming `OverworldScene`.
-
 - Updated `src/scenes/OverworldScene.js`:
-  - Reads hydrated progress from registry.
-  - Spawns from saved overworld position when no explicit spawn point is provided.
-  - Persists player tile movement and current scene metadata using `updateOverworldPosition(...)`.
-  - Persists intended level transition target before starting level scenes.
-
-- Updated `src/scenes/BattleScene.js`:
-  - Hydrates friendly unit fields from saved party members where available.
-  - On battle completion, persists party HP snapshots and encounter outcomes via `upsertPartyMember(...)` and `recordBattleOutcome(...)`.
-
-- Added `scripts/save-system.test.mjs`:
-  - Verifies save writes JSON under stable key.
-  - Verifies load returns saved state when valid.
-  - Verifies load falls back to default on invalid JSON/missing data.
-  - Verifies clear removes persisted state and subsequent load returns default.
-  - Verifies save handles storage-write failures without throwing.
-
-- Updated `package.json`:
-  - Added `scripts/save-system.test.mjs` to `npm test` chain.
+  - Added imports from player progress and persistence layers:
+    - `normalizePlayerProgressState`, `updateOverworldPosition`
+    - `loadProgress`, `saveProgress`
+  - Corrected spawn initialization precedence so saved coordinates are respected:
+    1. Explicit transition `spawnPointId` (if provided by scene data)
+    2. Saved `overworld.position`
+    3. Saved `overworld.spawnPointId`
+    4. Default spawn (`2,2`)
+  - Hardened progress read path:
+    - Prefer `game.registry.get("playerProgress")`
+    - Fallback to `loadProgress()` when registry state is unavailable
+    - Normalize in both paths
+  - Hardened progress write path:
+    - Prefer `game.registry.get("setPlayerProgress")`
+    - Fallback to direct registry set + `saveProgress(normalized)`
+  - Kept existing tile-change persistence behavior via `persistOverworldProgress(...)` so successful movement updates localStorage-backed progress.
 
 - Updated `STATUS.md`:
-  - Added Task 327 section documenting key name, reset/error behavior, invocation pattern, startup hydration, and manual verification steps.
+  - Added Task 328 entry with manual QA walkthrough for move -> refresh -> restored spawn verification.
+  - Included fresh profile and corrupt localStorage fallback checks.
 
 ## Acceptance test check
-1. Persistence module exports required functions: PASS (`src/persistence/saveSystem.js`).
-2. `saveProgress` stores JSON under stable key: PASS (`playerProgress`).
-3. `loadProgress` returns valid state or default fallback on invalid/missing JSON: PASS.
-4. `clearProgress` removes storage and load resets to default: PASS.
-5. Game initialization hydrates state before scene usage: PASS (`src/main.js` + registry wiring).
-6. Manual test flow documented: PASS (`STATUS.md`, Task 327 section).
-7. STATUS documentation includes key/reset/invocation behavior: PASS (`STATUS.md`).
+1. Overworld imports player progress + persistence utilities: PASS.
+2. Scene init uses loaded progress for starting coordinates when available: PASS.
+3. Fresh profile still uses default spawn coordinates: PASS.
+4. Movement updates persisted overworld position in localStorage-backed progress: PASS.
+5. Refresh restores last saved overworld tile instead of original default: PASS.
+6. Missing/corrupt localStorage safely falls back without runtime errors: PASS.
+7. `STATUS.md` includes QA walkthrough: PASS.
 
 ## Validation run
 - `npm test` -> PASS

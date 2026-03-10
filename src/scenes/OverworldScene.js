@@ -1,7 +1,8 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
-import { updateOverworldPosition } from "../state/playerProgress.js";
+import { normalizePlayerProgressState, updateOverworldPosition } from "../state/playerProgress.js";
+import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 16;
@@ -139,9 +140,7 @@ class OverworldScene extends Phaser.Scene {
   create(data) {
     const progress = this.getProgressState();
     const requestedSpawnPointId =
-      typeof data?.spawnPointId === "string" && data.spawnPointId.trim()
-        ? data.spawnPointId.trim()
-        : progress?.overworld?.spawnPointId;
+      typeof data?.spawnPointId === "string" && data.spawnPointId.trim() ? data.spawnPointId.trim() : null;
 
     this.cameras.main.setBackgroundColor("#1f2228");
     this.physics.world.setBounds(0, 0, MAP_PIXEL_WIDTH, MAP_PIXEL_HEIGHT);
@@ -157,7 +156,7 @@ class OverworldScene extends Phaser.Scene {
     this.renderTerrain();
     this.renderCollisionOverlay();
     this.createCollisionBodies();
-    const spawnTile = this.resolveSpawnTile(requestedSpawnPointId, progress?.overworld?.position);
+    const spawnTile = this.resolveSpawnTile(requestedSpawnPointId, progress?.overworld);
     this.createPlayerCharacter(spawnTile);
     this.createNpcPlaceholders();
     this.createLevelSigns();
@@ -376,11 +375,12 @@ class OverworldScene extends Phaser.Scene {
     });
   }
 
-  resolveSpawnTile(spawnPointId, fallbackPosition) {
-    if (typeof spawnPointId === "string" && OVERWORLD_SPAWN_BY_ID[spawnPointId]) {
-      return OVERWORLD_SPAWN_BY_ID[spawnPointId];
+  resolveSpawnTile(requestedSpawnPointId, overworldProgress) {
+    if (typeof requestedSpawnPointId === "string" && OVERWORLD_SPAWN_BY_ID[requestedSpawnPointId]) {
+      return OVERWORLD_SPAWN_BY_ID[requestedSpawnPointId];
     }
 
+    const fallbackPosition = overworldProgress?.position;
     if (
       Number.isFinite(fallbackPosition?.x) &&
       Number.isFinite(fallbackPosition?.y) &&
@@ -392,22 +392,36 @@ class OverworldScene extends Phaser.Scene {
       };
     }
 
+    const savedSpawnPointId = overworldProgress?.spawnPointId;
+    if (typeof savedSpawnPointId === "string" && OVERWORLD_SPAWN_BY_ID[savedSpawnPointId]) {
+      return OVERWORLD_SPAWN_BY_ID[savedSpawnPointId];
+    }
+
     return OVERWORLD_SPAWN_BY_ID.default;
   }
 
   getProgressState() {
-    return this.game?.registry?.get("playerProgress");
+    const fromRegistry = this.game?.registry?.get("playerProgress");
+    if (fromRegistry) {
+      return normalizePlayerProgressState(fromRegistry);
+    }
+
+    return normalizePlayerProgressState(loadProgress());
   }
 
   commitProgress(updater) {
     const setPlayerProgress = this.game?.registry?.get("setPlayerProgress");
-    if (typeof setPlayerProgress !== "function") {
-      return null;
-    }
-
     const current = this.getProgressState();
     const next = typeof updater === "function" ? updater(current) : updater;
-    return setPlayerProgress(next);
+    const normalized = normalizePlayerProgressState(next);
+
+    if (typeof setPlayerProgress === "function") {
+      return setPlayerProgress(normalized);
+    }
+
+    this.game?.registry?.set?.("playerProgress", normalized);
+    saveProgress(normalized);
+    return normalized;
   }
 
   persistOverworldProgress(options = {}) {
