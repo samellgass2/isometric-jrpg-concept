@@ -6,11 +6,27 @@ const TILE_WIDTH = 72;
 const TILE_HEIGHT = 36;
 const UI_DEPTH = 50;
 const TILE_DEPTH_BASE = 5;
+const UNIT_DEPTH_OFFSET = 2;
+const UNIT_Y_OFFSET = TILE_HEIGHT * 0.45;
 const TILE_COLORS = {
   fillA: 0x3a6ea5,
   fillB: 0x2c5889,
   stroke: 0xa7d0ff,
   highlight: 0x4f90d9,
+};
+const UNIT_SIDE_STYLE = {
+  player: {
+    fill: 0x4cd97b,
+    stroke: 0x1c7a43,
+    marker: "P",
+    labelColor: "#0d2816",
+  },
+  enemy: {
+    fill: 0xff7a7a,
+    stroke: 0x8f1c1c,
+    marker: "E",
+    labelColor: "#2d0f0f",
+  },
 };
 
 function isoProject(row, col, originX, originY) {
@@ -20,12 +36,107 @@ function isoProject(row, col, originX, originY) {
   };
 }
 
+class BattleUnitManager {
+  constructor(scene) {
+    this.scene = scene;
+    this.units = [];
+    this.unitsById = new Map();
+    this.nextId = 1;
+  }
+
+  createUnit(unitConfig) {
+    const id = unitConfig.id ?? `unit-${this.nextId++}`;
+    const side = unitConfig.side;
+
+    if (!UNIT_SIDE_STYLE[side]) {
+      throw new Error(`Unsupported unit side "${side}" for unit "${id}".`);
+    }
+
+    if (!this.scene.isWithinGrid(unitConfig.row, unitConfig.col)) {
+      throw new Error(`Unit "${id}" has out-of-bounds grid position (${unitConfig.row},${unitConfig.col}).`);
+    }
+
+    const unit = {
+      id,
+      side,
+      row: unitConfig.row,
+      col: unitConfig.col,
+      name: unitConfig.name ?? id,
+      view: this.createUnitView(id, side),
+    };
+
+    this.units.push(unit);
+    this.unitsById.set(id, unit);
+    this.syncUnitScreenPosition(unit);
+    return unit;
+  }
+
+  createUnitView(id, side) {
+    const style = UNIT_SIDE_STYLE[side];
+    const shadow = this.scene.add.ellipse(0, 8, 24, 10, 0x000000, 0.35);
+    const body = this.scene.add.circle(0, -8, 12, style.fill, 1).setStrokeStyle(2, style.stroke, 1);
+    const marker = this.scene.add
+      .text(0, -8, style.marker, {
+        color: style.labelColor,
+        fontFamily: "monospace",
+        fontSize: "12px",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
+    const unitView = this.scene.add.container(0, 0, [shadow, body, marker]).setName(`unit-${id}`);
+    unitView.setDataEnabled();
+    unitView.setData("unitId", id);
+    unitView.setData("side", side);
+    return unitView;
+  }
+
+  syncUnitScreenPosition(unit) {
+    const projected = this.scene.gridToWorld(unit.row, unit.col);
+    unit.view.setPosition(projected.x, projected.y - UNIT_Y_OFFSET);
+    unit.view.setDepth(this.scene.getUnitDepth(unit.row, unit.col));
+  }
+
+  setUnitGridPosition(id, row, col) {
+    const unit = this.unitsById.get(id);
+    if (!unit) {
+      return false;
+    }
+
+    if (!this.scene.isWithinGrid(row, col)) {
+      throw new Error(`Unit "${id}" cannot move to out-of-bounds grid position (${row},${col}).`);
+    }
+
+    unit.row = row;
+    unit.col = col;
+    this.syncUnitScreenPosition(unit);
+    return true;
+  }
+
+  getUnits() {
+    return this.units.map((unit) => ({
+      id: unit.id,
+      side: unit.side,
+      row: unit.row,
+      col: unit.col,
+      name: unit.name,
+    }));
+  }
+
+  destroy() {
+    this.units.forEach((unit) => unit.view.destroy());
+    this.units = [];
+    this.unitsById.clear();
+  }
+}
+
 class BattleScene extends Phaser.Scene {
   constructor() {
     super("BattleScene");
     this.returnToOverworldKey = null;
     this.gridOrigin = { x: 0, y: 0 };
     this.tileObjects = [];
+    this.unitManager = null;
   }
 
   preload() {}
@@ -116,6 +227,40 @@ class BattleScene extends Phaser.Scene {
     }
   }
 
+  isWithinGrid(row, col) {
+    return row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS;
+  }
+
+  gridToWorld(row, col) {
+    return isoProject(row, col, this.gridOrigin.x, this.gridOrigin.y);
+  }
+
+  getUnitDepth(row, col) {
+    return TILE_DEPTH_BASE + row + col + UNIT_DEPTH_OFFSET;
+  }
+
+  createInitialUnits() {
+    this.unitManager = new BattleUnitManager(this);
+    const unitDefinitions = [
+      {
+        id: "player-vanguard",
+        side: "player",
+        row: 6,
+        col: 2,
+        name: "Vanguard",
+      },
+      {
+        id: "enemy-skirmisher",
+        side: "enemy",
+        row: 1,
+        col: 5,
+        name: "Skirmisher",
+      },
+    ];
+
+    unitDefinitions.forEach((unitConfig) => this.unitManager.createUnit(unitConfig));
+  }
+
   setupCamera() {
     this.cameras.main.setBackgroundColor("#243145");
     this.cameras.main.setZoom(1);
@@ -155,6 +300,7 @@ class BattleScene extends Phaser.Scene {
   create() {
     this.setupCamera();
     this.createGrid();
+    this.createInitialUnits();
     this.createUi();
     this.addHoverFeedback();
 
@@ -169,14 +315,34 @@ class BattleScene extends Phaser.Scene {
 
     this.add
       .text(24, 88, "Hover any diamond to verify stable tile objects for future targeting.", {
-      color: "#b5c7e8",
-      fontFamily: "monospace",
-      fontSize: "12px",
-    })
+        color: "#b5c7e8",
+        fontFamily: "monospace",
+        fontSize: "12px",
+      })
+      .setDepth(UI_DEPTH)
+      .setScrollFactor(0);
+
+    const unitSummary = this.unitManager
+      .getUnits()
+      .map((unit) => `${unit.id}:${unit.side}@(${unit.row},${unit.col})`)
+      .join("  ");
+
+    this.add
+      .text(24, 106, `Units: ${unitSummary}`, {
+        color: "#9fbbdf",
+        fontFamily: "monospace",
+        fontSize: "12px",
+      })
       .setDepth(UI_DEPTH)
       .setScrollFactor(0);
 
     this.returnToOverworldKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.unitManager) {
+        this.unitManager.destroy();
+      }
+      this.unitManager = null;
+    });
   }
 
   update() {
