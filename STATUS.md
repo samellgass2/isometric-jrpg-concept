@@ -1,5 +1,9 @@
 # Status
 
+- Task: Add simple map collision and NPC placeholders (TASK_ID=281, RUN_ID=482)
+- State: Completed
+- Notes: Enhanced `src/scenes/OverworldScene.js` with explicit collidable tile boundaries (border walls + interior obstacle tiles) backed by Arcade static bodies so the player cannot move through blocked regions or leave the playable map bounds. Replaced circle placeholders with two fixed-position physics NPC sprites (`Ranger Sol` at tile 8,4 and `Mechanic Ivo` at tile 11,8), each carrying NPC-specific placeholder dialogue metadata. Added interaction handling on `Space` or `Enter`: when the player is adjacent to an NPC, a fixed-screen dialogue box appears with NPC-specific text; pressing the interaction key again dismisses the message.
+
 - Task: Implement player sprite and movement controls (TASK_ID=280, RUN_ID=481)
 - State: Completed
 - Notes: Updated `src/gameConfig.js` to enable Arcade physics and replaced overworld player placeholder logic with a physics-driven sprite in `src/scenes/OverworldScene.js`. Added generated placeholder idle/walk textures and animations, cursor-key plus WASD controls, cardinal-only movement using Arcade velocity, and static collision bodies for blocked tiles. Player motion stops immediately on key release and is constrained by world bounds + collision tiles so the player cannot leave the overworld area.

@@ -6,12 +6,37 @@ const MAP_HEIGHT = 12;
 const PLAYER_SPEED = 180;
 const MAP_PIXEL_WIDTH = MAP_WIDTH * TILE_SIZE;
 const MAP_PIXEL_HEIGHT = MAP_HEIGHT * TILE_SIZE;
+const INTERACTION_DISTANCE = TILE_SIZE * 0.9;
+const UI_DEPTH = 40;
 
 const PLAYER_TEXTURES = {
   idle: "player-idle",
   walkA: "player-walk-a",
   walkB: "player-walk-b",
 };
+
+const NPC_DEFINITIONS = [
+  {
+    id: "npc-ranger",
+    name: "Ranger Sol",
+    texture: "npc-ranger",
+    bodyColor: 0x3f8f7d,
+    accentColor: 0xc5f7d9,
+    tileX: 8,
+    tileY: 4,
+    dialogue: "Ranger Sol: Trails ahead are rough. Stay inside the marked paths.",
+  },
+  {
+    id: "npc-mechanic",
+    name: "Mechanic Ivo",
+    texture: "npc-mechanic",
+    bodyColor: 0x9d6ac9,
+    accentColor: 0xffd58a,
+    tileX: 11,
+    tileY: 8,
+    dialogue: "Mechanic Ivo: Placeholder line... my workshop will open in a later build.",
+  },
+];
 
 const TILE_LAYOUT = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -43,6 +68,13 @@ class OverworldScene extends Phaser.Scene {
     this.collisionBodies = null;
     this.cursors = null;
     this.wasdKeys = null;
+    this.interactKeys = null;
+    this.npcGroup = null;
+    this.npcEntities = [];
+    this.dialogueBox = null;
+    this.dialogueText = null;
+    this.dialogueHintText = null;
+    this.activeDialogueNpcId = null;
   }
 
   create() {
@@ -54,7 +86,7 @@ class OverworldScene extends Phaser.Scene {
     this.collisionLayer = this.add.layer();
     this.characterLayer = this.add.layer();
 
-    this.npcGroup = this.add.group();
+    this.npcGroup = this.physics.add.staticGroup();
 
     this.renderTerrain();
     this.renderCollisionOverlay();
@@ -62,6 +94,7 @@ class OverworldScene extends Phaser.Scene {
     this.createPlayerCharacter();
     this.createNpcPlaceholders();
     this.setupMovementInput();
+    this.createDialogueUi();
 
     this.add
       .text(16, 16, "Overworld Prototype", {
@@ -70,7 +103,16 @@ class OverworldScene extends Phaser.Scene {
         fontSize: "16px",
       })
       .setScrollFactor(0)
-      .setDepth(20);
+      .setDepth(UI_DEPTH);
+
+    this.add
+      .text(16, 40, "Move: Arrows/WASD  Interact: Space/Enter", {
+        color: "#d7e0ef",
+        fontFamily: "monospace",
+        fontSize: "14px",
+      })
+      .setScrollFactor(0)
+      .setDepth(UI_DEPTH);
   }
 
   createPlayerTextures() {
@@ -125,6 +167,25 @@ class OverworldScene extends Phaser.Scene {
         repeat: -1,
       });
     }
+  }
+
+  createNpcTexture(textureKey, bodyColor, accentColor) {
+    if (this.textures.exists(textureKey)) {
+      return;
+    }
+
+    const frame = this.make.graphics({ x: 0, y: 0, add: false });
+    frame.fillStyle(0x1f1f2b, 1);
+    frame.fillRoundedRect(6, 0, 12, 10, 3);
+    frame.fillStyle(bodyColor, 1);
+    frame.fillRoundedRect(4, 10, 16, 16, 4);
+    frame.fillStyle(accentColor, 1);
+    frame.fillRect(6, 14, 12, 3);
+    frame.fillStyle(0x111111, 1);
+    frame.fillRect(6, 28, 5, 3);
+    frame.fillRect(13, 28, 5, 3);
+    frame.generateTexture(textureKey, 24, 32);
+    frame.destroy();
   }
 
   renderTerrain() {
@@ -192,20 +253,23 @@ class OverworldScene extends Phaser.Scene {
     this.player.anims.play("player-idle");
 
     this.physics.add.collider(this.player, this.collisionBodies);
+    this.physics.add.collider(this.player, this.npcGroup);
     this.characterLayer.add(this.player);
   }
 
   createNpcPlaceholders() {
-    const npcTiles = [
-      { tileX: 8, tileY: 4 },
-      { tileX: 11, tileY: 8 },
-    ];
-
-    npcTiles.forEach(({ tileX, tileY }) => {
-      const world = tileToWorld(tileX, tileY);
-      const npc = this.add.circle(world.x, world.y, 12, 0xe8b04d);
+    NPC_DEFINITIONS.forEach((npcConfig) => {
+      this.createNpcTexture(npcConfig.texture, npcConfig.bodyColor, npcConfig.accentColor);
+      const world = tileToWorld(npcConfig.tileX, npcConfig.tileY);
+      const npc = this.npcGroup.create(world.x, world.y, npcConfig.texture);
+      npc.setDepth(9);
+      npc.setDataEnabled();
+      npc.setData("npcId", npcConfig.id);
+      npc.setData("name", npcConfig.name);
+      npc.setData("dialogue", npcConfig.dialogue);
+      npc.refreshBody();
       this.characterLayer.add(npc);
-      this.npcGroup.add(npc);
+      this.npcEntities.push(npc);
     });
   }
 
@@ -217,6 +281,98 @@ class OverworldScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
     });
+    this.interactKeys = this.input.keyboard.addKeys({
+      space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
+    });
+  }
+
+  createDialogueUi() {
+    this.dialogueBox = this.add
+      .rectangle(400, 540, 760, 96, 0x111827, 0.9)
+      .setStrokeStyle(2, 0x7ea8ff, 1)
+      .setScrollFactor(0)
+      .setDepth(UI_DEPTH)
+      .setVisible(false);
+
+    this.dialogueText = this.add
+      .text(32, 508, "", {
+        color: "#ffffff",
+        fontFamily: "monospace",
+        fontSize: "15px",
+        wordWrap: { width: 730, useAdvancedWrap: true },
+      })
+      .setScrollFactor(0)
+      .setDepth(UI_DEPTH)
+      .setVisible(false);
+
+    this.dialogueHintText = this.add
+      .text(32, 568, "Press Space or Enter to close", {
+        color: "#c5d9ff",
+        fontFamily: "monospace",
+        fontSize: "12px",
+      })
+      .setScrollFactor(0)
+      .setDepth(UI_DEPTH)
+      .setVisible(false);
+  }
+
+  findNearbyNpc() {
+    if (!this.player || this.npcEntities.length === 0) {
+      return null;
+    }
+
+    let closestNpc = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    this.npcEntities.forEach((npc) => {
+      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, npc.x, npc.y);
+      if (distance <= INTERACTION_DISTANCE && distance < closestDistance) {
+        closestDistance = distance;
+        closestNpc = npc;
+      }
+    });
+
+    return closestNpc;
+  }
+
+  showDialogue(npc) {
+    const npcName = npc.getData("name") || "NPC";
+    const npcDialogue = npc.getData("dialogue") || `${npcName}: Placeholder dialogue.`;
+    this.activeDialogueNpcId = npc.getData("npcId") || null;
+    this.dialogueText.setText(npcDialogue);
+    this.dialogueBox.setVisible(true);
+    this.dialogueText.setVisible(true);
+    this.dialogueHintText.setVisible(true);
+  }
+
+  hideDialogue() {
+    this.activeDialogueNpcId = null;
+    this.dialogueBox.setVisible(false);
+    this.dialogueText.setVisible(false);
+    this.dialogueHintText.setVisible(false);
+  }
+
+  handleInteractionInput() {
+    const interactPressed =
+      Phaser.Input.Keyboard.JustDown(this.interactKeys.space) ||
+      Phaser.Input.Keyboard.JustDown(this.interactKeys.enter);
+
+    if (!interactPressed) {
+      return;
+    }
+
+    if (this.dialogueBox.visible) {
+      this.hideDialogue();
+      return;
+    }
+
+    const nearbyNpc = this.findNearbyNpc();
+    if (!nearbyNpc) {
+      return;
+    }
+
+    this.showDialogue(nearbyNpc);
   }
 
   getMovementVector() {
@@ -246,6 +402,14 @@ class OverworldScene extends Phaser.Scene {
 
   update() {
     if (!this.player || !this.player.body) {
+      return;
+    }
+
+    this.handleInteractionInput();
+
+    if (this.dialogueBox.visible) {
+      this.player.body.setVelocity(0, 0);
+      this.player.anims.play("player-idle", true);
       return;
     }
 
