@@ -1,5 +1,9 @@
 # Status
 
+- Task: Render core isometric battle grid (TASK_ID=287, RUN_ID=490)
+- State: Completed
+- Notes: Reworked `src/scenes/BattleScene.js` to render a fixed `8x8` isometric board using a diamond projection (`screenX = originX + (col - row) * tileWidth/2`, `screenY = originY + (col + row) * tileHeight/2`). Tiles are Phaser polygon game objects (diamond shapes) with alternating fill colors and per-tile stable metadata via `setData` (`row`, `col`, `tileId`, projected `worldX/worldY`) and deterministic naming (`battle-tile-r{row}-c{col}`). Camera setup keeps the full board visible in the 800x600 viewport by computing projected board bounds and centering the grid origin; no manual scrolling is required. Assumptions: row/col coordinates are zero-based, row increases down-right in projected space, and col increases down-left in projected space.
+
 - Task: Create battle scene and entry hook (TASK_ID=286, RUN_ID=489)
 - State: Completed
 - Notes: Added `src/scenes/BattleScene.js` as a dedicated Phaser scene (`BattleScene`) with neutral camera setup, a distinct background color, and on-screen debug labels confirming the battle scene is active. Updated `src/gameConfig.js` to register `BattleScene` alongside `OverworldScene`. During development, start in overworld and press `B` to transition into battle; in battle, press `O` to return to overworld.
