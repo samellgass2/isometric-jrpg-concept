@@ -1447,3 +1447,97 @@ Dev server running at http://127.0.0.1:5173
 
 ### Overall Verdict
 - CLEAN
+
+## QA Validation Summary (2026-03-10) - Workflow #34: AI Zookeeper Drone Enemies and Battle Behaviors
+
+### Commits Reviewed (`git log --oneline main..HEAD`)
+- `637cfc7` task/341: supervisor safety-commit (Codex omitted git commit)
+- `a6497e3` task/339: add drone test battle scenario and launch path
+- `d7e6880` task/338: add task report and acceptance summary
+- `093022c` task/338: add zookeeper drone turn decision AI
+- `5c9e6d5` task/337: update task report for drone unit model work
+- `9c3c33c` task/337: add zookeeper drone enemy unit definitions
+
+### Diffstat Reviewed (`git diff main...HEAD --stat`)
+```text
+ STATUS.md                                   | 136 ++++++++++++++++++++++++++++
+ TASK_REPORT.md                              |  92 ++++++++-----------
+ package.json                                |   2 +-
+ scripts/battle-grid-stats.test.mjs          |  40 +++++++-
+ scripts/drone-ai-decision.test.mjs          |  87 ++++++++++++++++++
+ scripts/drone-test-battle-scenario.test.mjs | 104 +++++++++++++++++++++
+ src/battle/ai/droneDecisionController.js    | 127 ++++++++++++++++++++++++++
+ src/battle/encounters.js                    |  90 ++++++++++++++----
+ src/battle/units/animalUnits.js             | 134 +++++++++++++++++++++++++++
+ src/scenes/BattleScene.js                   | 121 +++++++++++--------------
+ src/scenes/MainMenuScene.js                 | 106 ++++++++++++++++------
+ 11 files changed, 874 insertions(+), 165 deletions(-)
+```
+
+### Test Commands Run And Results
+1. `cat package.json | grep -A 30 '"scripts"'` - PASS
+```text
+"scripts": {
+  "dev": "node scripts/dev-server.mjs",
+  "start": "node scripts/dev-server.mjs",
+  "test": "node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/drone-ai-decision.test.mjs && node scripts/drone-test-battle-scenario.test.mjs && node scripts/player-progress.test.mjs && node scripts/save-system.test.mjs && node scripts/battle-party-persistence.test.mjs"
+}
+```
+2. `npm install` - PASS
+```text
+added 2 packages, and audited 3 packages in 23s
+found 0 vulnerabilities
+```
+3. `npm test` - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/drone-ai-decision.test.mjs && node scripts/drone-test-battle-scenario.test.mjs && node scripts/player-progress.test.mjs && node scripts/save-system.test.mjs && node scripts/battle-party-persistence.test.mjs
+
+Rollback test passed.
+Dog conditional behavior test passed.
+Battle grid stats test passed.
+Drone AI decision test passed.
+Drone test battle scenario test passed.
+Player progress state test passed.
+Save system persistence test passed.
+Battle party persistence test passed.
+```
+
+### Per-Task Acceptance Verdict
+
+#### Task: Define zookeeper drone enemy data models
+- Verdict: PASS
+- Acceptance check:
+  - Single source module with existing unit export pattern present at `src/battle/units/animalUnits.js`.
+  - Three distinct drone variants defined: scout/defender/controller, with different HP, movement range, attack range, damage, and defense.
+  - AI behavior tagging present via `AI_BEHAVIOR_TAGS` and per-unit `aiBehavior`.
+  - Drones are instantiated from battle setup via `src/battle/encounters.js` and exercised by tests without runtime errors.
+  - `STATUS.md` includes explicit task entry with file path and drone definition notes.
+
+#### Task: Implement basic zookeeper drone AI decisions
+- Verdict: PASS
+- Acceptance check:
+  - Enemy turn auto-executes in `BattleScene.runEnemyTurn()` when phase advances.
+  - In-range attacks are selected and executed using existing resolver path `attackTarget()` -> `resolveAttack()` with HP reduction.
+  - Out-of-range behavior moves toward nearest viable target using existing grid/path helpers through `decideDroneAction()`.
+  - No-target/unreachable fallback returns `wait` and resolves safely.
+  - AI logic is encapsulated in `src/battle/ai/droneDecisionController.js` (`decideDroneAction`).
+  - `STATUS.md` includes Task #338 entry documenting AI logic and modified files.
+
+#### Task: Integrate drones into battles and add test scenario
+- Verdict: PASS
+- Acceptance check:
+  - Named encounter `drone-test-battle` (`Drone Test Battle`) exists with friendlies and multiple drone types.
+  - Drone visuals are distinguishable via per-unit color assignments in encounter config and rendered unit placeholders.
+  - Automated enemy behavior (move/attack) and HP-changing combat are validated in code path and `scripts/drone-test-battle-scenario.test.mjs`.
+  - Win/loss completion handled by `evaluateBattleOutcome()`/`finishBattle()` without runtime errors.
+  - Activation is available from `MainMenuScene` (button + `T` key) and documented in `STATUS.md`.
+  - `STATUS.md` includes a run walkthrough and expected drone behavior notes.
+
+### Workflow Goal Verdict
+- Goal: "AI Zookeeper Drone Enemies and Battle Behaviors"
+- Result: PASS
+- Rationale: Branch delivers distinct zookeeper drone enemy models, reusable drone AI decision logic, battle-turn integration with autonomous enemy actions, and a dedicated runnable/tested drone encounter flow.
+
+### Overall QA Verdict
+- PASS
