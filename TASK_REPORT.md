@@ -1,39 +1,44 @@
-# TASK 328 Report - Wire overworld position into save system
+# TASK 329 Report - Persist party composition across sessions
 
 ## Summary
-Integrated overworld spawn/movement with persisted player progress so the player's overworld coordinates restore across reloads, while preserving default spawn behavior for fresh/corrupt save data.
+Connected battle-party management to the progress/persistence stack so active party composition, order, and key member stats survive reloads while fresh profiles keep existing encounter defaults.
 
 ## Changes made
-- Updated `src/scenes/OverworldScene.js`:
-  - Added imports from player progress and persistence layers:
-    - `normalizePlayerProgressState`, `updateOverworldPosition`
-    - `loadProgress`, `saveProgress`
-  - Corrected spawn initialization precedence so saved coordinates are respected:
-    1. Explicit transition `spawnPointId` (if provided by scene data)
-    2. Saved `overworld.position`
-    3. Saved `overworld.spawnPointId`
-    4. Default spawn (`2,2`)
-  - Hardened progress read path:
-    - Prefer `game.registry.get("playerProgress")`
-    - Fallback to `loadProgress()` when registry state is unavailable
-    - Normalize in both paths
-  - Hardened progress write path:
-    - Prefer `game.registry.get("setPlayerProgress")`
-    - Fallback to direct registry set + `saveProgress(normalized)`
-  - Kept existing tile-change persistence behavior via `persistOverworldProgress(...)` so successful movement updates localStorage-backed progress.
+- Added new party persistence helper module: `src/state/partyPersistence.js`
+  - `hasPersistedProgressData(...)`: detects whether a real saved progress snapshot exists via `PLAYER_PROGRESS_STORAGE_KEY`.
+  - `resolveInitialFriendlyUnits(...)`: reconstructs encounter-friendly party from saved `party.memberOrder` + `party.members` when saved data exists; otherwise returns encounter defaults.
+  - `reconcilePartyProgressWithBattleUnits(...)`: upserts active units, removes encounter-template members no longer active, and rewrites member order with active members first.
+  - `serializeUnitToPartyMember(...)`: maps runtime unit state into JSON-friendly persisted fields (`id`, `name`, `archetype`, `level`, `currentHp`, `maxHp`).
 
-- Updated `STATUS.md`:
-  - Added Task 328 entry with manual QA walkthrough for move -> refresh -> restored spawn verification.
-  - Included fresh profile and corrupt localStorage fallback checks.
+- Updated `src/scenes/BattleScene.js`
+  - Imports and uses `partyPersistence` helpers for initial party load and post-battle reconciliation.
+  - `getProgressState()` now supports registry-first read with `loadProgress()` fallback and normalization.
+  - `commitProgress()` now supports registry setter when available, otherwise fallback save path (`saveProgress(...)`) without throwing.
+  - On battle start:
+    - Uses saved party composition/order only when a saved snapshot exists.
+    - Keeps existing encounter default lineup on fresh profile.
+  - On battle end:
+    - Reconciles party add/remove/order into progress state, then records battle outcome and overworld scene key.
+
+- Added tests: `scripts/battle-party-persistence.test.mjs`
+  - Verifies fresh profile behavior keeps existing default composition.
+  - Verifies saved profile restores composition order and key stats.
+  - Verifies reconciliation add/remove/order logic and JSON round-trip safety.
+
+- Updated `package.json`
+  - Added new test script to `npm test` chain.
+
+- Updated `STATUS.md`
+  - Added Task 329 entry describing architecture, persisted field mapping, and in-memory reconstruction path.
 
 ## Acceptance test check
-1. Overworld imports player progress + persistence utilities: PASS.
-2. Scene init uses loaded progress for starting coordinates when available: PASS.
-3. Fresh profile still uses default spawn coordinates: PASS.
-4. Movement updates persisted overworld position in localStorage-backed progress: PASS.
-5. Refresh restores last saved overworld tile instead of original default: PASS.
-6. Missing/corrupt localStorage safely falls back without runtime errors: PASS.
-7. `STATUS.md` includes QA walkthrough: PASS.
+1. Party management module imports progress + persistence utilities: PASS (`BattleScene` + `partyPersistence`).
+2. Party initializes from progress when saved data exists: PASS.
+3. Fresh profile preserves existing default composition/gameplay: PASS.
+4. Party add/remove reconciliation updates progress and triggers save path without errors: PASS.
+5. Reload restoration path implemented through localStorage-backed progress model: PASS.
+6. Persisted party data remains JSON-friendly and round-trippable: PASS.
+7. `STATUS.md` documents saved fields and conversion back to runtime units: PASS.
 
 ## Validation run
 - `npm test` -> PASS
@@ -42,3 +47,4 @@ Integrated overworld spawn/movement with persisted player progress so the player
   - Battle grid stats test passed.
   - Player progress state test passed.
   - Save system persistence test passed.
+  - Battle party persistence test passed.

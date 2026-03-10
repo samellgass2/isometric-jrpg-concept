@@ -1,5 +1,47 @@
 # Status
 
+- Task: Persist party composition across sessions (TASK_ID=329, RUN_ID=563)
+- State: Completed
+- Notes: Extended `src/scenes/BattleScene.js` so the battle party system now uses persisted player progress for party composition when real save data exists, while preserving prior default encounter composition for fresh profiles.
+
+  What changed:
+  - Party management in battle now flows through a dedicated helper module: `src/state/partyPersistence.js`.
+    - `partyPersistence` imports player-progress utilities (`normalizePlayerProgressState`, `upsertPartyMember`, `removePartyMember`) and persistence keying (`PLAYER_PROGRESS_STORAGE_KEY`) to keep party save logic centralized and JSON-safe.
+    - `BattleScene` imports `resolveInitialFriendlyUnits(...)`, `reconcilePartyProgressWithBattleUnits(...)`, and `hasPersistedProgressData(...)` from `partyPersistence`.
+    - `BattleScene` also imports persistence utilities (`loadProgress`, `saveProgress`) for robust scene-local fallback reads/writes when a registry setter is unavailable.
+  - Party initialization now distinguishes between:
+    1. Fresh profile (no `playerProgress` key in localStorage): keeps existing encounter-provided friendly lineup unchanged.
+    2. Saved profile (storage key exists): rebuilds active encounter party from persisted `party.memberOrder` + `party.members`, matching by character `id` and safely merging persisted fields into encounter templates.
+  - Progress commit flow in `BattleScene` is now resilient like overworld:
+    - Reads: registry `playerProgress` when available, otherwise `loadProgress()` fallback.
+    - Writes: registry `setPlayerProgress` when available, otherwise registry set + `saveProgress(...)` fallback.
+  - Battle persistence now reconciles party composition, not just HP snapshots:
+    - Upserts active friendly units as persisted party members.
+    - Removes encounter-template members that are no longer in the active party.
+    - Rewrites `party.memberOrder` so current active members appear first, preserving non-active persisted members afterward.
+
+  Party persistence mapping (in-memory -> saved JSON):
+  - In-memory battle unit fields used:
+    - `unit.id` -> `party.members[].id`
+    - `unit.name` -> `party.members[].name`
+    - `unit.archetype` -> `party.members[].archetype`
+    - `unit.level` (fallback `1`) -> `party.members[].level`
+    - `unit.currentHp` -> `party.members[].currentHp` (clamped integer >= 0)
+    - `unit.stats.maxHp` (fallback from current HP) -> `party.members[].maxHp` (clamped integer >= 1)
+  - Persisted representation intentionally excludes non-serializable runtime objects (sprites, Phaser refs, methods, circular refs).
+  - Load reconstruction path:
+    - Encounter templates provide combat behavior/runtime shape (`movement`, `attack`, abilities, spawn, color).
+    - Saved member payload overlays identity/stats (`name`, `archetype`, `level`, `currentHp`, `maxHp`) after ID matching.
+    - Unknown or unmatched saved IDs are ignored for that encounter lineup (safe fallback behavior).
+
+  Validation:
+  - Added `scripts/battle-party-persistence.test.mjs` and wired into `npm test`.
+  - New test verifies:
+    - Fresh profile uses default encounter composition.
+    - Saved profile restores prior party order and HP/max HP/name values.
+    - Party reconcile updates add/remove/order correctly and remains JSON round-trippable.
+    - Party changes commit through save fallback without throwing when registry setter is absent.
+
 - Task: Wire overworld position into save system (TASK_ID=328, RUN_ID=562)
 - State: Completed
 - Notes: Updated `src/scenes/OverworldScene.js` so overworld spawn restoration now prefers persisted tile coordinates from player progress when no explicit scene spawn override is provided.

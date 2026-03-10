@@ -12,10 +12,19 @@ import {
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
 import {
+  normalizePlayerProgressState,
   recordBattleOutcome,
   updateOverworldPosition,
-  upsertPartyMember,
 } from "../state/playerProgress.js";
+import {
+  loadProgress,
+  saveProgress,
+} from "../persistence/saveSystem.js";
+import {
+  hasPersistedProgressData,
+  reconcilePartyProgressWithBattleUnits,
+  resolveInitialFriendlyUnits,
+} from "../state/partyPersistence.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -63,10 +72,13 @@ class BattleScene extends Phaser.Scene {
     this.currentActingUnitId = null;
     this.hudOverlay = null;
     this.loadedProgress = null;
+    this.hasPersistedProgressSnapshot = false;
+    this.encounterFriendlyTemplateIds = [];
   }
 
   create(data = {}) {
     this.loadedProgress = this.getProgressState();
+    this.hasPersistedProgressSnapshot = this.hasPersistedProgressData();
     const encounterData = this.resolveEncounterData(data);
     this.encounterId = encounterData.id;
     this.encounterName = encounterData.name;
@@ -128,34 +140,24 @@ class BattleScene extends Phaser.Scene {
   }
 
   createUnits(encounterData) {
-    encounterData.friendlyUnits.forEach((unitConfig) => {
-      const persistedMember = this.getPersistedPartyMember(unitConfig.id);
-      const mergedUnitConfig = persistedMember
-        ? {
-            ...unitConfig,
-            name: persistedMember.name || unitConfig.name,
-            archetype: persistedMember.archetype ?? unitConfig.archetype,
-            level: persistedMember.level ?? unitConfig.level,
-            currentHp: persistedMember.currentHp,
-            stats: {
-              ...unitConfig.stats,
-              maxHp: persistedMember.maxHp,
-            },
-          }
-        : unitConfig;
+    const friendlyUnits = this.resolveInitialFriendlyUnits(encounterData.friendlyUnits);
+    this.encounterFriendlyTemplateIds = Array.isArray(encounterData.friendlyUnits)
+      ? encounterData.friendlyUnits.map((unit) => unit.id)
+      : [];
 
+    friendlyUnits.forEach((unitConfig) => {
       const unit = this.spawnUnit(
-        mergedUnitConfig,
+        unitConfig,
         "friendly",
-        mergedUnitConfig.spawn.x,
-        mergedUnitConfig.spawn.y,
-        mergedUnitConfig.color ?? 0x6aa9ff
+        unitConfig.spawn.x,
+        unitConfig.spawn.y,
+        unitConfig.color ?? 0x6aa9ff
       );
-      if (mergedUnitConfig.id === "protagonist") {
+      if (unitConfig.id === "protagonist") {
         this.protagonist = unit;
       }
-      if (Number.isFinite(mergedUnitConfig.currentHp)) {
-        unit.currentHp = Math.max(0, Math.min(mergedUnitConfig.currentHp, unit.stats.maxHp));
+      if (Number.isFinite(unitConfig.currentHp)) {
+        unit.currentHp = Math.max(0, Math.min(unitConfig.currentHp, unit.stats.maxHp));
         unit.stats.hp = unit.currentHp;
         unit.alive = unit.currentHp > 0;
         if (!unit.alive) {
@@ -181,18 +183,32 @@ class BattleScene extends Phaser.Scene {
   }
 
   getProgressState() {
-    return this.game?.registry?.get("playerProgress");
+    const fromRegistry = this.game?.registry?.get("playerProgress");
+    if (fromRegistry) {
+      return normalizePlayerProgressState(fromRegistry);
+    }
+
+    return normalizePlayerProgressState(loadProgress());
+  }
+
+  hasPersistedProgressData() {
+    return hasPersistedProgressData();
   }
 
   commitProgress(updater) {
     const setPlayerProgress = this.game?.registry?.get("setPlayerProgress");
-    if (typeof setPlayerProgress !== "function") {
-      return null;
-    }
-
     const current = this.getProgressState();
     const next = typeof updater === "function" ? updater(current) : updater;
-    return setPlayerProgress(next);
+    const normalized = normalizePlayerProgressState(next);
+    this.loadedProgress = normalized;
+
+    if (typeof setPlayerProgress === "function") {
+      return setPlayerProgress(normalized);
+    }
+
+    this.game?.registry?.set?.("playerProgress", normalized);
+    saveProgress(normalized);
+    return normalized;
   }
 
   getPersistedPartyMember(memberId) {
@@ -201,6 +217,20 @@ class BattleScene extends Phaser.Scene {
     }
 
     return this.loadedProgress.party.members.find((member) => member.id === memberId) ?? null;
+  }
+
+  resolveInitialFriendlyUnits(friendlyUnits) {
+    return resolveInitialFriendlyUnits(friendlyUnits, this.loadedProgress, {
+      hasPersistedData: this.hasPersistedProgressSnapshot,
+    });
+  }
+
+  reconcilePartyProgressWithBattle(previousState) {
+    return reconcilePartyProgressWithBattleUnits(
+      previousState,
+      this.units.filter((unit) => unit.faction === "friendly"),
+      this.encounterFriendlyTemplateIds
+    );
   }
 
   resolveEncounterData(data) {
@@ -1021,20 +1051,7 @@ class BattleScene extends Phaser.Scene {
 
   persistBattleProgress(result) {
     this.commitProgress((current) => {
-      let next = current;
-
-      this.units
-        .filter((unit) => unit.faction === "friendly")
-        .forEach((unit) => {
-          next = upsertPartyMember(next, {
-            id: unit.id,
-            name: unit.name,
-            archetype: unit.archetype,
-            level: unit.level ?? 1,
-            currentHp: Math.max(0, Math.floor(unit.currentHp)),
-            maxHp: Math.max(1, Math.floor(unit.stats?.maxHp ?? unit.currentHp ?? 1)),
-          });
-        });
+      let next = this.reconcilePartyProgressWithBattle(current);
 
       next = recordBattleOutcome(next, this.encounterId, {
         result,
