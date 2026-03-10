@@ -1,29 +1,22 @@
 # TASK REPORT
 
 ## Task
-- TASK_ID: 295
-- RUN_ID: 505
-- Title: Integrate stats with movement and targeting logic
+- TASK_ID: 308
+- RUN_ID: 524
+- Title: Implement main menu and level select UI
 
 ## Summary of Changes
-- Added `src/battle/grid.js` as a shared battle helper module for stat-driven movement and targeting logic.
-  - `getUnitMovementRange` and `getUnitAttackRange` normalize movement/range from unit attributes.
-  - `getReachableTiles` computes BFS movement options using per-unit movement stats.
-  - `canUnitTarget` enforces attack range and obstacle blocking rules, with elephant-compatible over-obstacle behavior via `attack.canAttackOverObstacles`.
-  - `getTargetableTiles` returns in-range targetable grid tiles for attack-mode visuals.
-  - `chooseMovementDestinationTowardTarget` selects the best reachable tile toward a target using the full movement budget.
-- Refactored `src/scenes/BattleScene.js` to route movement and targeting through these helpers.
-  - Player move highlight range now uses each selected unit's movement stat.
-  - Enemy turn movement no longer uses fixed one-step movement; it now moves up to each enemy unit's movement range.
-  - Attack checks use stat-based range and obstacle flags consistently.
-  - Attack mode highlights all targetable tiles, then emphasizes currently attackable enemy units.
-- Added `scripts/battle-grid-stats.test.mjs` and extended `npm test` in `package.json` to validate:
-  - movement envelope ordering (`cheetah > dog > elephant`),
-  - obstacle-blocked targeting for non-over-obstacle units,
-  - elephant targeting over obstacles,
-  - attack range enforcement,
-  - movement destination selection uses full movement allowance.
-- Updated `STATUS.md` with TASK_ID=295 integration notes and assumptions/limitations.
+- Added `src/scenes/MainMenuScene.js` and registered it with scene key `MainMenuScene`.
+- Implemented a Phaser main menu UI with:
+  - game title text,
+  - a clearly labeled `Start Game` control (mouse click or Enter/Space),
+  - visible level availability labels: `Level 1` and `Level 2`.
+- Wired transition flow from menu to overworld:
+  - `MainMenuScene.startGame()` fades out and starts `OverworldScene`.
+- Updated `src/gameConfig.js` boot scene registration:
+  - imports `MainMenuScene`,
+  - updates scene order to `scene: [MainMenuScene, BattleScene, OverworldScene]` so the menu launches first.
+- Updated `STATUS.md` with a new TASK_ID=308 entry describing menu implementation and overworld entry flow.
 
 ## Verification
 - `npm test` - PASS
@@ -34,17 +27,15 @@
   - Dev server reported startup and served `/` with HTTP `200`.
 
 ## Acceptance Criteria Mapping
-1. Movement code uses unit config stats instead of hard-coded per-type distances:
-   - `BattleScene` movement paths now use `getUnitMovementRange` from unit attributes.
-2. Cheetah moves more than elephant and dogs:
-   - Movement tiles are derived from each unit's `movement.tilesPerTurn`; tests assert `cheetah > dog > elephant` reachability.
-3. Elephant can target over obstacles while slower movement is preserved:
-   - Elephant movement remains low via `tilesPerTurn: 2`; targeting uses `canAttackOverObstacles` and bypasses blocking checks when true.
-4. Targeting uses attack range stat for eligibility and visuals:
-   - `canUnitTarget` and `getTargetableTiles` enforce `attack.range` in both selection behavior and attack highlights.
-5. No new battle turn startup/action errors:
-   - Test suite passes and battle-related logic runs under dev startup smoke check.
-6. Generic/placeholder units continue functioning:
-   - Fallback stat normalization in shared helpers supports existing non-animal units.
-7. Status documentation updated:
-   - `STATUS.md` includes updated task entry and elephant obstacle behavior notes.
+1. Main menu appears first:
+   - `gameConfig.scene` now begins with `MainMenuScene`.
+2. Menu displays title and `Start Game`:
+   - `MainMenuScene.create()` renders title text and button/label.
+3. Selecting `Start Game` transitions to overworld:
+   - `startGame()` triggers `this.scene.start("OverworldScene")`.
+4. Level labels represented and named consistently:
+   - Menu includes `Level 1` and `Level 2` labels.
+5. Scene imported/registered centrally:
+   - `src/gameConfig.js` imports `MainMenuScene` and adds it to scene list.
+6. Status document updated:
+   - `STATUS.md` includes TASK_ID=308 implementation entry.
