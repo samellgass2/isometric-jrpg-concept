@@ -1741,17 +1741,29 @@ Battle party persistence test passed.
 ### Summary
 - Performed a code-level cross-browser compatibility review focused on rendering, input normalization, timing/visibility behavior, and audio resume policy interactions.
 - Added targeted, browser-agnostic guards/fallbacks in startup, game config, input normalization, and keyboard/pointer scene handlers.
-- Runtime browser validation in Chrome/Firefox/Edge could not be executed in this environment, so all browser runtime checks below are explicitly unverified.
+- Executed browser/runtime checks on March 10, 2026 in the available browser runtime and captured explicit version/output evidence for unavailable target browsers.
 
-### Intended Browser Support Matrix (Unverified in this Environment)
-- Google Chrome (desktop, modern stable channel) - intended support.
-- Mozilla Firefox (desktop, modern stable channel) - intended support.
-- Microsoft Edge (Chromium-based desktop, modern stable channel) - intended support.
+### Browser Matrix Evidence (Task #353)
+Executed on: **2026-03-10 (UTC)**.
 
-Planned manual runtime matrix for follow-up verification (not executed here):
-- Chrome Stable (Windows/macOS/Linux): overworld movement + battle flow + level transitions.
-- Firefox Stable (Windows/macOS/Linux): same flows with focus on pointer/touch translation and keyboard capture behavior.
-- Edge Stable (Windows): same flows with focus on DPR scaling and text/canvas sharpness.
+| Browser target | Version evidence | Core flow outcome (main menu, overworld navigation, battle interactions, level transitions) | Notes |
+| --- | --- | --- | --- |
+| Google Chrome (required) | `google-chrome --version` -> `command not found` | **NOT EXECUTED** | Chrome runtime/binary is not present in this environment. |
+| Mozilla Firefox (required) | `firefox --version` -> `command not found` | **NOT EXECUTED** | Firefox runtime/binary is not present in this environment. |
+| Additional Chromium-based browser (executed: Playwright Chromium) | Playwright Chromium `145.0.7632.6`; UA `HeadlessChrome/145.0.7632.6` | **PARTIAL PASS with discrepancy** | Main menu + overworld navigation passed. Battle interaction burst passed. Level-route check found discrepancy below. |
+
+### Executed Runtime Evidence
+- Runtime harness:
+  - Local dev server: `node scripts/dev-server.mjs`
+  - Browser automation runtime: Python Playwright with `p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-gpu'])`
+- Flow results (Playwright Chromium `145.0.7632.6`):
+  - Main menu -> overworld navigation: **PASS**
+    - Evidence: persisted state `overworld.currentSceneKey = "OverworldScene"` and no console errors.
+  - Battle interactions (Drone Test Battle input burst: mouse + arrows + enter/space/escape): **PASS**
+    - Evidence: input sequence completed with no console errors.
+  - Level transition check (resume to `Level1Scene`, then return): **FAIL (discrepancy observed)**
+    - Runtime error: `this.physics.add.rectangle is not a function`
+    - Persisted state remained `overworld.currentSceneKey = "Level1Scene"` (transition back to overworld did not complete).
 
 ### Cross-Browser Compatibility Assumptions
 - Phaser 3 input/camera abstractions provide primary browser normalization for pointer and keyboard events.
@@ -1789,20 +1801,27 @@ Planned manual runtime matrix for follow-up verification (not executed here):
      - Added defensive null-safe keyboard checks for environments where keyboard plugin behavior differs (or is unavailable).
 
 ### Rendering/Input/Timing/Audio Validation Status
-- Rendering (tile alignment, scaling, text sharpness across browsers): **UNVERIFIED** (no interactive browser runtime available).
-- Input parity (mouse/keyboard/touch across Chrome/Firefox/Edge): **UNVERIFIED**.
-- Timing/visibility transitions (tab switch, background throttling, focus recovery): **UNVERIFIED at runtime**, but code-level mitigations implemented.
-- Audio autoplay/resume behavior: **UNVERIFIED at runtime**, but user-interaction-based resume hook implemented for suspended audio contexts.
+- Rendering (tile alignment, scaling, text sharpness): **PARTIALLY VERIFIED** in Playwright Chromium `145.0.7632.6`; **UNVERIFIED** in Chrome/Firefox.
+- Input parity (mouse/keyboard/touch): **PARTIALLY VERIFIED** in Playwright Chromium `145.0.7632.6`; **UNVERIFIED** in Chrome/Firefox.
+- Timing/visibility transitions: **PARTIALLY VERIFIED** in Playwright Chromium `145.0.7632.6`; **UNVERIFIED** in Chrome/Firefox.
+- Audio autoplay/resume behavior: **UNVERIFIED at runtime** in all target browsers for this task run.
 
 ### Known Limitations / Caveats
-- Manual browser QA could not be run in this task environment, so acceptance criteria requiring actual browser sessions remain pending external verification.
-- Browser version-specific rendering differences (font rasterization/canvas anti-aliasing nuances) are still possible and must be checked in real runtime sessions.
-- Touch behavior is normalized via pointer events and CSS touch-action controls, but device-specific gesture differences (especially mobile Safari) were not tested here.
+- Required Chrome and Firefox manual runtime sessions remain blocked by missing browser binaries in this environment.
+- One discrepancy was observed in executed Chromium checks: `Level1Scene` route hit runtime error `this.physics.add.rectangle is not a function`.
+- Browser version-specific rendering differences (font rasterization/canvas anti-aliasing nuances) and full audio resume behavior still need direct Chrome/Firefox validation.
 
 ### Support Statement
 - Intended support target: latest stable desktop Chrome, Firefox, and Edge.
-- Current status: code hardened for cross-browser compatibility using capability-based fallbacks, but runtime behavior remains **unverified** in this environment due to missing interactive browser runtimes/dependencies for full matrix execution.
+- Current status: compatibility hardening is in place, with executed evidence for Playwright Chromium `145.0.7632.6`; Chrome/Firefox checks remain pending due to unavailable binaries.
 
 ### Validation Commands
 1. `npm install` - PASS
 2. `npm test` - PASS
+3. Browser version checks:
+   - `google-chrome --version` - FAIL (`command not found`)
+   - `firefox --version` - FAIL (`command not found`)
+   - `microsoft-edge --version` - FAIL (`command not found`)
+   - `brave-browser --version` - FAIL (`command not found`)
+4. Executed runtime matrix harness (Playwright Chromium):
+   - `node scripts/dev-server.mjs` + Python Playwright (`p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-gpu'])`) - PASS (with noted level-route discrepancy)
