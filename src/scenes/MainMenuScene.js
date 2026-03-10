@@ -1,4 +1,5 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
+import { applyKeyboardCapture } from "../platform/browserCompat.js";
 
 class MainMenuScene extends Phaser.Scene {
   constructor() {
@@ -131,6 +132,11 @@ class MainMenuScene extends Phaser.Scene {
 
   setupKeyboardInput() {
     this.teardownKeyboardInput();
+    if (!this.input.keyboard) {
+      return;
+    }
+
+    applyKeyboardCapture(this.input.keyboard);
     this.onEnterKeyDown = () => this.startGame();
     this.onSpaceKeyDown = () => this.startGame();
     this.onDroneTestKeyDown = () => this.startDroneTestBattle();

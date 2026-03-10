@@ -2,6 +2,7 @@ import * as Phaser from "../node_modules/phaser/dist/phaser.esm.js";
 import gameConfig from "./gameConfig.js";
 import { normalizePlayerProgressState } from "./state/playerProgress.js";
 import { loadProgress, saveProgress } from "./persistence/saveSystem.js";
+import { configureGameBrowserCompatibility } from "./platform/browserCompat.js";
 
 const app = document.getElementById("app");
 
@@ -10,6 +11,9 @@ if (!app) {
 }
 
 app.replaceChildren();
+app.style.touchAction = "none";
+app.style.userSelect = "none";
+
 const hydratedProgress = loadProgress();
 const existingPreBoot = gameConfig.callbacks?.preBoot;
 
@@ -28,5 +32,5 @@ gameConfig.callbacks = {
   },
 };
 
-// eslint-disable-next-line no-new
-new Phaser.Game(gameConfig);
+const game = new Phaser.Game(gameConfig);
+configureGameBrowserCompatibility(game);

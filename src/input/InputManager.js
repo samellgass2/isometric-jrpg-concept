@@ -1,4 +1,11 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
+import {
+  applyKeyboardCapture,
+  createFocusVisibilityResetHook,
+  getPointerInputSource,
+  getPointerWorldPosition,
+  normalizePointerScreenPosition,
+} from "../platform/browserCompat.js";
 
 export const InputActions = Object.freeze({
   MOVE_UP: "MOVE_UP",
@@ -70,6 +77,7 @@ class InputManager {
     this.tileResolver = createTileResolver(options);
     this.pointerEnabled = options.pointerEnabled !== false;
     this.keyboardEnabled = options.keyboardEnabled !== false;
+    this.detachFocusVisibilityHook = null;
 
     this.configureBindings(options.keyBindings ?? DEFAULT_KEY_BINDINGS);
     this.attach();
@@ -88,6 +96,8 @@ class InputManager {
     if (this.pointerEnabled) {
       this.bindPointerActions();
     }
+
+    this.detachFocusVisibilityHook = createFocusVisibilityResetHook(() => this.resetPressedState());
   }
 
   configureBindings(bindings) {
@@ -107,20 +117,27 @@ class InputManager {
       return;
     }
 
+    const captureKeys = new Set();
     Object.entries(this.keyBindings).forEach(([action, keyNames]) => {
       const actionKeys = [];
       const pressedSet = this.pressedKeysByAction.get(action) ?? new Set();
       this.pressedKeysByAction.set(action, pressedSet);
 
       keyNames.forEach((keyName) => {
+        captureKeys.add(keyName);
         const key = keyboard.addKey(keyName);
         actionKeys.push(key);
+        const keyIdentity = Number.isFinite(key.keyCode) ? key.keyCode : keyName;
 
         const downHandler = () => {
           if (!this.enabledActions.has(action)) {
             return;
           }
-          pressedSet.add(key.keyCode);
+
+          if (pressedSet.has(keyIdentity)) {
+            return;
+          }
+          pressedSet.add(keyIdentity);
           this.emitAction(action, {
             type: "pressed",
             source: "keyboard",
@@ -130,7 +147,7 @@ class InputManager {
         };
 
         const upHandler = () => {
-          pressedSet.delete(key.keyCode);
+          pressedSet.delete(keyIdentity);
           if (!this.enabledActions.has(action)) {
             return;
           }
@@ -149,6 +166,8 @@ class InputManager {
 
       this.keysByAction.set(action, actionKeys);
     });
+
+    applyKeyboardCapture(keyboard, [...captureKeys]);
   }
 
   bindPointerActions() {
@@ -157,29 +176,43 @@ class InputManager {
         return;
       }
 
+      const worldPoint = getPointerWorldPosition(this.scene, pointer);
+      if (!worldPoint) {
+        return;
+      }
+
       const tile = this.tileResolver
-        ? this.tileResolver(pointer.worldX, pointer.worldY, pointer)
+        ? this.tileResolver(worldPoint.x, worldPoint.y, pointer)
         : { tileX: null, tileY: null };
 
       const viewportWidth = this.scene.scale?.width ?? 1;
       const viewportHeight = this.scene.scale?.height ?? 1;
+      const screenPosition = normalizePointerScreenPosition(pointer);
 
       this.emitAction(InputActions.SELECT_TILE, {
         type: "pressed",
-        source: pointer.wasTouch || pointer.pointerType === "touch" ? "touch" : "mouse",
+        source: getPointerInputSource(pointer),
         pointer,
-        worldX: pointer.worldX,
-        worldY: pointer.worldY,
-        screenX: pointer.x,
-        screenY: pointer.y,
-        normalizedX: Phaser.Math.Clamp(pointer.x / viewportWidth, 0, 1),
-        normalizedY: Phaser.Math.Clamp(pointer.y / viewportHeight, 0, 1),
+        worldX: worldPoint.x,
+        worldY: worldPoint.y,
+        screenX: screenPosition.x,
+        screenY: screenPosition.y,
+        normalizedX: Phaser.Math.Clamp(screenPosition.x / viewportWidth, 0, 1),
+        normalizedY: Phaser.Math.Clamp(screenPosition.y / viewportHeight, 0, 1),
         tileX: tile?.tileX ?? null,
         tileY: tile?.tileY ?? null,
       });
     };
 
     this.scene.input.on("pointerdown", this.pointerListener);
+  }
+
+  resetPressedState() {
+    this.scene?.input?.keyboard?.resetKeys?.();
+    this.pressedKeysByAction.forEach((pressedSet) => {
+      pressedSet.clear();
+    });
+    this.pendingEvents.length = 0;
   }
 
   emitAction(action, payload = {}) {
@@ -289,6 +322,11 @@ class InputManager {
     if (this.pointerListener) {
       this.scene.input.off("pointerdown", this.pointerListener);
       this.pointerListener = null;
+    }
+
+    if (this.detachFocusVisibilityHook) {
+      this.detachFocusVisibilityHook();
+      this.detachFocusVisibilityHook = null;
     }
 
     this.destroyKeyboardBindings();

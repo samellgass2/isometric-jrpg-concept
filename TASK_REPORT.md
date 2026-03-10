@@ -1,43 +1,37 @@
-# Task Report
-
-- Task ID: 352
-- Run ID: 647
-- Title: Improve input handling performance and responsiveness
-- Status: Completed
+# Task 353 Report
 
 ## Summary
-Optimized input handling by making event callbacks dispatch-only and deferring gameplay work to scene `update` loops. Added explicit listener teardown paths to prevent duplicate keyboard/pointer handlers across scene transitions. Documented all primary input handler locations and optimization details in `STATUS.md`.
+Completed a code-level cross-browser compatibility pass for the Phaser isometric game with targeted, low-risk guards/fallbacks focused on rendering scale behavior, input normalization, focus/visibility handling, and audio resume policy.
 
-## Key Changes
-1. Deferred input event processing:
-   - `src/input/InputManager.js`
-   - Input events are now queued in `emitAction()` and dispatched in-frame via `flushPendingActions()`.
-2. Overworld input batching:
-   - `src/scenes/OverworldScene.js`
-   - `handleInputAction()` now stages input intent only.
-   - Added `processPendingInputActions()` in `update()` to run confirm/cancel/tile-selection logic.
-3. Battle input batching:
-   - `src/scenes/BattleScene.js`
-   - Added queued `pendingInputActions` and per-frame processing via new `update()`.
-   - `handleInputAction()` now enqueues compact actions instead of immediate command resolution.
-4. Level pointer-path input optimization:
-   - `src/scenes/Level1Scene.js`
-   - `src/scenes/Level2Scene.js`
-   - `pointerdown` now only stores pending tile intent.
-   - Added `processPendingPointerInput()` in `update()` for pathfinding and path assignment.
-   - Added explicit `teardownPointerInput()` listener cleanup on scene shutdown/destroy.
-5. Main menu keyboard listener cleanup:
-   - `src/scenes/MainMenuScene.js`
-   - Added stable keyboard handler references with explicit teardown to avoid duplicated menu key triggers.
-
-## Responsiveness Outcome
-- Before: rapid input bursts could execute pathfinding/command logic directly inside native event callbacks.
-- After: callbacks are lean and per-frame processing is used for heavier work, reducing callback overhead and improving input consistency under rapid click/tap/key bursts.
+## Implemented Changes
+- Added `src/platform/browserCompat.js` for shared compatibility helpers:
+  - bounded `devicePixelRatio` resolution
+  - keyboard capture helper for gameplay navigation keys
+  - focus/visibility reset hook to clear stuck input state
+  - pointer world-coordinate fallback via camera projection
+  - pointer source normalization
+  - startup compatibility setup for canvas touch behavior, resize/orientation refresh, and audio context resume attempts
+- Updated startup/config:
+  - `src/main.js`: initializes game compatibility setup and touch-action/user-select protections
+  - `src/gameConfig.js`: adds DPR-based `resolution` and `scale` config (`FIT` + centered)
+  - `src/index.html`: adds base styles to prevent scrolling/gesture interference on game canvas
+- Updated input handling:
+  - `src/input/InputManager.js`: keyboard capture, de-duped keydown repeats, focus/visibility reset integration, and safe pointer world-position handling
+- Updated scene-level direct keyboard/pointer handling:
+  - `src/scenes/MainMenuScene.js`: keyboard capture
+  - `src/scenes/Level1Scene.js`: keyboard capture, pointer world fallback, null-safe keyboard usage
+  - `src/scenes/Level2Scene.js`: keyboard capture, pointer world fallback, null-safe keyboard usage
+- Updated `STATUS.md` with:
+  - intended Chrome/Firefox/Edge matrix
+  - explicit unverified runtime status due to environment constraints
+  - compatibility assumptions, mitigations, and known caveats
 
 ## Validation
-1. `npm install` - PASS
-2. `npm test` - PASS
+- `npm install` - PASS
+- `npm test` - PASS
 
-## Documentation
-- Detailed handler inventory, bugs fixed, and responsiveness notes are recorded in `STATUS.md` under Task #352.
-- Manual interactive Chrome/Firefox verification was not executable in this headless environment; this limitation is explicitly documented in `STATUS.md`.
+## Acceptance Criteria Status
+- Manual runtime cross-browser checks (Chrome/Firefox/Edge): **UNVERIFIED in this environment** (documented in `STATUS.md`).
+- Code-level compatibility hardening with targeted fixes: **DONE**.
+- Cross-browser support statement + caveats: **DONE** (`STATUS.md`).
+

@@ -6,6 +6,7 @@ import BattleScene from "./scenes/BattleScene.js";
 import Level1Scene from "./scenes/Level1Scene.js";
 import Level2Scene from "./scenes/Level2Scene.js";
 import { animalUnitList } from "./battle/units/animalUnits.js";
+import { resolveDevicePixelRatio } from "./platform/browserCompat.js";
 
 export const battleUnitCatalog = {
   animals: animalUnitList,
@@ -15,12 +16,17 @@ const gameConfig = {
   type: Phaser.AUTO,
   width: 800,
   height: 600,
+  resolution: resolveDevicePixelRatio(),
   parent: "app",
   backgroundColor: "#101218",
   pixelArt: true,
   antialias: false,
   roundPixels: true,
   autoRound: true,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
   render: {
     antialias: false,
     pixelArt: true,

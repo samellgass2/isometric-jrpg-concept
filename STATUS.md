@@ -1720,3 +1720,74 @@ Battle party persistence test passed.
 ### Validation Commands
 1. `npm install` - PASS
 2. `npm test` - PASS
+
+## Workflow #38 - Performance Optimization and Cross-Browser Compatibility Pass (Task #353, RUN_ID=650)
+
+### Summary
+- Performed a code-level cross-browser compatibility review focused on rendering, input normalization, timing/visibility behavior, and audio resume policy interactions.
+- Added targeted, browser-agnostic guards/fallbacks in startup, game config, input normalization, and keyboard/pointer scene handlers.
+- Runtime browser validation in Chrome/Firefox/Edge could not be executed in this environment, so all browser runtime checks below are explicitly unverified.
+
+### Intended Browser Support Matrix (Unverified in this Environment)
+- Google Chrome (desktop, modern stable channel) - intended support.
+- Mozilla Firefox (desktop, modern stable channel) - intended support.
+- Microsoft Edge (Chromium-based desktop, modern stable channel) - intended support.
+
+Planned manual runtime matrix for follow-up verification (not executed here):
+- Chrome Stable (Windows/macOS/Linux): overworld movement + battle flow + level transitions.
+- Firefox Stable (Windows/macOS/Linux): same flows with focus on pointer/touch translation and keyboard capture behavior.
+- Edge Stable (Windows): same flows with focus on DPR scaling and text/canvas sharpness.
+
+### Cross-Browser Compatibility Assumptions
+- Phaser 3 input/camera abstractions provide primary browser normalization for pointer and keyboard events.
+- Browser-level differences are most likely around event defaults (arrow-key/page scroll, touch gestures), pointer world-coordinate availability, audio autoplay resume timing, and viewport/devicePixelRatio behavior.
+- No browser-specific user-agent branching was introduced; mitigations use capability checks and safe fallbacks.
+
+### Code Changes
+1. Startup compatibility hooks and canvas behavior hardening
+   - Files: `src/main.js`, `src/platform/browserCompat.js`, `src/index.html`
+   - Changes:
+     - Added `configureGameBrowserCompatibility(game)` startup hook.
+     - Enforced `touch-action: none` / no accidental document scroll selection behavior for game surface and canvas.
+     - Added compatibility listeners for resize/orientation refresh and input reset on blur/pagehide/visibility transitions.
+
+2. Renderer/scaling defaults for consistent high-DPI behavior
+   - File: `src/gameConfig.js`
+   - Changes:
+     - Added bounded DPR resolution via `resolveDevicePixelRatio()`.
+     - Added Phaser scale manager config (`FIT` + centered) to reduce browser viewport/layout variance.
+
+3. Input normalization and fallback guards
+   - Files: `src/input/InputManager.js`, `src/platform/browserCompat.js`
+   - Changes:
+     - Added keyboard capture setup to prevent browser defaults from intercepting gameplay keys (arrows/space/etc.).
+     - Added focus/visibility reset hook to clear pressed-key state on tab blur/background transitions (mitigates sticky key states that differ by browser).
+     - Normalized pointer source classification and screen coordinates.
+     - Added safe world-coordinate fallback using camera projection when pointer `worldX/worldY` is unavailable.
+     - De-duplicated keydown repeat emissions so browser repeat-rate differences do not over-trigger action press events.
+
+4. Scene-level direct input guard updates
+   - Files: `src/scenes/MainMenuScene.js`, `src/scenes/Level1Scene.js`, `src/scenes/Level2Scene.js`
+   - Changes:
+     - Added keyboard capture in scenes using direct keyboard plugin wiring.
+     - Added pointer world-position fallback for level map click/tap movement targets.
+     - Added defensive null-safe keyboard checks for environments where keyboard plugin behavior differs (or is unavailable).
+
+### Rendering/Input/Timing/Audio Validation Status
+- Rendering (tile alignment, scaling, text sharpness across browsers): **UNVERIFIED** (no interactive browser runtime available).
+- Input parity (mouse/keyboard/touch across Chrome/Firefox/Edge): **UNVERIFIED**.
+- Timing/visibility transitions (tab switch, background throttling, focus recovery): **UNVERIFIED at runtime**, but code-level mitigations implemented.
+- Audio autoplay/resume behavior: **UNVERIFIED at runtime**, but user-interaction-based resume hook implemented for suspended audio contexts.
+
+### Known Limitations / Caveats
+- Manual browser QA could not be run in this task environment, so acceptance criteria requiring actual browser sessions remain pending external verification.
+- Browser version-specific rendering differences (font rasterization/canvas anti-aliasing nuances) are still possible and must be checked in real runtime sessions.
+- Touch behavior is normalized via pointer events and CSS touch-action controls, but device-specific gesture differences (especially mobile Safari) were not tested here.
+
+### Support Statement
+- Intended support target: latest stable desktop Chrome, Firefox, and Edge.
+- Current status: code hardened for cross-browser compatibility using capability-based fallbacks, but runtime behavior remains **unverified** in this environment due to missing interactive browser runtimes/dependencies for full matrix execution.
+
+### Validation Commands
+1. `npm install` - PASS
+2. `npm test` - PASS

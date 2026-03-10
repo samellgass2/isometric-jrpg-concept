@@ -6,6 +6,7 @@ import {
 } from "../state/playerProgress.js";
 import { loadProgress } from "../persistence/saveSystem.js";
 import { ensureSharedAssets, TEXTURE_KEYS } from "../render/sharedAssets.js";
+import { applyKeyboardCapture, getPointerWorldPosition } from "../platform/browserCompat.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 14;
@@ -260,6 +261,12 @@ class Level1Scene extends Phaser.Scene {
   }
 
   setupInput() {
+    const keyboard = this.input.keyboard;
+    if (!keyboard) {
+      return;
+    }
+
+    applyKeyboardCapture(keyboard);
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasdKeys = this.input.keyboard.addKeys({
       up: Phaser.Input.Keyboard.KeyCodes.W,
@@ -281,7 +288,12 @@ class Level1Scene extends Phaser.Scene {
         return;
       }
 
-      this.pendingPointerTile = worldToTile(pointer.worldX, pointer.worldY);
+      const worldPoint = getPointerWorldPosition(this, pointer);
+      if (!worldPoint) {
+        return;
+      }
+
+      this.pendingPointerTile = worldToTile(worldPoint.x, worldPoint.y);
     };
     this.input.on("pointerdown", this.pointerDownHandler);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownPointerInput());
@@ -423,10 +435,10 @@ class Level1Scene extends Phaser.Scene {
   }
 
   getMovementVector() {
-    const leftPressed = this.cursors.left.isDown || this.wasdKeys.left.isDown;
-    const rightPressed = this.cursors.right.isDown || this.wasdKeys.right.isDown;
-    const upPressed = this.cursors.up.isDown || this.wasdKeys.up.isDown;
-    const downPressed = this.cursors.down.isDown || this.wasdKeys.down.isDown;
+    const leftPressed = this.cursors?.left?.isDown || this.wasdKeys?.left?.isDown;
+    const rightPressed = this.cursors?.right?.isDown || this.wasdKeys?.right?.isDown;
+    const upPressed = this.cursors?.up?.isDown || this.wasdKeys?.up?.isDown;
+    const downPressed = this.cursors?.down?.isDown || this.wasdKeys?.down?.isDown;
 
     if (leftPressed && !rightPressed) {
       this.movementVector.x = -1;
@@ -462,14 +474,14 @@ class Level1Scene extends Phaser.Scene {
   }
 
   handleReturnInput() {
-    if (Phaser.Input.Keyboard.JustDown(this.returnKey)) {
+    if (this.returnKey && Phaser.Input.Keyboard.JustDown(this.returnKey)) {
       this.returnToOverworld();
       return;
     }
 
     const interactPressed =
-      Phaser.Input.Keyboard.JustDown(this.interactKeys.space) ||
-      Phaser.Input.Keyboard.JustDown(this.interactKeys.enter);
+      (this.interactKeys?.space && Phaser.Input.Keyboard.JustDown(this.interactKeys.space)) ||
+      (this.interactKeys?.enter && Phaser.Input.Keyboard.JustDown(this.interactKeys.enter));
 
     if (interactPressed && this.playerIsNearExit()) {
       this.returnToOverworld();
