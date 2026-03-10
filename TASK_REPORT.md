@@ -1,82 +1,38 @@
-# Task Report
+# TASK REPORT
 
-- Task: Initialize Project Structure
-- Result: Completed
-- Changes:
-  - Added src, assets, dist directories with placeholders.
-  - Created src/index.html and src/main.js.
-  - Updated .gitignore to keep dist/.gitkeep.
-  - Added STATUS.md.
-- Tests: Not run (not provided).
+## Task
+- TASK_ID: 281
+- RUN_ID: 482
+- Title: Add simple map collision and NPC placeholders
 
-- Task: Install Phaser Dependency
-- Result: Completed
-- Changes:
-  - Initialized npm project with package.json.
-  - Installed phaser and generated package-lock.json.
-- Tests: Ran `npm list phaser`.
+## Summary of Changes
+- Updated `src/scenes/OverworldScene.js` to keep the player blocked by designated collision tiles and map-edge boundaries using Arcade static collision bodies.
+- Kept world bounds enabled so the player cannot leave the intended overworld play area.
+- Replaced non-interactive NPC circles with two distinct placeholder NPC sprites built from generated textures:
+  - `Ranger Sol` at tile `(8,4)`
+  - `Mechanic Ivo` at tile `(11,8)`
+- Added NPC physics bodies through a static physics group and player-vs-NPC collision so overlap/collision context is stable.
+- Added interaction controls on `Space` and `Enter`:
+  - If adjacent to an NPC, shows a fixed UI dialogue box with NPC-specific placeholder text.
+  - Pressing interaction again dismisses dialogue.
+- Added a small HUD hint showing movement and interaction controls.
+- Updated `STATUS.md` with a new task entry describing collision approach, NPC definitions, and dialogue trigger key.
 
-- Task: Install NPM and Phaser (TASK_ID=6, RUN_ID=43)
-- Result: Completed
-- Changes:
-  - Verified npm install completes successfully with phaser listed in package.json.
-  - Updated STATUS.md with task completion entry.
-- Tests: Ran `npm install`.
+## Verification
+- `npm test` (existing rollback regression script)
 
-- Task: Set up minimal game config.JS (TASK_ID=8, RUN_ID=45)
-- Result: Completed
-- Changes:
-  - Added src/config.js with a minimal Phaser configuration export.
-  - Updated STATUS.md with task completion entry.
-- Tests: Not run (not provided).
-
-- Task: Rename config.js to gameConfig.js (TASK_ID=10, RUN_ID=47)
-- Result: Completed
-- Changes:
-  - Renamed src/config.js to src/gameConfig.js.
-  - Updated the exported config name to gameConfig.
-- Tests: Not run (not provided).
-
-- Task: Define Game State Structure (TASK_ID=38, RUN_ID=92)
-- Result: Completed
-- Changes:
-  - Added GAME_STATE.md to document the game state structure.
-  - Added src/gameState.js with a concrete example state and factory.
-- Tests: Not run (not provided).
-
-- Task: Implement State Rollback Functionality (TASK_ID=39, RUN_ID=97)
-- Result: Completed
-- Changes:
-  - Added src/stateHistory.js with snapshot history and rollback support.
-  - Added scripts/rollback.test.mjs to validate rollback behavior.
-  - Updated package.json to run rollback test and enable ESM.
-- Tests: Ran `npm test`.
-
-- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=99)
-- Result: Completed
-- Changes:
-  - Added status entry describing game logic engine progress.
-  - Added QA summary for current task verification.
-- Tests: Ran `npm test`.
-
-- Task: Implement State Preview Functionality (TASK_ID=40, RUN_ID=101)
-- Result: Completed
-- Changes:
-  - Added preview support to state history for non-destructive future state inspection.
-  - Extended rollback tests to validate preview behavior and immutability.
-- Tests: Ran `npm test`.
-
-- Task: Update STATUS.md with Progress (TASK_ID=41, RUN_ID=103)
-- Result: Completed
-- Changes:
-  - Added a fresh STATUS.md entry noting current game logic engine progress.
-  - Added a QA summary covering the latest status update.
-- Tests: Ran `npm test`.
-
-- Task: Change Board Size to 10 x 10 (TASK_ID=43, RUN_ID=106)
-- Result: Completed
-- Changes:
-  - Updated the example game state grid to 10 x 10 in src/gameState.js.
-  - Documented the 10 x 10 board size in GAME_STATE.md.
-  - Added a STATUS.md entry for the board size update.
-- Tests: Ran `npm test`.
+## Acceptance Criteria Mapping
+1. Overworld scene contains at least one collidable region:
+   - Satisfied by collision tiles converted into Arcade static bodies and bound to a player collider.
+2. Player cannot walk off intended playable area:
+   - Satisfied by border collision layout + Arcade world bounds collision.
+3. At least two distinct NPC sprites visible:
+   - Satisfied by two generated NPC textures at fixed map positions.
+4. Adjacent interaction key press triggers NPC dialogue:
+   - Satisfied by proximity check + `Space/Enter` handling and NPC-specific text output.
+5. Dialogue can be dismissed:
+   - Satisfied by interaction-key toggle behavior (`press again` to close).
+6. No runtime errors on collisions/interactions:
+   - Addressed by explicit object setup for physics groups, key bindings, and null-safe update guards.
+7. STATUS.md documents collision/NPC/interaction setup:
+   - Satisfied by top status entry for TASK_ID=281.
