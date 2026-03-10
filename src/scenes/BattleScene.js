@@ -13,6 +13,8 @@ const TILE_COLORS = {
   fillB: 0x2c5889,
   stroke: 0xa7d0ff,
   highlight: 0x4f90d9,
+  targetFill: 0x5c7e46,
+  targetStroke: 0xbde28f,
   aiActionFill: 0x875151,
   aiActionStroke: 0xffb7b7,
 };
@@ -168,10 +170,12 @@ class BattleScene extends Phaser.Scene {
     this.turnStatusText = null;
     this.turnInstructionText = null;
     this.turnSelectionText = null;
+    this.turnTargetText = null;
     this.turnHistoryText = null;
     this.aiTurnTimer = null;
     this.aiActionTile = null;
     this.aiActionTween = null;
+    this.selectedTargetTileId = null;
   }
 
   preload() {}
@@ -214,6 +218,15 @@ class BattleScene extends Phaser.Scene {
       .setScrollFactor(0);
 
     this.turnHistoryText = this.add
+      .text(24, 116, "", {
+        color: "#9fbbdf",
+        fontFamily: "monospace",
+        fontSize: "12px",
+      })
+      .setDepth(UI_DEPTH)
+      .setScrollFactor(0);
+
+    this.turnTargetText = this.add
       .text(24, 100, "", {
         color: "#9fbbdf",
         fontFamily: "monospace",
@@ -338,6 +351,7 @@ class BattleScene extends Phaser.Scene {
       return;
     }
 
+    const tileId = tile.getData("tileId");
     const row = tile.getData("row");
     const col = tile.getData("col");
 
@@ -347,9 +361,20 @@ class BattleScene extends Phaser.Scene {
       return;
     }
 
+    if (tileId === this.selectedTargetTileId) {
+      tile.setAlpha(1);
+      tile.setFillStyle(TILE_COLORS.targetFill, 1);
+      tile.setStrokeStyle(2, TILE_COLORS.targetStroke, 1);
+      return;
+    }
+
     tile.setAlpha(1);
     tile.setFillStyle(this.getTileBaseFillColor(row, col), 1);
     tile.setStrokeStyle(1, TILE_COLORS.stroke, 0.75);
+  }
+
+  updateTileVisuals() {
+    this.tileObjects.forEach((tile) => this.restoreTileVisual(tile));
   }
 
   setupCamera() {
@@ -385,10 +410,20 @@ class BattleScene extends Phaser.Scene {
     });
   }
 
+  addTileInputHandlers() {
+    this.tileObjects.forEach((tile) => {
+      tile.on("pointerdown", () => {
+        const row = tile.getData("row");
+        const col = tile.getData("col");
+        this.handleTilePointerDown(row, col);
+      });
+    });
+  }
+
   addUnitInputHandlers() {
     this.unitManager.forEachUnit((unit) => {
       unit.view.on("pointerdown", () => {
-        this.trySelectPlayerUnit(unit.id);
+        this.handleUnitPointerDown(unit.id);
       });
 
       unit.view.on("pointerover", () => {
@@ -410,7 +445,7 @@ class BattleScene extends Phaser.Scene {
   }
 
   updateTurnUi() {
-    if (!this.turnStatusText || !this.turnInstructionText || !this.turnSelectionText) {
+    if (!this.turnStatusText || !this.turnInstructionText || !this.turnSelectionText || !this.turnTargetText) {
       return;
     }
 
@@ -430,10 +465,17 @@ class BattleScene extends Phaser.Scene {
       this.turnSelectionText.setText(
         `Selected Unit: ${selectedUnit.name} (${selectedUnit.id}) at (${selectedUnit.row},${selectedUnit.col})`
       );
+    } else {
+      this.turnSelectionText.setText("Selected Unit: none");
+    }
+
+    const selectedTile = this.selectedTargetTileId;
+    if (selectedTile) {
+      this.turnTargetText.setText(`Target Tile: (${selectedTile})`);
       return;
     }
 
-    this.turnSelectionText.setText("Selected Unit: none");
+    this.turnTargetText.setText("Target Tile: none");
   }
 
   updateUnitVisuals() {
@@ -515,6 +557,52 @@ class BattleScene extends Phaser.Scene {
     this.updateTurnUi();
   }
 
+  handleUnitPointerDown(unitId) {
+    if (this.currentTurnOwner !== TURN_OWNER.player) {
+      this.setTurnHistoryText(`Ignored unit click (${unitId}); AI turn is active.`);
+      console.log(`[Battle] Ignored unit click for ${unitId}: current turn owner is ${this.currentTurnOwner}.`);
+      return;
+    }
+
+    this.trySelectPlayerUnit(unitId);
+  }
+
+  trySelectTargetTile(row, col) {
+    if (!this.isWithinGrid(row, col)) {
+      return;
+    }
+
+    this.selectedTargetTileId = `${row},${col}`;
+    this.updateTileVisuals();
+    this.updateTurnUi();
+
+    const selectedUnit = this.selectedPlayerUnitId ? this.unitManager.getUnitById(this.selectedPlayerUnitId) : null;
+    if (selectedUnit) {
+      this.setTurnHistoryText(
+        `Target tile (${row},${col}) selected for ${selectedUnit.name} (${selectedUnit.id}).`
+      );
+      console.log(
+        `[Battle] Target tile selected at (${row},${col}) for unit ${selectedUnit.id} during player turn ${this.turnCounter}.`
+      );
+      return;
+    }
+
+    this.setTurnHistoryText(`Tile (${row},${col}) selected. Select a player unit to plan an action.`);
+    console.log(`[Battle] Tile selected at (${row},${col}) with no active player unit selection.`);
+  }
+
+  handleTilePointerDown(row, col) {
+    if (this.currentTurnOwner !== TURN_OWNER.player) {
+      this.setTurnHistoryText(`Ignored tile click at (${row},${col}); AI turn is active.`);
+      console.log(
+        `[Battle] Ignored tile click at (${row},${col}): current turn owner is ${this.currentTurnOwner}.`
+      );
+      return;
+    }
+
+    this.trySelectTargetTile(row, col);
+  }
+
   startPlayerTurn(reason, { incrementTurn } = { incrementTurn: false }) {
     if (incrementTurn) {
       this.turnCounter += 1;
@@ -522,7 +610,9 @@ class BattleScene extends Phaser.Scene {
 
     this.currentTurnOwner = TURN_OWNER.player;
     this.selectedPlayerUnitId = null;
+    this.selectedTargetTileId = null;
     this.clearAiActionTileHighlight();
+    this.updateTileVisuals();
     this.updateUnitVisuals();
     this.updateTurnUi();
     this.setTurnHistoryText(reason);
@@ -532,6 +622,8 @@ class BattleScene extends Phaser.Scene {
   startAiTurn(reason) {
     this.currentTurnOwner = TURN_OWNER.ai;
     this.selectedPlayerUnitId = null;
+    this.selectedTargetTileId = null;
+    this.updateTileVisuals();
     this.updateUnitVisuals();
     this.updateTurnUi();
     this.setTurnHistoryText(reason);
@@ -574,10 +666,11 @@ class BattleScene extends Phaser.Scene {
     this.createInitialUnits();
     this.createUi();
     this.addHoverFeedback();
+    this.addTileInputHandlers();
     this.addUnitInputHandlers();
 
     this.add
-      .text(24, 122, `Tile Size: ${TILE_WIDTH}x${TILE_HEIGHT}  Origin: (${this.gridOrigin.x.toFixed(0)}, ${this.gridOrigin.y.toFixed(0)})`, {
+      .text(24, 140, `Tile Size: ${TILE_WIDTH}x${TILE_HEIGHT}  Origin: (${this.gridOrigin.x.toFixed(0)}, ${this.gridOrigin.y.toFixed(0)})`, {
         color: "#9fbbdf",
         fontFamily: "monospace",
         fontSize: "12px",
@@ -586,7 +679,7 @@ class BattleScene extends Phaser.Scene {
       .setScrollFactor(0);
 
     this.add
-      .text(24, 140, "Hover any diamond to verify stable tile objects for future targeting.", {
+      .text(24, 158, "Hover/click any tile to inspect coordinates and set a target tile.", {
         color: "#b5c7e8",
         fontFamily: "monospace",
         fontSize: "12px",
@@ -600,7 +693,7 @@ class BattleScene extends Phaser.Scene {
       .join("  ");
 
     this.add
-      .text(24, 158, `Units: ${unitSummary}`, {
+      .text(24, 176, `Units: ${unitSummary}`, {
         color: "#9fbbdf",
         fontFamily: "monospace",
         fontSize: "12px",
