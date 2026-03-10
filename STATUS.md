@@ -1,5 +1,21 @@
 # Status
 
+- Task: Integrate stats with movement and targeting logic (TASK_ID=295, RUN_ID=505)
+- State: Completed
+- Notes: Integrated battle movement and targeting decisions with unit attributes by introducing shared helpers in `src/battle/grid.js` and routing `src/scenes/BattleScene.js` through them. Player movement highlights now derive from `movement.tilesPerTurn` via `getUnitMovementRange` + BFS reachability, and enemy turn movement now uses the same stat-driven pathing envelope (choosing the best reachable destination toward a target instead of a fixed one-tile step). Attack validity and targetable tile computation now use `attack.range` and `attack.canAttackOverObstacles` through `canUnitTarget`/`getTargetableTiles`, so elephant units can target through obstacle-blocked straight lines while non-over-obstacle units are blocked under the same line-of-sight condition. Attack mode visuals were updated to highlight all in-range targetable tiles and emphasize currently attackable enemies. Added `scripts/battle-grid-stats.test.mjs` and extended `npm test` to validate: movement reachability ordering (cheetah > dog > elephant), range enforcement, elephant over-obstacle targeting, and movement-destination selection using full movement range. Assumptions/limitations: obstacle blocking is line-based for same-row/same-column target checks (matching existing behavior model), and diagonal/intervening cover does not currently block attacks.
+
+- Task: Hook animal abilities into turn flow UI (TASK_ID=297, RUN_ID=503)
+- State: Completed
+- Notes: Added a dedicated turn-based battle scene with lightweight HUD feedback in `src/scenes/BattleScene.js` and wired it into startup via `src/gameConfig.js`. Friendly roster now includes elephant, cheetah, and guardian dog units using existing unit configs and combat resolver logic. Selecting units shows per-unit panel text with name, HP, movement, attack range, and effective damage/defense. Ability distinctions are surfaced in both the selection panel and action menu text: elephant displays "Can shoot over obstacles" and uses obstacle-ignoring attack targeting logic; cheetah displays high mobility and its larger movement range is reflected in move tile highlights; dog units show "Loyal Fury" state with active/inactive status. When protagonist HP is in danger, dog conditional buff state activates visual feedback (sprite color shift + `FURY` status label + combat log line) and updates effective combat stats using existing `isDogDangerBuffActive` / `getEffectiveCombatStats` hooks. Added a danger toggle input (`H`) for quick in-battle verification of dog buff activation/deactivation. Verified no new script-level errors with `npm test` and `npm run dev` server smoke check. Updated files: `src/scenes/BattleScene.js`, `src/gameConfig.js`, `STATUS.md`, `TASK_REPORT.md`.
+
+- Task: Implement dogs conditional battle behavior (TASK_ID=296, RUN_ID=501)
+- State: Completed
+- Notes: Added battle-time dog danger-state handling with dynamic activation and removal based on protagonist HP threshold metadata. `src/battle/combatResolver.js` now evaluates `conditional_passive` abilities whose trigger is `source: "protagonist"` + `condition: "low_hp"` and reads the configured `thresholdPercent`/`comparator` from each dog ability. While the protagonist remains at or below threshold, affected dog units receive temporary effective stat boosts in combat resolution (`attack.baseDamage` and/or `stats.defense` multipliers from ability metadata). Above threshold, dogs automatically use baseline unit config values again. `src/battle/ai/allyDecisionController.js` is connected to this same buff state so dog ally action selection marks buffed dogs as `aggressive` and prefers offensive targeting. Non-dog units (elephant/cheetah) are excluded because only `archetype: "dog"` units with matching conditional ability metadata are eligible. Added `scripts/dog-conditional-behavior.test.mjs` and wired it into `npm test` to verify: danger threshold check, buff on/off transitions, combat damage increase, non-dog isolation, AI aggressiveness when buffed, and no runtime JS errors when crossing the threshold.
+
+- Task: Define animal unit stats and abilities (TASK_ID=294, RUN_ID=499)
+- State: Completed
+- Notes: Added `src/battle/units/animalUnits.js` with a structured animal unit catalog for battle systems. The module exports named configs for `elephantUnit`, `cheetahUnit`, `guardianDogUnit`, and `scoutDogUnit`, plus aggregate exports (`animalUnits`, `animalUnitList`, `getAnimalUnitConfig`) for clean imports by future battle/turn logic. Each config includes core battle attributes (`stats.maxHp`, `stats.defense`, `movement.tilesPerTurn`, `attack.range`, `attack.baseDamage`) and ability metadata with triggers/effects. Narrative rules are encoded as data: elephant has very high defense and slow movement and can attack over obstacles (`attack.canAttackOverObstacles: true`), cheetah has very high movement with lower HP/defense, and dog variants have protagonist-danger conditional buffs using a low-HP trigger threshold (`thresholdPercent: 35`) that increase combat output/survivability while active. `src/gameConfig.js` now imports the animal unit list through `battleUnitCatalog` to provide a startup-time import sanity path.
+
 - Task: Add simple map collision and NPC placeholders (TASK_ID=281, RUN_ID=482)
 - State: Completed
 - Notes: Enhanced `src/scenes/OverworldScene.js` with explicit collidable tile boundaries (border walls + interior obstacle tiles) backed by Arcade static bodies so the player cannot move through blocked regions or leave the playable map bounds. Replaced circle placeholders with two fixed-position physics NPC sprites (`Ranger Sol` at tile 8,4 and `Mechanic Ivo` at tile 11,8), each carrying NPC-specific placeholder dialogue metadata. Added interaction handling on `Space` or `Enter`: when the player is adjacent to an NPC, a fixed-screen dialogue box appears with NPC-specific text; pressing the interaction key again dismisses the message.
@@ -304,6 +320,114 @@ Content-Length: 389
 ## Workflow Goal Verdict
 - Goal: Implement basic Pokemon-style overworld exploration scene with movement, tile-based map, collisions, and placeholder NPC interactions.
 - Result: PASS. The branch delivers a booted `OverworldScene` with layered map rendering, bounded physics movement, collision blockers, two NPC placeholders, and interaction dialogue.
+
+## Overall Verdict
+- PASS
+
+# QA Validation Report (2026-03-10) - Workflow #28
+
+## Workflow
+- Project: `isometric-strategy-game`
+- Workflow #28: Implement animal character abilities and battle attributes
+- Branch validated: `workflow/28/dev`
+
+## Commits Reviewed (`main..HEAD`)
+- `ec45901` task/295: update task report summary
+- `bb6bfe6` task/295: wire battle movement and targeting to unit stats
+- `680593b` task/297: hook animal abilities into battle turn UI
+- `041374b` task/296: update task report summary
+- `4642fc5` task/296: add dog danger-state combat and ai behavior
+- `eb30274` task/294: define animal unit stats and abilities
+
+## Diffstat Reviewed (`main...HEAD --stat`)
+```text
+ STATUS.md                                 |  16 +
+ TASK_REPORT.md                            |  70 ++--
+ package.json                              |   2 +-
+ scripts/battle-grid-stats.test.mjs        | 130 +++++++
+ scripts/dog-conditional-behavior.test.mjs | 157 ++++++++
+ src/battle/ai/allyDecisionController.js   |  65 ++++
+ src/battle/combatResolver.js              | 108 ++++++
+ src/battle/grid.js                        | 227 ++++++++++++
+ src/battle/units/animalUnits.js           | 195 ++++++++++
+ src/gameConfig.js                         |   8 +-
+ src/scenes/BattleScene.js                 | 598 ++++++++++++++++++++++++++++++
+ 11 files changed, 1545 insertions(+), 31 deletions(-)
+```
+
+## Test Commands Run And Output
+1. `cat package.json | grep -A 40 '"scripts"'` - PASS
+```text
+"scripts": {
+  "dev": "node scripts/dev-server.mjs",
+  "start": "node scripts/dev-server.mjs",
+  "test": "node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs"
+}
+```
+2. `git log --oneline main..HEAD` - PASS
+```text
+ec45901 task/295: update task report summary
+bb6bfe6 task/295: wire battle movement and targeting to unit stats
+680593b task/297: hook animal abilities into battle turn UI
+041374b task/296: update task report summary
+4642fc5 task/296: add dog danger-state combat and ai behavior
+eb30274 task/294: define animal unit stats and abilities
+```
+3. `git diff main...HEAD --stat` - PASS
+```text
+11 files changed, 1545 insertions(+), 31 deletions(-)
+```
+4. `test -d node_modules && echo 'node_modules present' || echo 'node_modules missing'` - PASS
+```text
+node_modules missing
+```
+5. `npm test` - PASS
+```text
+> workspace@1.0.0 test
+> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs
+
+Rollback test passed.
+Dog conditional behavior test passed.
+Battle grid stats test passed.
+```
+6. `node -e "import('./src/battle/units/animalUnits.js').then(()=>console.log('animalUnits import ok')).catch((e)=>{console.error(e);process.exit(1);})"` - PASS
+```text
+animalUnits import ok
+```
+7. `npm install` - PASS
+```text
+added 2 packages, and audited 3 packages in 7s
+found 0 vulnerabilities
+```
+8. `npm run dev` (background) + `curl -s -o /tmp/workflow28-index2.html -w "%{http_code}" http://127.0.0.1:5173/` - PASS
+```text
+HTTP status: 200
+> workspace@1.0.0 dev
+> node scripts/dev-server.mjs
+Dev server running at http://127.0.0.1:5173
+```
+
+## Acceptance Criteria Verification
+
+### Task: Define animal unit stats and abilities
+- Verdict: PASS
+- Evidence: `src/battle/units/animalUnits.js` exports `elephantUnit`, `cheetahUnit`, `guardianDogUnit`, `scoutDogUnit`, and catalog helpers; all units include HP/defense/movement/range/base damage fields; elephant has high defense + low move + `canAttackOverObstacles: true`; cheetah has highest movement and low HP/defense; dogs include protagonist low-HP conditional ability metadata; import and dev startup smoke checks passed; status notes are present in this file.
+
+### Task: Integrate stats with movement and targeting logic
+- Verdict: PASS
+- Evidence: `src/battle/grid.js` provides stat-driven `getUnitMovementRange`, `getUnitAttackRange`, `canUnitTarget`, `getTargetableTiles`, and reachability; `BattleScene` uses these helpers for move highlights, enemy movement, and attack targeting; obstacle-override behavior for elephant is implemented by `attack.canAttackOverObstacles`; automated test `scripts/battle-grid-stats.test.mjs` verifies cheetah > dog > elephant reachability, range gating, elephant obstacle targeting, and stat-driven movement destination.
+
+### Task: Implement dogs conditional battle behavior
+- Verdict: PASS
+- Evidence: `src/battle/combatResolver.js` evaluates protagonist low-HP trigger and applies/removes dog-only multipliers to effective damage/defense; `src/battle/ai/allyDecisionController.js` ties dog aggression stance to the same danger-state check; `scripts/dog-conditional-behavior.test.mjs` verifies safe/danger/recovered transitions, observable boosted damage/defense, non-dog isolation, and no throw across threshold transitions.
+
+### Task: Hook animal abilities into turn flow UI
+- Verdict: PASS
+- Evidence: `src/scenes/BattleScene.js` selection panel displays name + HP + Move/Range/DMG/DEF and ability lines per archetype; elephant obstacle-over-attack is explicitly shown in UI text; cheetah high mobility is shown and reflected in move highlights; dog danger buff feedback is shown by `FURY` icon, tint change, panel state, and combat log updates; scene starts successfully via `npm run dev` with HTTP 200 smoke validation and no startup JS errors.
+
+## Workflow Goal Verification
+- Verdict: PASS
+- Result: The branch implements distinct elephant/cheetah/dog battle attributes and special abilities, and wires them into movement, targeting, combat resolution, AI stance behavior, and battle UI feedback within the existing turn framework.
 
 ## Overall Verdict
 - PASS

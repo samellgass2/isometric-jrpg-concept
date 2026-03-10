@@ -1,38 +1,50 @@
 # TASK REPORT
 
 ## Task
-- TASK_ID: 281
-- RUN_ID: 482
-- Title: Add simple map collision and NPC placeholders
+- TASK_ID: 295
+- RUN_ID: 505
+- Title: Integrate stats with movement and targeting logic
 
 ## Summary of Changes
-- Updated `src/scenes/OverworldScene.js` to keep the player blocked by designated collision tiles and map-edge boundaries using Arcade static collision bodies.
-- Kept world bounds enabled so the player cannot leave the intended overworld play area.
-- Replaced non-interactive NPC circles with two distinct placeholder NPC sprites built from generated textures:
-  - `Ranger Sol` at tile `(8,4)`
-  - `Mechanic Ivo` at tile `(11,8)`
-- Added NPC physics bodies through a static physics group and player-vs-NPC collision so overlap/collision context is stable.
-- Added interaction controls on `Space` and `Enter`:
-  - If adjacent to an NPC, shows a fixed UI dialogue box with NPC-specific placeholder text.
-  - Pressing interaction again dismisses dialogue.
-- Added a small HUD hint showing movement and interaction controls.
-- Updated `STATUS.md` with a new task entry describing collision approach, NPC definitions, and dialogue trigger key.
+- Added `src/battle/grid.js` as a shared battle helper module for stat-driven movement and targeting logic.
+  - `getUnitMovementRange` and `getUnitAttackRange` normalize movement/range from unit attributes.
+  - `getReachableTiles` computes BFS movement options using per-unit movement stats.
+  - `canUnitTarget` enforces attack range and obstacle blocking rules, with elephant-compatible over-obstacle behavior via `attack.canAttackOverObstacles`.
+  - `getTargetableTiles` returns in-range targetable grid tiles for attack-mode visuals.
+  - `chooseMovementDestinationTowardTarget` selects the best reachable tile toward a target using the full movement budget.
+- Refactored `src/scenes/BattleScene.js` to route movement and targeting through these helpers.
+  - Player move highlight range now uses each selected unit's movement stat.
+  - Enemy turn movement no longer uses fixed one-step movement; it now moves up to each enemy unit's movement range.
+  - Attack checks use stat-based range and obstacle flags consistently.
+  - Attack mode highlights all targetable tiles, then emphasizes currently attackable enemy units.
+- Added `scripts/battle-grid-stats.test.mjs` and extended `npm test` in `package.json` to validate:
+  - movement envelope ordering (`cheetah > dog > elephant`),
+  - obstacle-blocked targeting for non-over-obstacle units,
+  - elephant targeting over obstacles,
+  - attack range enforcement,
+  - movement destination selection uses full movement allowance.
+- Updated `STATUS.md` with TASK_ID=295 integration notes and assumptions/limitations.
 
 ## Verification
-- `npm test` (existing rollback regression script)
+- `npm test` - PASS
+  - `Rollback test passed.`
+  - `Dog conditional behavior test passed.`
+  - `Battle grid stats test passed.`
+- `npm run dev` startup smoke - PASS
+  - Dev server reported startup and served `/` with HTTP `200`.
 
 ## Acceptance Criteria Mapping
-1. Overworld scene contains at least one collidable region:
-   - Satisfied by collision tiles converted into Arcade static bodies and bound to a player collider.
-2. Player cannot walk off intended playable area:
-   - Satisfied by border collision layout + Arcade world bounds collision.
-3. At least two distinct NPC sprites visible:
-   - Satisfied by two generated NPC textures at fixed map positions.
-4. Adjacent interaction key press triggers NPC dialogue:
-   - Satisfied by proximity check + `Space/Enter` handling and NPC-specific text output.
-5. Dialogue can be dismissed:
-   - Satisfied by interaction-key toggle behavior (`press again` to close).
-6. No runtime errors on collisions/interactions:
-   - Addressed by explicit object setup for physics groups, key bindings, and null-safe update guards.
-7. STATUS.md documents collision/NPC/interaction setup:
-   - Satisfied by top status entry for TASK_ID=281.
+1. Movement code uses unit config stats instead of hard-coded per-type distances:
+   - `BattleScene` movement paths now use `getUnitMovementRange` from unit attributes.
+2. Cheetah moves more than elephant and dogs:
+   - Movement tiles are derived from each unit's `movement.tilesPerTurn`; tests assert `cheetah > dog > elephant` reachability.
+3. Elephant can target over obstacles while slower movement is preserved:
+   - Elephant movement remains low via `tilesPerTurn: 2`; targeting uses `canAttackOverObstacles` and bypasses blocking checks when true.
+4. Targeting uses attack range stat for eligibility and visuals:
+   - `canUnitTarget` and `getTargetableTiles` enforce `attack.range` in both selection behavior and attack highlights.
+5. No new battle turn startup/action errors:
+   - Test suite passes and battle-related logic runs under dev startup smoke check.
+6. Generic/placeholder units continue functioning:
+   - Fallback stat normalization in shared helpers supports existing non-animal units.
+7. Status documentation updated:
+   - `STATUS.md` includes updated task entry and elephant obstacle behavior notes.

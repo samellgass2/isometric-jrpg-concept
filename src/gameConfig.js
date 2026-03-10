@@ -1,5 +1,11 @@
 import * as Phaser from "../node_modules/phaser/dist/phaser.esm.js";
 import OverworldScene from "./scenes/OverworldScene.js";
+import BattleScene from "./scenes/BattleScene.js";
+import { animalUnitList } from "./battle/units/animalUnits.js";
+
+export const battleUnitCatalog = {
+  animals: animalUnitList,
+};
 
 const gameConfig = {
   type: Phaser.AUTO,
@@ -15,7 +21,7 @@ const gameConfig = {
       debug: false,
     },
   },
-  scene: [OverworldScene],
+  scene: [BattleScene, OverworldScene],
 };
 
 export default gameConfig;
