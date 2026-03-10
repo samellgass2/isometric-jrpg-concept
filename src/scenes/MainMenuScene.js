@@ -8,6 +8,9 @@ class MainMenuScene extends Phaser.Scene {
     this.droneTestButton = null;
     this.droneTestButtonLabel = null;
     this.startTriggered = false;
+    this.onEnterKeyDown = null;
+    this.onSpaceKeyDown = null;
+    this.onDroneTestKeyDown = null;
   }
 
   create() {
@@ -83,9 +86,7 @@ class MainMenuScene extends Phaser.Scene {
     this.droneTestButton = droneTestStart.button;
     this.droneTestButtonLabel = droneTestStart.buttonLabel;
 
-    this.input.keyboard.on("keydown-ENTER", () => this.startGame());
-    this.input.keyboard.on("keydown-SPACE", () => this.startGame());
-    this.input.keyboard.on("keydown-T", () => this.startDroneTestBattle());
+    this.setupKeyboardInput();
 
     this.add
       .text(centerX, height / 2 + 114, "Press Enter/Space to Start Game or T for Drone Test Battle", {
@@ -126,6 +127,33 @@ class MainMenuScene extends Phaser.Scene {
         fontSize: "15px",
       })
       .setOrigin(0.5);
+  }
+
+  setupKeyboardInput() {
+    this.teardownKeyboardInput();
+    this.onEnterKeyDown = () => this.startGame();
+    this.onSpaceKeyDown = () => this.startGame();
+    this.onDroneTestKeyDown = () => this.startDroneTestBattle();
+    this.input.keyboard.on("keydown-ENTER", this.onEnterKeyDown);
+    this.input.keyboard.on("keydown-SPACE", this.onSpaceKeyDown);
+    this.input.keyboard.on("keydown-T", this.onDroneTestKeyDown);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownKeyboardInput());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.teardownKeyboardInput());
+  }
+
+  teardownKeyboardInput() {
+    if (this.onEnterKeyDown) {
+      this.input.keyboard.off("keydown-ENTER", this.onEnterKeyDown);
+      this.onEnterKeyDown = null;
+    }
+    if (this.onSpaceKeyDown) {
+      this.input.keyboard.off("keydown-SPACE", this.onSpaceKeyDown);
+      this.onSpaceKeyDown = null;
+    }
+    if (this.onDroneTestKeyDown) {
+      this.input.keyboard.off("keydown-T", this.onDroneTestKeyDown);
+      this.onDroneTestKeyDown = null;
+    }
   }
 
   startDroneTestBattle() {

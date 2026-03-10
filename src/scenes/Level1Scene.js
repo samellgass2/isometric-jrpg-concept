@@ -79,6 +79,8 @@ class Level1Scene extends Phaser.Scene {
     this.battleStartLock = false;
     this.movementVector = { x: 0, y: 0 };
     this.bfsQueue = [];
+    this.pointerDownHandler = null;
+    this.pendingPointerTile = null;
   }
 
   create(data = {}) {
@@ -94,6 +96,7 @@ class Level1Scene extends Phaser.Scene {
     }
     this.currentPlayerTileKey = "";
     this.battleStartLock = false;
+    this.pendingPointerTile = null;
 
     const mapPixelWidth = MAP_WIDTH * TILE_SIZE;
     const mapPixelHeight = MAP_HEIGHT * TILE_SIZE;
@@ -272,27 +275,49 @@ class Level1Scene extends Phaser.Scene {
   }
 
   setupPointerInput() {
-    this.input.on("pointerdown", (pointer) => {
+    this.teardownPointerInput();
+    this.pointerDownHandler = (pointer) => {
       if (this.isReturning || !this.player) {
         return;
       }
 
-      const targetTile = worldToTile(pointer.worldX, pointer.worldY);
-      if (!this.isWalkableTile(targetTile.x, targetTile.y)) {
-        this.clearPointerPath();
-        return;
-      }
+      this.pendingPointerTile = worldToTile(pointer.worldX, pointer.worldY);
+    };
+    this.input.on("pointerdown", this.pointerDownHandler);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownPointerInput());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.teardownPointerInput());
+  }
 
-      const startTile = worldToTile(this.player.x, this.player.y);
-      const tilePath = this.findTilePath(startTile, targetTile);
-      if (!tilePath.length) {
-        this.clearPointerPath();
-        return;
-      }
+  teardownPointerInput() {
+    if (this.pointerDownHandler) {
+      this.input.off("pointerdown", this.pointerDownHandler);
+      this.pointerDownHandler = null;
+    }
+    this.pendingPointerTile = null;
+  }
 
-      this.pointerPathTiles = tilePath;
-      this.pointerPath = tilePath.map((tile) => tileToWorld(tile.x, tile.y));
-    });
+  processPendingPointerInput() {
+    if (!this.pendingPointerTile || this.isReturning || !this.player) {
+      return;
+    }
+
+    const targetTile = this.pendingPointerTile;
+    this.pendingPointerTile = null;
+
+    if (!this.isWalkableTile(targetTile.x, targetTile.y)) {
+      this.clearPointerPath();
+      return;
+    }
+
+    const startTile = worldToTile(this.player.x, this.player.y);
+    const tilePath = this.findTilePath(startTile, targetTile);
+    if (!tilePath.length) {
+      this.clearPointerPath();
+      return;
+    }
+
+    this.pointerPathTiles = tilePath;
+    this.pointerPath = tilePath.map((tile) => tileToWorld(tile.x, tile.y));
   }
 
   isInBounds(tileX, tileY) {
@@ -514,6 +539,7 @@ class Level1Scene extends Phaser.Scene {
     }
 
     this.handleReturnInput();
+    this.processPendingPointerInput();
 
     const movement = this.getMovementVector();
     if (movement.x !== 0 || movement.y !== 0) {

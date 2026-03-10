@@ -66,6 +66,7 @@ class InputManager {
     this.pointerListener = null;
     this.pressedKeysByAction = new Map();
     this.enabledActions = new Set(Object.values(InputActions));
+    this.pendingEvents = [];
     this.tileResolver = createTileResolver(options);
     this.pointerEnabled = options.pointerEnabled !== false;
     this.keyboardEnabled = options.keyboardEnabled !== false;
@@ -186,13 +187,26 @@ class InputManager {
       return;
     }
 
-    const event = {
+    this.pendingEvents.push({
       action,
       ...payload,
       timestamp: this.scene.time.now,
-    };
+    });
+  }
 
-    this.callbacks.forEach((callback) => callback(event));
+  flushPendingActions() {
+    if (!this.pendingEvents.length || this.callbacks.size === 0) {
+      this.pendingEvents.length = 0;
+      return 0;
+    }
+
+    const queued = this.pendingEvents;
+    const eventCount = queued.length;
+    this.pendingEvents = [];
+    queued.forEach((event) => {
+      this.callbacks.forEach((callback) => callback(event));
+    });
+    return eventCount;
   }
 
   onAction(callback) {
@@ -278,6 +292,7 @@ class InputManager {
     }
 
     this.destroyKeyboardBindings();
+    this.pendingEvents.length = 0;
     this.callbacks.clear();
     this.scene = null;
   }

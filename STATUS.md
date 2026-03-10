@@ -1655,3 +1655,68 @@ Battle party persistence test passed.
 3. Browser runtime/perf smoke:
    - `npm run dev`
    - Playwright automation run (local script, Chromium) for scene transitions + frame sampling
+
+## Workflow #37 - Performance Optimization and Cross-Browser Compatibility Pass (Task #352, RUN_ID=647)
+
+### Summary
+- Refactored input flow so native pointer/keyboard callbacks only enqueue compact actions.
+- Moved input-heavy gameplay work (pathfinding, command resolution, dialogue/interact routing) into per-frame processing in scene `update` methods.
+- Hardened input listener lifecycle cleanup to prevent duplicate handlers after scene transitions.
+
+### Primary Input Handlers Inventory
+- `src/input/InputManager.js`
+  - `bindKeyboardActions()` -> keyboard key `down`/`up` for movement/confirm/cancel actions.
+  - `bindPointerActions()` -> global `pointerdown` for tile selection (mouse and touch are normalized via Phaser pointer metadata).
+  - `emitAction()` now queues events; `flushPendingActions()` dispatches queued events in scene update.
+- `src/scenes/OverworldScene.js`
+  - `handleInputAction()` now only stages `SELECT_TILE`, `CONFIRM`, and `CANCEL` intent.
+  - `processPendingInputActions()` in `update()` executes staged actions and runs pathfinding/interaction logic once per frame.
+- `src/scenes/BattleScene.js`
+  - `handleInputAction()` now only enqueues move/confirm/cancel/tile intents.
+  - `processPendingInputActions()` (invoked from new `update()`) performs cursor movement, confirm, cancel, and contextual command logic.
+- `src/scenes/Level1Scene.js`
+  - `setupPointerInput()` global `pointerdown` now captures a target tile only.
+  - `processPendingPointerInput()` (called from `update()`) performs walkability check + BFS pathfinding.
+- `src/scenes/Level2Scene.js`
+  - `setupPointerInput()` global `pointerdown` now captures a target tile only.
+  - `processPendingPointerInput()` (called from `update()`) performs walkability check + BFS pathfinding.
+- `src/scenes/MainMenuScene.js`
+  - `setupKeyboardInput()` registers `keydown-ENTER`, `keydown-SPACE`, `keydown-T` with stable handler refs.
+  - `teardownKeyboardInput()` removes all menu keyboard listeners on scene shutdown/destroy.
+
+### Input Performance / Responsiveness Optimizations
+1. Deferred event processing:
+   - Input callbacks no longer trigger deep gameplay logic directly.
+   - `InputManager` now buffers events and scenes flush/process in `update`, reducing callback-time work during rapid clicks/taps.
+2. Coalesced rapid tile clicks in exploration scenes:
+   - Overworld/Level1/Level2 now keep latest pending tile selection and evaluate pathing in update, reducing redundant per-click BFS under fast input bursts.
+3. Listener lifecycle hardening:
+   - `setupInputManager()` in Overworld/Battle now tears down any existing manager before re-binding.
+   - Level1/Level2 pointer listeners are explicitly detached via `teardownPointerInput()` on `SHUTDOWN` and `DESTROY`.
+   - Main menu keyboard handlers are explicitly detached on `SHUTDOWN` and `DESTROY`.
+4. Reduced event payload overhead:
+   - Input events are queued as compact action payloads and dispatched once per frame.
+
+### Bugs Found and Fixed
+- Potential duplicate menu key triggers after revisiting `MainMenuScene` due to persistent keyboard listeners without explicit `off` calls.
+- Potential duplicate global pointer listeners in `Level1Scene`/`Level2Scene` across scene lifecycle edges due to anonymous callbacks and no teardown path.
+
+### Responsiveness Notes (Before vs After)
+- Before:
+  - Pointer/keyboard callbacks immediately executed gameplay logic (including pathfinding/command resolution), increasing per-event cost during burst input.
+  - Scene lifecycle paths relied on implicit cleanup in some places, with higher risk of duplicate triggers.
+- After:
+  - Input callbacks remain lightweight and dispatch-only; heavy logic executes in the frame update path.
+  - Listener registration/teardown is explicit across all affected scenes.
+  - Rapid click/tap and directional key bursts should feel more consistent because event handling work is frame-batched and less prone to callback spikes.
+
+### Cross-Browser Validation
+- Automated validation completed in this environment:
+  - `npm test` passed after refactor.
+- Manual Chrome + Firefox interaction check:
+  - Not executable in this headless run environment (no interactive browser session available here).
+  - No code-path assumptions are browser-specific; input relies on Phaser pointer/keyboard abstractions for mouse/touch/keyboard normalization.
+
+### Validation Commands
+1. `npm install` - PASS
+2. `npm test` - PASS

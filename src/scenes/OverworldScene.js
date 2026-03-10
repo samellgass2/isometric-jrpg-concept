@@ -148,6 +148,9 @@ class OverworldScene extends Phaser.Scene {
     this.lastSavedTileKey = "";
     this.progressSnapshot = normalizePlayerProgressState();
     this.movementVector = { x: 0, y: 0 };
+    this.pendingTileSelection = null;
+    this.pendingConfirmInput = false;
+    this.pendingCancelInput = false;
   }
 
   create(data) {
@@ -208,6 +211,9 @@ class OverworldScene extends Phaser.Scene {
       spawnPointId: requestedSpawnPointId,
       currentSceneKey: this.scene.key,
     });
+    this.pendingTileSelection = null;
+    this.pendingConfirmInput = false;
+    this.pendingCancelInput = false;
   }
 
   createHudOverlay(data = {}) {
@@ -471,6 +477,7 @@ class OverworldScene extends Phaser.Scene {
   }
 
   setupInputManager() {
+    this.teardownInputManager();
     this.inputManager = new InputManager(this, { tileSize: TILE_SIZE, autoCleanup: false });
     this.inputUnsubscribe = this.inputManager.onAction((event) => this.handleInputAction(event));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownInputManager());
@@ -494,7 +501,10 @@ class OverworldScene extends Phaser.Scene {
     }
 
     if (event.action === InputActions.SELECT_TILE) {
-      this.handleSelectTileAction(event);
+      if (event.type === "pressed" && Number.isInteger(event.tileX) && Number.isInteger(event.tileY)) {
+        // Keep only the most recent tap/click in this frame to avoid redundant pathfinding.
+        this.pendingTileSelection = { tileX: event.tileX, tileY: event.tileY };
+      }
       return;
     }
 
@@ -503,28 +513,44 @@ class OverworldScene extends Phaser.Scene {
     }
 
     if (event.action === InputActions.CONFIRM) {
-      this.handleConfirmAction();
+      this.pendingConfirmInput = true;
       return;
     }
 
     if (event.action === InputActions.CANCEL) {
+      this.pendingCancelInput = true;
+    }
+  }
+
+  processPendingInputActions() {
+    if (this.pendingCancelInput) {
+      this.pendingCancelInput = false;
       if (this.dialogueBox?.visible) {
         this.hideDialogue();
       }
       this.clearPointerPath();
     }
+
+    if (this.pendingConfirmInput) {
+      this.pendingConfirmInput = false;
+      this.handleConfirmAction();
+    }
+
+    if (!this.pendingTileSelection) {
+      return;
+    }
+
+    const selection = this.pendingTileSelection;
+    this.pendingTileSelection = null;
+    this.handleSelectTileAction(selection);
   }
 
-  handleSelectTileAction(event) {
+  handleSelectTileAction({ tileX, tileY }) {
     if (!this.player || this.isTransitioning) {
       return;
     }
 
-    if (!Number.isInteger(event.tileX) || !Number.isInteger(event.tileY)) {
-      return;
-    }
-
-    const targetTile = { x: event.tileX, y: event.tileY };
+    const targetTile = { x: tileX, y: tileY };
     if (this.handleTileInteractionSelection(targetTile)) {
       return;
     }
@@ -962,9 +988,15 @@ class OverworldScene extends Phaser.Scene {
   }
 
   update() {
+    this.inputManager?.flushPendingActions();
     if (!this.player || !this.player.body || this.isTransitioning) {
+      this.pendingTileSelection = null;
+      this.pendingConfirmInput = false;
+      this.pendingCancelInput = false;
       return;
     }
+
+    this.processPendingInputActions();
 
     if (this.dialogueBox.visible) {
       this.clearPointerPath();

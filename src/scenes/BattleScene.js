@@ -85,6 +85,7 @@ class BattleScene extends Phaser.Scene {
     this.hasPersistedProgressSnapshot = false;
     this.encounterFriendlyTemplateIds = [];
     this.activeHighlightCount = 0;
+    this.pendingInputActions = [];
   }
 
   create(data = {}) {
@@ -103,6 +104,7 @@ class BattleScene extends Phaser.Scene {
     this.protagonist = null;
     this.commandIndex = 0;
     this.currentActingUnitId = null;
+    this.pendingInputActions = [];
     this.loadedProgress = this.getProgressState();
     this.hasPersistedProgressSnapshot = this.hasPersistedProgressData();
     const encounterData = this.resolveEncounterData(data);
@@ -490,6 +492,7 @@ class BattleScene extends Phaser.Scene {
   }
 
   setupInput() {
+    this.teardownInputManager();
     this.inputManager = new InputManager(this, { tileSize: TILE_SIZE, autoCleanup: false });
     this.inputUnsubscribe = this.inputManager.onAction((event) => this.handleInputAction(event));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownInputManager());
@@ -505,6 +508,7 @@ class BattleScene extends Phaser.Scene {
       this.inputManager.destroy();
       this.inputManager = null;
     }
+    this.pendingInputActions.length = 0;
   }
 
   handleInputAction(event) {
@@ -513,16 +517,12 @@ class BattleScene extends Phaser.Scene {
     }
 
     if (event.action === InputActions.SELECT_TILE) {
-      if (!Number.isInteger(event.tileX) || !Number.isInteger(event.tileY)) {
-        return;
-      }
-      if (!inBounds(event.tileX, event.tileY)) {
-        return;
-      }
-      this.setCursorTile(event.tileX, event.tileY);
-      if (event.type === "pressed") {
-        this.handleConfirmAction({ fromPointerSelection: true });
-      }
+      this.pendingInputActions.push({
+        kind: "select-tile",
+        tileX: event.tileX,
+        tileY: event.tileY,
+        pressed: event.type === "pressed",
+      });
       return;
     }
 
@@ -530,24 +530,60 @@ class BattleScene extends Phaser.Scene {
       return;
     }
 
-    if (
-      event.action === InputActions.MOVE_UP ||
-      event.action === InputActions.MOVE_DOWN ||
-      event.action === InputActions.MOVE_LEFT ||
-      event.action === InputActions.MOVE_RIGHT
-    ) {
-      this.handleMoveAction(event.action);
+    this.pendingInputActions.push({ kind: "action-press", action: event.action });
+  }
+
+  processPendingInputActions() {
+    const queuedActions = this.pendingInputActions;
+    this.pendingInputActions = [];
+
+    queuedActions.forEach((queued) => {
+      if (queued.kind === "select-tile") {
+        if (!Number.isInteger(queued.tileX) || !Number.isInteger(queued.tileY)) {
+          return;
+        }
+        if (!inBounds(queued.tileX, queued.tileY)) {
+          return;
+        }
+        this.setCursorTile(queued.tileX, queued.tileY);
+        if (queued.pressed) {
+          this.handleConfirmAction({ fromPointerSelection: true });
+        }
+        return;
+      }
+
+      if (
+        queued.action === InputActions.MOVE_UP ||
+        queued.action === InputActions.MOVE_DOWN ||
+        queued.action === InputActions.MOVE_LEFT ||
+        queued.action === InputActions.MOVE_RIGHT
+      ) {
+        this.handleMoveAction(queued.action);
+        return;
+      }
+
+      if (queued.action === InputActions.CONFIRM) {
+        this.handleConfirmAction();
+        return;
+      }
+
+      if (queued.action === InputActions.CANCEL) {
+        this.handleCancelAction();
+      }
+    });
+  }
+
+  update() {
+    this.inputManager?.flushPendingActions();
+    if (this.battleResolved) {
+      this.pendingInputActions.length = 0;
       return;
     }
 
-    if (event.action === InputActions.CONFIRM) {
-      this.handleConfirmAction();
+    if (!this.pendingInputActions.length) {
       return;
     }
-
-    if (event.action === InputActions.CANCEL) {
-      this.handleCancelAction();
-    }
+    this.processPendingInputActions();
   }
 
   setCursorTile(tileX, tileY) {
