@@ -1,5 +1,9 @@
 # Status
 
+- Task: Create overworld scene and bootstrapping (TASK_ID=279, RUN_ID=478)
+- State: Completed
+- Notes: Added `src/scenes/OverworldScene.js` with a hard-coded tile layout and explicit terrain, collision, and character layers/groups (player + NPC placeholders). Updated `src/gameConfig.js` to register `OverworldScene` as the boot scene and updated `src/main.js` to instantiate `Phaser.Game` with that config. Added `scripts/dev-server.mjs` and npm scripts (`dev`/`start`) so loading `/` serves the Phaser app.
+
 - Task: Initialize Project Structure
 - State: Completed
 - Notes: Created src, assets, dist directories and added src/index.html and src/main.js.
