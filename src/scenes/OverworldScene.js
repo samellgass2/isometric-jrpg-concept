@@ -8,6 +8,7 @@ const MAP_PIXEL_WIDTH = MAP_WIDTH * TILE_SIZE;
 const MAP_PIXEL_HEIGHT = MAP_HEIGHT * TILE_SIZE;
 const INTERACTION_DISTANCE = TILE_SIZE * 0.9;
 const UI_DEPTH = 40;
+const ARRIVAL_THRESHOLD = 4;
 
 const PLAYER_TEXTURES = {
   idle: "player-idle",
@@ -60,6 +61,17 @@ function tileToWorld(tileX, tileY) {
   };
 }
 
+function worldToTile(worldX, worldY) {
+  return {
+    x: Math.floor(worldX / TILE_SIZE),
+    y: Math.floor(worldY / TILE_SIZE),
+  };
+}
+
+function keyForTile(x, y) {
+  return `${x},${y}`;
+}
+
 class OverworldScene extends Phaser.Scene {
   constructor() {
     super("OverworldScene");
@@ -75,6 +87,9 @@ class OverworldScene extends Phaser.Scene {
     this.dialogueText = null;
     this.dialogueHintText = null;
     this.activeDialogueNpcId = null;
+    this.pointerPath = [];
+    this.pointerPathTiles = [];
+    this.npcTileSet = new Set();
   }
 
   create() {
@@ -94,6 +109,7 @@ class OverworldScene extends Phaser.Scene {
     this.createPlayerCharacter();
     this.createNpcPlaceholders();
     this.setupMovementInput();
+    this.setupPointerInput();
     this.createDialogueUi();
 
     this.add
@@ -106,7 +122,7 @@ class OverworldScene extends Phaser.Scene {
       .setDepth(UI_DEPTH);
 
     this.add
-      .text(16, 40, "Move: Arrows/WASD  Interact: Space/Enter", {
+      .text(16, 40, "Move: Arrows/WASD or Mouse Click  Interact: Space/Enter", {
         color: "#d7e0ef",
         fontFamily: "monospace",
         fontSize: "14px",
@@ -270,6 +286,7 @@ class OverworldScene extends Phaser.Scene {
       npc.refreshBody();
       this.characterLayer.add(npc);
       this.npcEntities.push(npc);
+      this.npcTileSet.add(keyForTile(npcConfig.tileX, npcConfig.tileY));
     });
   }
 
@@ -285,6 +302,121 @@ class OverworldScene extends Phaser.Scene {
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
       enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
     });
+  }
+
+  setupPointerInput() {
+    this.input.on("pointerdown", (pointer) => {
+      if (!this.player || this.dialogueBox?.visible) {
+        return;
+      }
+
+      const targetTile = worldToTile(pointer.worldX, pointer.worldY);
+      if (!this.isWalkableTile(targetTile.x, targetTile.y)) {
+        this.clearPointerPath();
+        return;
+      }
+
+      const startTile = this.getPlayerTile();
+      if (!startTile) {
+        return;
+      }
+
+      const tilePath = this.findTilePath(startTile, targetTile);
+      if (!tilePath || tilePath.length === 0) {
+        this.clearPointerPath();
+        return;
+      }
+
+      this.pointerPathTiles = tilePath;
+      this.pointerPath = tilePath.map((tile) => tileToWorld(tile.x, tile.y));
+    });
+  }
+
+  clearPointerPath() {
+    this.pointerPath = [];
+    this.pointerPathTiles = [];
+  }
+
+  getPlayerTile() {
+    if (!this.player) {
+      return null;
+    }
+    return worldToTile(this.player.x, this.player.y);
+  }
+
+  isInBounds(tileX, tileY) {
+    return tileX >= 0 && tileY >= 0 && tileX < MAP_WIDTH && tileY < MAP_HEIGHT;
+  }
+
+  isWalkableTile(tileX, tileY) {
+    if (!this.isInBounds(tileX, tileY)) {
+      return false;
+    }
+    if (this.collisionTiles.has(keyForTile(tileX, tileY))) {
+      return false;
+    }
+    if (this.npcTileSet.has(keyForTile(tileX, tileY))) {
+      return false;
+    }
+    return true;
+  }
+
+  findTilePath(startTile, targetTile) {
+    if (!startTile || !targetTile) {
+      return [];
+    }
+    if (startTile.x === targetTile.x && startTile.y === targetTile.y) {
+      return [];
+    }
+
+    const queue = [{ x: startTile.x, y: startTile.y }];
+    const visited = new Set([keyForTile(startTile.x, startTile.y)]);
+    const parentMap = new Map();
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current.x === targetTile.x && current.y === targetTile.y) {
+        break;
+      }
+
+      const neighbors = [
+        { x: current.x + 1, y: current.y },
+        { x: current.x - 1, y: current.y },
+        { x: current.x, y: current.y + 1 },
+        { x: current.x, y: current.y - 1 },
+      ];
+
+      neighbors.forEach((neighbor) => {
+        const neighborKey = keyForTile(neighbor.x, neighbor.y);
+        if (visited.has(neighborKey) || !this.isWalkableTile(neighbor.x, neighbor.y)) {
+          return;
+        }
+
+        visited.add(neighborKey);
+        parentMap.set(neighborKey, current);
+        queue.push(neighbor);
+      });
+    }
+
+    const targetKey = keyForTile(targetTile.x, targetTile.y);
+    if (!parentMap.has(targetKey)) {
+      return [];
+    }
+
+    const path = [];
+    let currentTile = { x: targetTile.x, y: targetTile.y };
+
+    while (!(currentTile.x === startTile.x && currentTile.y === startTile.y)) {
+      path.push(currentTile);
+      const previous = parentMap.get(keyForTile(currentTile.x, currentTile.y));
+      if (!previous) {
+        return [];
+      }
+      currentTile = previous;
+    }
+
+    path.reverse();
+    return path;
   }
 
   createDialogueUi() {
@@ -400,6 +532,51 @@ class OverworldScene extends Phaser.Scene {
     return { x: 0, y: 0 };
   }
 
+  moveAlongPointerPath() {
+    if (!this.player?.body || this.pointerPath.length === 0) {
+      return false;
+    }
+
+    const nextWaypoint = this.pointerPath[0];
+    const distance = Phaser.Math.Distance.Between(
+      this.player.x,
+      this.player.y,
+      nextWaypoint.x,
+      nextWaypoint.y
+    );
+
+    if (distance <= ARRIVAL_THRESHOLD) {
+      this.player.setPosition(nextWaypoint.x, nextWaypoint.y);
+      this.pointerPath.shift();
+      this.pointerPathTiles.shift();
+      if (this.pointerPath.length === 0) {
+        this.player.body.setVelocity(0, 0);
+        this.player.anims.play("player-idle", true);
+        return false;
+      }
+    }
+
+    const targetWaypoint = this.pointerPath[0];
+    const direction = new Phaser.Math.Vector2(
+      targetWaypoint.x - this.player.x,
+      targetWaypoint.y - this.player.y
+    );
+
+    if (direction.lengthSq() === 0) {
+      this.player.body.setVelocity(0, 0);
+      return true;
+    }
+
+    direction.normalize().scale(PLAYER_SPEED);
+    this.player.body.setVelocity(direction.x, direction.y);
+
+    if (Math.abs(direction.x) > 1) {
+      this.player.setFlipX(direction.x < 0);
+    }
+    this.player.anims.play("player-walk", true);
+    return true;
+  }
+
   update() {
     if (!this.player || !this.player.body) {
       return;
@@ -408,24 +585,31 @@ class OverworldScene extends Phaser.Scene {
     this.handleInteractionInput();
 
     if (this.dialogueBox.visible) {
+      this.clearPointerPath();
       this.player.body.setVelocity(0, 0);
       this.player.anims.play("player-idle", true);
       return;
     }
 
     const movement = this.getMovementVector();
-    this.player.body.setVelocity(movement.x * PLAYER_SPEED, movement.y * PLAYER_SPEED);
+    if (movement.x !== 0 || movement.y !== 0) {
+      this.clearPointerPath();
+      this.player.body.setVelocity(movement.x * PLAYER_SPEED, movement.y * PLAYER_SPEED);
 
-    if (movement.x === 0 && movement.y === 0) {
-      this.player.anims.play("player-idle", true);
+      if (movement.x !== 0) {
+        this.player.setFlipX(movement.x < 0);
+      }
+
+      this.player.anims.play("player-walk", true);
       return;
     }
 
-    if (movement.x !== 0) {
-      this.player.setFlipX(movement.x < 0);
+    if (this.moveAlongPointerPath()) {
+      return;
     }
 
-    this.player.anims.play("player-walk", true);
+    this.player.body.setVelocity(0, 0);
+    this.player.anims.play("player-idle", true);
   }
 }
 

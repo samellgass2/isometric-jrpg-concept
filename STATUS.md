@@ -1,5 +1,9 @@
 # Status
 
+- Task: Implement overworld map with movement controls (TASK_ID=309, RUN_ID=528)
+- State: Completed
+- Notes: Extended `src/scenes/OverworldScene.js` as the dedicated overworld exploration scene with keyboard and mouse movement. Main menu `Start Game` continues to transition into `OverworldScene` via `src/scenes/MainMenuScene.js`, and scene registration remains in `src/gameConfig.js` (`scene: [MainMenuScene, BattleScene, OverworldScene]`). Movement controls now support Arrow keys/WASD for immediate cardinal movement plus click-to-move pathing: clicking a reachable tile computes a cardinal BFS path over walkable tiles and steps the player toward each tile center using Arcade velocity. Keyboard input overrides/cancels active click paths for responsive control handoff. Map boundaries and blocking remain enforced by world bounds + collidable tile bodies, and click-path generation also treats collision tiles/NPC tiles as non-walkable so routes do not target blocked spaces. Current map rendering uses generated placeholder rectangle tiles/sprites (no external tilemap asset yet), which is intentional for this prototype phase.
+
 - Task: Implement main menu and level select UI (TASK_ID=308, RUN_ID=524)
 - State: Completed
 - Notes: Added `src/scenes/MainMenuScene.js` as a Phaser scene keyed `MainMenuScene` that renders a game title, a clear `Start Game` control (click or Enter/Space), and visible level-availability labels for `Level 1` and `Level 2`. Updated `src/gameConfig.js` to import/register `MainMenuScene` and reorder scene bootstrapping to `scene: [MainMenuScene, BattleScene, OverworldScene]`, making the main menu the initial scene shown on launch. `Start Game` now transitions from the menu into `OverworldScene` (with a short fade), establishing the main menu -> overworld -> level-selection signposting flow.
