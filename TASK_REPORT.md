@@ -1,43 +1,55 @@
-# TASK 326 Report - Implement core save data model
+# TASK 327 Report - Add localStorage-based save/load layer
 
 ## Summary
-Implemented a centralized player progress save model in `src/state/playerProgress.js` with immutable state update helpers and JSON serialization/deserialization utilities, then documented the persisted fields and integration expectations in `STATUS.md`.
+Implemented a browser localStorage persistence layer for player progress, integrated hydration into Phaser startup, wired scene-level progress updates for overworld movement and battle outcomes, and documented behavior in `STATUS.md`.
 
 ## Changes made
-- Added `src/state/playerProgress.js`:
-  - Introduced canonical player progress schema with JSON-safe fields:
-    - `schemaVersion`
-    - `overworld` (`position`, `spawnPointId`, `currentSceneKey`)
-    - `party` (`memberOrder`, `members`)
-    - `battleOutcomes` (encounter keyed outcomes)
-  - Added pure immutable helpers:
-    - `createInitialPlayerProgressState`
-    - `normalizePlayerProgressState`
-    - `updateOverworldPosition`
-    - `upsertPartyMember`
-    - `removePartyMember`
-    - `recordBattleOutcome`
-    - `serializePlayerProgress`
-    - `deserializePlayerProgress`
-  - Added inline JSDoc documentation describing each field and expected usage by overworld/battle systems.
+- Added `src/persistence/saveSystem.js`:
+  - Exported `saveProgress(state)`, `loadProgress()`, and `clearProgress()`.
+  - Added stable storage key export: `PLAYER_PROGRESS_STORAGE_KEY` (`"playerProgress"`).
+  - Implemented safe localStorage detection and guarded JSON read/write behavior.
+  - Fallback behavior: invalid/missing/corrupt storage returns `createInitialPlayerProgressState()`.
 
-- Added `scripts/player-progress.test.mjs`:
-  - Verifies default initialization includes overworld position, party composition, and battle outcomes collection.
-  - Verifies immutable overworld updates, party member add/remove behavior, named battle outcome recording, and JSON round-trip integrity.
+- Updated `src/main.js`:
+  - Calls `loadProgress()` before creating `Phaser.Game`.
+  - Stores hydrated state in `game.registry` as `playerProgress`.
+  - Registers a shared `setPlayerProgress(nextState)` mutator that normalizes and persists updates via `saveProgress`.
+
+- Updated `src/scenes/MainMenuScene.js`:
+  - Start action now resumes from saved `overworld.currentSceneKey`.
+  - Passes `spawnPointId` when resuming `OverworldScene`.
+
+- Updated `src/scenes/OverworldScene.js`:
+  - Reads hydrated progress from registry.
+  - Spawns from saved overworld position when no explicit spawn point is provided.
+  - Persists player tile movement and current scene metadata using `updateOverworldPosition(...)`.
+  - Persists intended level transition target before starting level scenes.
+
+- Updated `src/scenes/BattleScene.js`:
+  - Hydrates friendly unit fields from saved party members where available.
+  - On battle completion, persists party HP snapshots and encounter outcomes via `upsertPartyMember(...)` and `recordBattleOutcome(...)`.
+
+- Added `scripts/save-system.test.mjs`:
+  - Verifies save writes JSON under stable key.
+  - Verifies load returns saved state when valid.
+  - Verifies load falls back to default on invalid JSON/missing data.
+  - Verifies clear removes persisted state and subsequent load returns default.
+  - Verifies save handles storage-write failures without throwing.
 
 - Updated `package.json`:
-  - Included `scripts/player-progress.test.mjs` in `npm test` command chain.
+  - Added `scripts/save-system.test.mjs` to `npm test` chain.
 
 - Updated `STATUS.md`:
-  - Added Task 326 entry documenting the new player progress module, persisted fields, and expected interaction points for overworld, party management, and battle completion flows.
+  - Added Task 327 section documenting key name, reset/error behavior, invocation pattern, startup hydration, and manual verification steps.
 
 ## Acceptance test check
-1. Dedicated player progress module exists and imports without runtime errors: PASS (`src/state/playerProgress.js`, imported by test script).
-2. Initial default state includes overworld position, party composition, battle outcomes collection: PASS (`createInitialPlayerProgressState`).
-3. Immutable update functions for overworld position, party members, and named battle outcome flag: PASS (`updateOverworldPosition`, `upsertPartyMember`/`removePartyMember`, `recordBattleOutcome`).
-4. Serialize/deserialize helpers preserve state information: PASS (`serializePlayerProgress`, `deserializePlayerProgress`, round-trip tested).
-5. Inline documentation for fields and usage: PASS (JSDoc in module).
-6. `STATUS.md` includes summary and modeled progress aspects: PASS (new Task 326 section).
+1. Persistence module exports required functions: PASS (`src/persistence/saveSystem.js`).
+2. `saveProgress` stores JSON under stable key: PASS (`playerProgress`).
+3. `loadProgress` returns valid state or default fallback on invalid/missing JSON: PASS.
+4. `clearProgress` removes storage and load resets to default: PASS.
+5. Game initialization hydrates state before scene usage: PASS (`src/main.js` + registry wiring).
+6. Manual test flow documented: PASS (`STATUS.md`, Task 327 section).
+7. STATUS documentation includes key/reset/invocation behavior: PASS (`STATUS.md`).
 
 ## Validation run
 - `npm test` -> PASS
@@ -45,3 +57,4 @@ Implemented a centralized player progress save model in `src/state/playerProgres
   - Dog conditional behavior test passed.
   - Battle grid stats test passed.
   - Player progress state test passed.
+  - Save system persistence test passed.
