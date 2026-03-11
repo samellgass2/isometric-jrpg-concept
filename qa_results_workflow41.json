@@ -1,0 +1,158 @@
+{
+  "results": [
+    {
+      "id": 1,
+      "description": "Main menu loads with playable UI",
+      "status": "PASS",
+      "screenshot": "screenshots/wf41-01-main-menu.png",
+      "notes": "Completed in 575ms"
+    },
+    {
+      "id": 2,
+      "description": "Start Game transitions from menu to Overworld",
+      "status": "PASS",
+      "screenshot": "screenshots/wf41-02-overworld-entry.png",
+      "notes": "Completed in 1487ms"
+    },
+    {
+      "id": 3,
+      "description": "Dialogue overlay opens/closes with UI transition polish",
+      "status": "PASS",
+      "screenshot": "screenshots/wf41-04-dialogue-closed.png",
+      "notes": "Completed in 5054ms"
+    },
+    {
+      "id": 4,
+      "description": "Overworld encounter transitions into Battle scene",
+      "status": "PASS",
+      "screenshot": "screenshots/wf41-05-battle-entry.png",
+      "notes": "Completed in 3207ms"
+    },
+    {
+      "id": 5,
+      "description": "Battle scene provides active turn feedback and debug snapshot",
+      "status": "PASS",
+      "screenshot": "screenshots/wf41-06-battle-debug.png",
+      "notes": "Completed in 486ms"
+    },
+    {
+      "id": 6,
+      "description": "Battle hit feedback path executes during enemy attacks",
+      "status": "PASS",
+      "screenshot": "screenshots/wf41-07-post-enemy-phase.png",
+      "notes": "Completed in 6185ms"
+    },
+    {
+      "id": 7,
+      "description": "Stabilize ability path executes and updates HP state",
+      "status": "FAIL",
+      "screenshot": "screenshots/wf41-08-stabilize.png",
+      "notes": "Expected enemy hit to reduce HP (initial=100, after=100)",
+      "bug_title": "Stabilize ability path executes and updates HP state failed"
+    },
+    {
+      "id": 8,
+      "description": "Battle completion returns to Overworld with transition feedback",
+      "status": "BLOCKED",
+      "screenshot": "screenshots/wf41-09-return-overworld.png",
+      "notes": "Blocked after 129032ms: Battle did not resolve back to Overworld within one 2-minute attempt."
+    }
+  ],
+  "console_events": [
+    {
+      "type": "log",
+      "text": "%c %c %c %c %c Phaser v3.90.0 (WebGL | Web Audio) %c https://phaser.io/v390 background: #ff0000 background: #ffff00 background: #00ff00 background: #00ffff color: #ffffff; background: #000000 background: transparent",
+      "args": [
+        "%c %c %c %c %c Phaser v3.90.0 (WebGL | Web Audio) %c https://phaser.io/v390",
+        "background: #ff0000",
+        "background: #ffff00",
+        "background: #00ff00",
+        "background: #00ffff",
+        "color: #ffffff; background: #000000",
+        "background: transparent"
+      ]
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x2ab40014ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "args": []
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x2ab40014ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "args": []
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x2ab40014ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "args": []
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x2ab40014ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+      "args": []
+    },
+    {
+      "type": "log",
+      "text": "%c %c %c %c %c Phaser v3.90.0 (WebGL | Web Audio) %c https://phaser.io/v390 background: #ff0000 background: #ffff00 background: #00ff00 background: #00ffff color: #ffffff; background: #000000 background: transparent",
+      "args": [
+        "%c %c %c %c %c Phaser v3.90.0 (WebGL | Web Audio) %c https://phaser.io/v390",
+        "background: #ff0000",
+        "background: #ffff00",
+        "background: #00ff00",
+        "background: #00ffff",
+        "color: #ffffff; background: #000000",
+        "background: transparent"
+      ]
+    },
+    {
+      "type": "log",
+      "text": "[BattleScene] Debug snapshot {party: Array(1), inventory: Object, storyFlags: Object}",
+      "args": [
+        "[BattleScene] Debug snapshot",
+        {
+          "party": [
+            {
+              "id": "protagonist",
+              "name": "Protagonist",
+              "level": 1,
+              "currentHp": 100,
+              "maxHp": 100
+            }
+          ],
+          "inventory": {},
+          "storyFlags": {
+            "defeatedFirstDrone": false,
+            "level1TrainingAmbushCleared": false,
+            "level2CanyonGauntletCleared": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "log",
+      "text": "[BattleScene] Debug snapshot {party: Array(1), inventory: Object, storyFlags: Object}",
+      "args": [
+        "[BattleScene] Debug snapshot",
+        {
+          "party": [
+            {
+              "id": "protagonist",
+              "name": "Protagonist",
+              "level": 1,
+              "currentHp": 100,
+              "maxHp": 100
+            }
+          ],
+          "inventory": {},
+          "storyFlags": {
+            "defeatedFirstDrone": false,
+            "level1TrainingAmbushCleared": false,
+            "level2CanyonGauntletCleared": false
+          }
+        }
+      ]
+    }
+  ],
+  "page_errors": []
+}
