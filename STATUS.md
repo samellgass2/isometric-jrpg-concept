@@ -2006,3 +2006,60 @@ Workflow: Core Game Loop, Progression, and State Management
 ### Validation
 - `npm test` PASS
   - rollback, dog behavior, grid stats, drone AI/scenario, player progress, game state model, save system, battle party persistence, dialogue system.
+
+## Task #401 - Add save, load, and debug state inspection
+Date: 2026-03-11
+Workflow: Core Game Loop, Progression, and State Management
+
+### Summary
+- Added a runtime save/load helper module at `src/persistence/runtimeStateTools.js` to provide:
+  - `saveGame(game, options)`
+  - `loadGame(game)`
+  - `resolveResumeTarget(progressState)`
+  - `buildDebugStateSnapshot(options)`
+  - `logDebugStateSnapshot(options)`
+- Added explicit `saveGame`/`loadGame` aliases in `src/persistence/saveSystem.js` for stable persistence API naming.
+- Wired registry-level runtime actions in `src/main.js`:
+  - `game.registry.get("saveGame")`
+  - `game.registry.get("loadGame")`
+  - `game.registry.get("debugGameState")`
+- Updated `MainMenuScene` with explicit save/load/debug controls and a dedicated continue path that reloads persisted state before scene transition.
+- Updated `BattleScene` with dev hotkeys to save, load, and inspect central state during battle flow.
+- Added test coverage for runtime save/load and debug snapshot behavior in `scripts/runtime-state-tools.test.mjs`.
+
+### Save/Load Usage
+1. From Main Menu:
+- `Load Save / Continue` button: loads persisted save and starts the saved scene.
+- `L` or `F9`: same as continue/load.
+- `F6`: manual save from menu.
+
+2. During BattleScene:
+- `F6`: save current game state snapshot.
+- `F9`: load persisted save and transition to the saved scene.
+
+3. Automatic persistence:
+- Existing scene progress commits still persist through `setPlayerProgress` and local storage updates.
+
+### What is persisted
+- Party composition/order and health (`party.members`, `party.memberOrder`, HP/max HP)
+- Inventory item counts (`inventory.items`)
+- Story/quest and key battle flags (`questFlags`, `battleOutcomes.keyBattles`, plus encounter history)
+- Overworld resume metadata (`overworld.currentSceneKey`, `overworld.spawnPointId`, position)
+
+Persistence remains JSON-only and stores normalized data structures (no Phaser objects or transient engine references).
+
+### Debug inspection usage
+- Overworld already includes an on-screen debug overlay for party/inventory/flag signals.
+- Main Menu: press `I` to log a debug snapshot to console.
+- BattleScene: press `I` to log a debug snapshot to console.
+
+Debug snapshot includes:
+- `party`: member ids/names/levels/HP
+- `inventory`: item counts
+- `storyFlags`: selected subset of current story flags
+
+### Corrupt/missing save handling
+- `loadProgress`/`loadGame` normalize and fallback to a default initial profile when save data is missing or invalid JSON.
+
+### Validation
+- `npm test` PASS, including new `runtime-state-tools` persistence/rehydration test.

@@ -41,6 +41,10 @@ export function saveProgress(state) {
   }
 }
 
+export function saveGame(state) {
+  return saveProgress(state);
+}
+
 export function loadProgress() {
   const fallbackState = createInitialPlayerProgressState();
   const storage = getLocalStorage();
@@ -58,6 +62,10 @@ export function loadProgress() {
   } catch (_error) {
     return fallbackState;
   }
+}
+
+export function loadGame() {
+  return loadProgress();
 }
 
 export function clearProgress() {

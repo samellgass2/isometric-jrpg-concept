@@ -25,6 +25,12 @@ import {
   updateOverworldPosition,
 } from "../state/playerProgress.js";
 import {
+  loadGame as loadRuntimeGame,
+  logDebugStateSnapshot,
+  resolveResumeTarget,
+  saveGame as saveRuntimeGame,
+} from "../persistence/runtimeStateTools.js";
+import {
   addInventoryItem,
   exportGameStateToPlayerProgress,
   getGameState,
@@ -82,6 +88,7 @@ class BattleScene extends Phaser.Scene {
     this.loadedProgress = null;
     this.encounterFriendlyTemplateIds = [];
     this.encounterRewards = { inventory: [], storyFlags: {} };
+    this.devShortcutListeners = [];
   }
 
   create(data = {}) {
@@ -109,6 +116,7 @@ class BattleScene extends Phaser.Scene {
     this.snapCursorToStartingTile();
     this.createUi();
     this.setupInput();
+    this.setupDevShortcuts();
     this.refreshDogBuffVisuals();
     this.createHudOverlay();
     this.updateTurnHeader();
@@ -522,6 +530,66 @@ class BattleScene extends Phaser.Scene {
     this.inputUnsubscribe = this.inputManager.onAction((event) => this.handleInputAction(event));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownInputManager());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.teardownInputManager());
+  }
+
+  setupDevShortcuts() {
+    const keyboard = this.input?.keyboard;
+    if (!keyboard) {
+      return;
+    }
+
+    const onSave = (event) => {
+      event?.preventDefault?.();
+      const saveGame = this.game.registry.get("saveGame");
+      const saved =
+        typeof saveGame === "function" ? saveGame({ currentSceneKey: this.returnSceneKey }) : saveRuntimeGame(this.game);
+      this.addLog(`Saved (${saved?.party?.members?.length ?? 0} party members).`);
+    };
+
+    const onLoad = (event) => {
+      event?.preventDefault?.();
+      const loadGame = this.game.registry.get("loadGame");
+      const loaded = typeof loadGame === "function" ? loadGame() : loadRuntimeGame(this.game);
+      const { resumeSceneKey, resumeData } = resolveResumeTarget(loaded, this.returnSceneKey);
+      this.addLog(`Loaded save -> ${resumeSceneKey}.`);
+      this.time.delayedCall(200, () => {
+        this.scene.start(resumeSceneKey, resumeData);
+      });
+    };
+
+    const onInspect = () => {
+      const debugState = this.game.registry.get("debugGameState");
+      const snapshot = typeof debugState === "function" ? debugState() : logDebugStateSnapshot();
+      console.log("[BattleScene] Debug snapshot", snapshot);
+      this.addLog("Debug snapshot logged to console.");
+    };
+
+    keyboard.on("keydown-F6", onSave);
+    keyboard.on("keydown-F9", onLoad);
+    keyboard.on("keydown-I", onInspect);
+
+    this.devShortcutListeners = [
+      { event: "keydown-F6", handler: onSave },
+      { event: "keydown-F9", handler: onLoad },
+      { event: "keydown-I", handler: onInspect },
+    ];
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownDevShortcuts());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.teardownDevShortcuts());
+  }
+
+  teardownDevShortcuts() {
+    if (!this.devShortcutListeners.length) {
+      return;
+    }
+
+    const keyboard = this.input?.keyboard;
+    if (keyboard) {
+      this.devShortcutListeners.forEach(({ event, handler }) => {
+        keyboard.off(event, handler);
+      });
+    }
+    this.devShortcutListeners = [];
   }
 
   teardownInputManager() {
