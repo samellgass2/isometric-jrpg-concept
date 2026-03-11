@@ -5,63 +5,63 @@
       "description": "Main menu initial state loads",
       "status": "PASS",
       "screenshot": "screenshots/01-main-menu.png",
-      "notes": "Completed in 389ms"
+      "notes": "Completed in 357ms"
     },
     {
       "id": 2,
       "description": "Start Game enters Overworld scene",
       "status": "PASS",
       "screenshot": "screenshots/02-overworld-entry.png",
-      "notes": "Completed in 1609ms"
+      "notes": "Completed in 1642ms"
     },
     {
       "id": 3,
       "description": "Ranger dialogue progression sets tutorial completion flag",
       "status": "PASS",
       "screenshot": "screenshots/05-ranger-dialogue-complete.png",
-      "notes": "Completed in 8497ms"
+      "notes": "Completed in 7209ms"
     },
     {
       "id": 4,
       "description": "Mechanic interaction unlocks workshop gate progression",
       "status": "PASS",
       "screenshot": "screenshots/08-mechanic-dialogue-complete.png",
-      "notes": "Completed in 5442ms"
+      "notes": "Completed in 5518ms"
     },
     {
       "id": 5,
       "description": "Workshop gate interaction prompt is available after unlock",
       "status": "PASS",
       "screenshot": "screenshots/09-workshop-gate-prompt.png",
-      "notes": "Completed in 2037ms"
+      "notes": "Completed in 1975ms"
     },
     {
       "id": 6,
       "description": "Supply cache pickup grants workshop pass and checkpoint unlock flag",
       "status": "PASS",
       "screenshot": "screenshots/10-supply-cache-pickup.png",
-      "notes": "Completed in 4258ms"
+      "notes": "Completed in 3988ms"
     },
     {
       "id": 7,
       "description": "Canyon checkpoint interaction works after pass unlock",
       "status": "PASS",
       "screenshot": "screenshots/11-canyon-checkpoint-prompt.png",
-      "notes": "Completed in 2048ms"
+      "notes": "Completed in 2128ms"
     },
     {
       "id": 8,
       "description": "Drone patrol triggers battle transition and battle debug snapshot hotkey works",
       "status": "PASS",
       "screenshot": "screenshots/12-battle-entry.png",
-      "notes": "Completed in 3330ms"
+      "notes": "Completed in 3390ms"
     },
     {
       "id": 9,
       "description": "Load/Continue flow uses persisted save state",
       "status": "PASS",
       "screenshot": "screenshots/14-continue-after-load.png",
-      "notes": "Completed in 2707ms"
+      "notes": "Completed in 2632ms"
     }
   ],
   "console_events": [
@@ -71,19 +71,19 @@
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x16b400118200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0xe5c0012a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x16b400118200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0xe5c0012a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x16b400118200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0xe5c0012a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x16b400118200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      "text": "[.WebGL-0xe5c0012a000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
     },
     {
       "type": "log",
