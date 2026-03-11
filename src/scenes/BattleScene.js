@@ -39,6 +39,11 @@ import {
   setStoryFlags,
 } from "../state/gameState.js";
 import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
+import {
+  applySceneEntryTransition,
+  TRANSITION_STINGER_KEYS,
+  transitionToScene,
+} from "../systems/transitionFeedback.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -106,6 +111,7 @@ class BattleScene extends Phaser.Scene {
   create(data = {}) {
     this.audioManager = this.game.registry.get("audioManager") ?? null;
     this.audioManager?.playMusic(BATTLE_AUDIO_KEYS.music, { loop: true });
+    applySceneEntryTransition(this, data, { duration: 200, color: [0, 0, 0] });
 
     this.loadedProgress = this.getProgressState();
     const encounterData = this.resolveEncounterData(data);
@@ -1464,11 +1470,19 @@ class BattleScene extends Phaser.Scene {
     this.syncHudOverlay();
     this.persistBattleProgress(result);
 
-    this.time.delayedCall(450, () => {
-      this.scene.start(this.returnSceneKey, {
+    this.time.delayedCall(420, () => {
+      transitionToScene(this, {
+        targetSceneKey: this.returnSceneKey,
+        fadeOutDuration: 180,
+        stopMusic: true,
+        exitStingerKey: TRANSITION_STINGER_KEYS.battleReturn,
+        exitStingerVolume: 0.76,
+        entryFadeInDuration: 220,
+        data: {
         ...this.returnSceneData,
         battleResult: result,
         lastEncounterId: this.encounterId,
+        },
       });
     });
   }

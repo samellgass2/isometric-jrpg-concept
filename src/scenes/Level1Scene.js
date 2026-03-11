@@ -5,6 +5,11 @@ import {
   normalizePlayerProgressState,
 } from "../state/playerProgress.js";
 import { loadProgress } from "../persistence/saveSystem.js";
+import {
+  applySceneEntryTransition,
+  TRANSITION_STINGER_KEYS,
+  transitionToScene,
+} from "../systems/transitionFeedback.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 14;
@@ -74,6 +79,7 @@ class Level1Scene extends Phaser.Scene {
 
   create(data = {}) {
     const progress = this.getProgressState();
+    applySceneEntryTransition(this, data, { duration: 180, color: [0, 0, 0] });
     this.levelStartTile = data?.spawnTile ?? { ...START_TILE };
     this.clearedEncounterIds = new Set(data?.clearedEncounterIds ?? []);
     if (getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED)) {
@@ -434,9 +440,11 @@ class Level1Scene extends Phaser.Scene {
 
     this.isReturning = true;
     this.clearPointerPath();
-    this.cameras.main.fadeOut(160, 0, 0, 0);
-    this.time.delayedCall(170, () => {
-      this.scene.start("OverworldScene", { spawnPointId: "level-1-return" });
+    transitionToScene(this, {
+      targetSceneKey: "OverworldScene",
+      fadeOutDuration: 170,
+      entryFadeInDuration: 180,
+      data: { spawnPointId: "level-1-return" },
     });
   }
 
@@ -471,16 +479,20 @@ class Level1Scene extends Phaser.Scene {
     this.battleStartLock = true;
     this.clearPointerPath();
     this.player.body.setVelocity(0, 0);
-    this.cameras.main.fadeOut(160, 0, 0, 0);
-    this.time.delayedCall(170, () => {
-      this.scene.start("BattleScene", {
+    transitionToScene(this, {
+      targetSceneKey: "BattleScene",
+      fadeOutDuration: 170,
+      exitStingerKey: TRANSITION_STINGER_KEYS.battleStart,
+      exitStingerVolume: 0.8,
+      entryFadeInDuration: 200,
+      data: {
         encounterId: LEVEL1_BATTLE_ENCOUNTER_ID,
         returnSceneKey: "Level1Scene",
         returnSceneData: {
           spawnTile: { x: LEVEL1_BATTLE_TRIGGER_TILE.x - 1, y: LEVEL1_BATTLE_TRIGGER_TILE.y },
           clearedEncounterIds: [...this.clearedEncounterIds],
         },
-      });
+      },
     });
   }
 

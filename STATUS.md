@@ -2423,3 +2423,65 @@ Date: 2026-03-11 (UTC)
   - `this.playBattleSfx(<new-key>, { volume: ... })`
   - `this.playAbilityFeedback(casterUnit, { label: "Ability Name" })`
 - If a target-specific visual is needed, also call `this.playDamageFeedback(targetUnit, { wasDefeated: false })` or create a sibling helper following the same tween cleanup pattern via `rememberTween(...)`.
+
+## Task 415 - Simple Screen and UI Transition Feedback (RUN_ID=731)
+Date: 2026-03-11 (UTC)
+
+### Summary
+- Added lightweight visual and audio transition feedback around major scene changes, with explicit focus on overworld <-> battle flows.
+- Introduced a reusable transition helper module for fade + scene handoff + transition stingers.
+- Updated a key UI overlay (`DialogueOverlay`) to animate in/out with short tweens instead of appearing/disappearing instantly.
+
+### New Transition Helper
+- File: `src/systems/transitionFeedback.js`
+- Exports:
+  - `transitionToScene(scene, options)`
+    - Handles fade-out, optional exit stinger, optional music stop, guarded scene start, and transition payload forwarding.
+  - `applySceneEntryTransition(scene, data, defaults)`
+    - Reads `data.transitionIn` payload and applies fade-in + optional entry stinger in destination scene.
+  - `TRANSITION_STINGER_KEYS`
+    - `battleStart: "sfx-transition-battle-start"`
+    - `battleReturn: "sfx-transition-battle-return"`
+
+### Overworld <-> Battle Transition Wiring
+- `src/scenes/OverworldScene.js`
+  - `create(data)` now applies entry fade-in via `applySceneEntryTransition(...)`.
+  - `startOverworldBattleEncounter()` now routes through `transitionToScene(...)` with:
+    - fade-out,
+    - shared audio manager stinger (`sfx-transition-battle-start`),
+    - music stop,
+    - payload handoff to `BattleScene`.
+  - `transitionToLevel(sign)` now uses the same helper for consistent fade-based scene handoff.
+
+- `src/scenes/BattleScene.js`
+  - `create(data)` now applies entry fade-in via `applySceneEntryTransition(...)`.
+  - `finishBattle(result)` now performs return handoff through `transitionToScene(...)` with:
+    - fade-out before leaving battle,
+    - return stinger (`sfx-transition-battle-return`),
+    - music stop,
+    - preserved return payload (`battleResult`, `lastEncounterId`, `returnSceneData`).
+
+### Additional Scene Consistency
+- `src/scenes/Level1Scene.js`
+- `src/scenes/Level2Scene.js`
+  - Both now apply entry fade-in with `applySceneEntryTransition(...)`.
+  - Both now use `transitionToScene(...)` for battle entry and overworld return so battle starts from level scenes also get the same short transition and stinger behavior.
+
+### UI Overlay Transition Feedback
+- `src/ui/DialogueOverlay.js`
+  - `show()` now tween-fades/slides the dialogue root in (short upward settle).
+  - `hide()` now tween-fades/slides out before hiding.
+  - Added tween bookkeeping/cleanup to prevent stacked tweens during rapid state changes.
+  - Dialogue content updates while already visible do not retrigger full entry animation.
+
+### Notes On Behavior And Safety
+- Transition timings are short (roughly 130-220ms fade/tween windows) to avoid pacing slowdown.
+- Scene handoff uses guarded start logic to avoid duplicate `scene.start(...)` calls.
+- Existing progression logic and return payload data paths remain intact; transitions wrap around established state changes.
+- Audio is routed through shared `AudioManager`; if transition keys are missing in cache, behavior safely no-ops.
+
+### Extension Guidance
+- For future scene transitions, prefer `transitionToScene(...)` instead of direct `cameras.fadeOut(...) + delayedCall(...)` patterns.
+- For future destination scenes, call `applySceneEntryTransition(this, data, defaults)` in `create(...)` to consume forwarded transition payloads.
+- If dedicated stingers are added to the asset pipeline, keep key usage centralized via `TRANSITION_STINGER_KEYS`.
+- Keep transition durations under ~250ms for state changes that happen frequently to preserve game flow.

@@ -37,6 +37,8 @@ class DialogueOverlay {
     this.portraitImage = null;
 
     this.choiceClickHandler = null;
+    this.activeTweens = new Set();
+    this.hideTween = null;
     this.currentState = {
       mode: "hidden",
       selectedChoiceIndex: 0,
@@ -268,9 +270,40 @@ class DialogueOverlay {
 
   hide() {
     if (!this.root) {
+      this.currentState = {
+        mode: "hidden",
+        selectedChoiceIndex: 0,
+        choices: [],
+        choiceLineLength: 0,
+        awaitingSignConfirm: false,
+        activeSignId: null,
+        activeNpcId: null,
+      };
       return;
     }
-    this.root.setVisible(false);
+
+    this.stopOverlayTweens();
+
+    if (!this.root.visible) {
+      this.root.setAlpha(1).setY(0);
+    } else {
+      const tween = this.scene.tweens.add({
+        targets: this.root,
+        alpha: 0,
+        y: 12,
+        duration: 130,
+        ease: "Quad.Out",
+        onComplete: () => {
+          this.root?.setVisible(false).setAlpha(1).setY(0);
+          this.hideTween = null;
+        },
+      });
+      this.hideTween = tween;
+      this.activeTweens.add(tween);
+      tween.once?.("complete", () => this.activeTweens.delete(tween));
+      tween.once?.("stop", () => this.activeTweens.delete(tween));
+    }
+
     this.currentState = {
       mode: "hidden",
       selectedChoiceIndex: 0,
@@ -283,7 +316,28 @@ class DialogueOverlay {
   }
 
   show() {
-    this.root?.setVisible(true);
+    if (!this.root) {
+      return;
+    }
+
+    this.stopOverlayTweens();
+
+    if (this.root.visible) {
+      this.root.setAlpha(1).setY(0);
+      return;
+    }
+
+    this.root.setVisible(true).setAlpha(0).setY(12);
+    const tween = this.scene.tweens.add({
+      targets: this.root,
+      alpha: 1,
+      y: 0,
+      duration: 150,
+      ease: "Quad.Out",
+    });
+    this.activeTweens.add(tween);
+    tween.once?.("complete", () => this.activeTweens.delete(tween));
+    tween.once?.("stop", () => this.activeTweens.delete(tween));
   }
 
   renderChoices() {
@@ -325,6 +379,7 @@ class DialogueOverlay {
   }
 
   destroy() {
+    this.stopOverlayTweens();
     this.choiceTexts.forEach((choiceText) => choiceText.destroy());
     this.choiceTexts = [];
     this.background?.destroy();
@@ -344,6 +399,8 @@ class DialogueOverlay {
     this.portraitFrame = null;
     this.portraitImage = null;
     this.choiceClickHandler = null;
+    this.activeTweens.clear();
+    this.hideTween = null;
     this.currentState = {
       mode: "hidden",
       selectedChoiceIndex: 0,
@@ -353,6 +410,12 @@ class DialogueOverlay {
       activeSignId: null,
       activeNpcId: null,
     };
+  }
+
+  stopOverlayTweens() {
+    this.activeTweens.forEach((tween) => tween?.stop?.());
+    this.activeTweens.clear();
+    this.hideTween = null;
   }
 }
 

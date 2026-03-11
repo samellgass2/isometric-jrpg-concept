@@ -22,6 +22,11 @@ import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
 import { logDebugStateSnapshot, resolveResumeTarget } from "../persistence/runtimeStateTools.js";
 import { DialogueController, DialogueEvents, DialogueFlagStore } from "../systems/dialogue/index.js";
 import {
+  applySceneEntryTransition,
+  TRANSITION_STINGER_KEYS,
+  transitionToScene,
+} from "../systems/transitionFeedback.js";
+import {
   OVERWORLD_DIALOGUE_FLAGS,
   OVERWORLD_INTERACTABLE_DEFINITIONS,
   OVERWORLD_NPC_DEFINITIONS,
@@ -174,6 +179,7 @@ class OverworldScene extends Phaser.Scene {
   create(data) {
     this.audioManager = this.game.registry.get("audioManager") ?? null;
     this.audioManager?.playMusic(OVERWORLD_AUDIO_KEYS.music, { loop: true });
+    applySceneEntryTransition(this, data, { duration: 180, color: [0, 0, 0] });
 
     const progress = this.getProgressState();
     this.progressSnapshot = progress;
@@ -1628,14 +1634,15 @@ class OverworldScene extends Phaser.Scene {
     this.isTransitioning = true;
     this.clearPointerPath();
     this.hideDialogue();
-    this.audioManager?.stopMusic();
     this.persistOverworldProgress({
       force: true,
       currentSceneKey: sceneKey,
     });
-    this.cameras.main.fadeOut(160, 0, 0, 0);
-    this.time.delayedCall(170, () => {
-      this.scene.start(sceneKey);
+    transitionToScene(this, {
+      targetSceneKey: sceneKey,
+      fadeOutDuration: 170,
+      stopMusic: true,
+      entryFadeInDuration: 180,
     });
   }
 
@@ -1855,20 +1862,24 @@ class OverworldScene extends Phaser.Scene {
     this.isTransitioning = true;
     this.clearPointerPath();
     this.hideDialogue();
-    this.audioManager?.stopMusic();
     this.persistOverworldProgress({
       force: true,
       currentSceneKey: "BattleScene",
     });
-    this.cameras.main.fadeOut(180, 0, 0, 0);
-    this.time.delayedCall(190, () => {
-      this.scene.start("BattleScene", {
+    transitionToScene(this, {
+      targetSceneKey: "BattleScene",
+      fadeOutDuration: 190,
+      stopMusic: true,
+      exitStingerKey: TRANSITION_STINGER_KEYS.battleStart,
+      exitStingerVolume: 0.8,
+      entryFadeInDuration: 200,
+      data: {
         encounterId: OVERWORLD_BATTLE_ENCOUNTER_ID,
         returnSceneKey: "OverworldScene",
         returnSceneData: {
           spawnPointId: "default",
         },
-      });
+      },
     });
   }
 }

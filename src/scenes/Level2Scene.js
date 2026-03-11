@@ -5,6 +5,11 @@ import {
   normalizePlayerProgressState,
 } from "../state/playerProgress.js";
 import { loadProgress } from "../persistence/saveSystem.js";
+import {
+  applySceneEntryTransition,
+  TRANSITION_STINGER_KEYS,
+  transitionToScene,
+} from "../systems/transitionFeedback.js";
 
 const TILE_SIZE = 52;
 const MAP_WIDTH = 12;
@@ -73,6 +78,7 @@ class Level2Scene extends Phaser.Scene {
 
   create(data = {}) {
     const progress = this.getProgressState();
+    applySceneEntryTransition(this, data, { duration: 180, color: [0, 0, 0] });
     this.levelStartTile = data?.spawnTile ?? { ...START_TILE };
     this.clearedEncounterIds = new Set(data?.clearedEncounterIds ?? []);
     if (getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED)) {
@@ -460,9 +466,11 @@ class Level2Scene extends Phaser.Scene {
 
     this.isReturning = true;
     this.clearPointerPath();
-    this.cameras.main.fadeOut(160, 0, 0, 0);
-    this.time.delayedCall(170, () => {
-      this.scene.start("OverworldScene", { spawnPointId: "level-2-return" });
+    transitionToScene(this, {
+      targetSceneKey: "OverworldScene",
+      fadeOutDuration: 170,
+      entryFadeInDuration: 180,
+      data: { spawnPointId: "level-2-return" },
     });
   }
 
@@ -478,16 +486,20 @@ class Level2Scene extends Phaser.Scene {
     this.battleStartLock = true;
     this.clearPointerPath();
     this.player.body.setVelocity(0, 0);
-    this.cameras.main.fadeOut(160, 0, 0, 0);
-    this.time.delayedCall(170, () => {
-      this.scene.start("BattleScene", {
+    transitionToScene(this, {
+      targetSceneKey: "BattleScene",
+      fadeOutDuration: 170,
+      exitStingerKey: TRANSITION_STINGER_KEYS.battleStart,
+      exitStingerVolume: 0.8,
+      entryFadeInDuration: 200,
+      data: {
         encounterId: LEVEL2_BATTLE_ENCOUNTER_ID,
         returnSceneKey: "Level2Scene",
         returnSceneData: {
           spawnTile: { x: LEVEL2_BATTLE_TOTEM_TILE.x + 1, y: LEVEL2_BATTLE_TOTEM_TILE.y },
           clearedEncounterIds: [...this.clearedEncounterIds],
         },
-      });
+      },
     });
   }
 
