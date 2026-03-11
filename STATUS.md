@@ -1,5 +1,28 @@
 # Status
 
+- Task: Implement NPC interaction and quest hook flow (TASK_ID=393, RUN_ID=694)
+- State: Completed
+- Notes: Added a reusable overworld NPC interaction framework with dialogue entry-point config, persistent quest flags, and a quest-reactive world object.
+
+  Summary:
+  - Added structured overworld interaction data in `src/data/overworldInteractionConfig.js`.
+    - Defines multiple NPCs (`npc-ranger`, `npc-mechanic`) with per-NPC `dialogueEntryPoint`, dialogue tree mapping, and optional `questMetadata`.
+    - Defines quest/reactive interactables (`obj-workshop-gate`) with `unlockFlag`, locked/unlocked prompts, and visual config.
+  - Updated `src/scenes/OverworldScene.js` interaction flow.
+    - NPC interaction uses one consistent mechanic (`Space/Enter` near entity or pointer tile-select when adjacent) and starts each NPC’s configured dialogue entry point.
+    - Scene now supports reusable interactable objects in the same interaction loop as NPCs/signs.
+    - Added quest-gated gate behavior: gate starts locked (blocking tile + collision + locked prompt), then unlocks when dialogue hook sets `quest.workshopGateUnlocked` (tile unblocked, collider disabled, tint + prompt change).
+  - Extended persistent state in `src/state/playerProgress.js`.
+    - Added normalized `questFlags` state and helpers (`getQuestFlag`, `setQuestFlag`, `setQuestFlags`) so dialogue quest outcomes persist across saves.
+    - Overworld dialogue hook events now persist known quest/dialogue flags back into player progress.
+  - Updated tests in `scripts/player-progress.test.mjs`.
+    - Verifies quest flag normalization/read-write and serialize/deserialize persistence.
+
+  Example quest hook flow implemented:
+  1. Talk to Ranger Sol and choose the task branch; dialogue hook sets `dialogue.rangerTutorialComplete`.
+  2. Talk to Mechanic Ivo afterward; conditional entry branch now grants workshop access and sets `quest.workshopGateUnlocked`.
+  3. Interact with the workshop gate object; it now reflects unlocked state (message + visible tint/collision/pathing change) instead of locked behavior.
+
 - Task: Integrate dialogue UI into overworld scene (TASK_ID=392, RUN_ID=693)
 - State: Completed
 - Notes: Added a reusable dialogue overlay UI and connected it to overworld dialogue controller events so NPC conversations now render through a dedicated UI layer while movement/interactions are gated during active dialogue.

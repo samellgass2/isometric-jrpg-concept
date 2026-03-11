@@ -4,11 +4,14 @@ import {
   normalizePlayerProgressState,
   deserializePlayerProgress,
   getBattleOutcomeFlag,
+  getQuestFlag,
   KEY_BATTLE_OUTCOME_FLAGS,
   recordBattleOutcome,
   removePartyMember,
   serializePlayerProgress,
   setBattleOutcomeFlag,
+  setQuestFlag,
+  setQuestFlags,
   updateOverworldPosition,
   upsertPartyMember,
 } from "../src/state/playerProgress.js";
@@ -23,6 +26,7 @@ assert.deepEqual(initial.battleOutcomes.keyBattles, {
   [KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED]: false,
 });
 assert.deepEqual(initial.battleOutcomes.encounterResults, {});
+assert.deepEqual(initial.questFlags, {});
 
 const moved = updateOverworldPosition(initial, { x: 7, y: 9 }, { spawnPointId: "level-1-return" });
 assert.notEqual(moved, initial);
@@ -69,9 +73,22 @@ assert.equal(
   true
 );
 
+const withQuestFlag = setQuestFlag(withManualFlag, "quest.workshopGateUnlocked", true);
+assert.equal(getQuestFlag(withQuestFlag, "quest.workshopGateUnlocked"), true);
+
+const withQuestFlags = setQuestFlags(withQuestFlag, {
+  "dialogue.rangerTutorialComplete": true,
+  "quest.workshopGateUnlocked": true,
+});
+assert.equal(getQuestFlag(withQuestFlags, "dialogue.rangerTutorialComplete"), true);
+
 const legacyNormalized = normalizePlayerProgressState({
   battleOutcomes: {
     "level-1-training-ambush": { result: "victory", recordedAt: "2026-03-09T05:00:00.000Z" },
+  },
+  questFlags: {
+    "quest.alpha-complete": true,
+    "quest.beta-complete": false,
   },
 });
 assert.equal(
@@ -82,9 +99,11 @@ assert.deepEqual(legacyNormalized.battleOutcomes.encounterResults["level-1-train
   result: "victory",
   recordedAt: "2026-03-09T05:00:00.000Z",
 });
+assert.equal(legacyNormalized.questFlags["quest.alpha-complete"], true);
+assert.equal(legacyNormalized.questFlags["quest.beta-complete"], false);
 
-const serialized = serializePlayerProgress(withManualFlag);
+const serialized = serializePlayerProgress(withQuestFlags);
 const hydrated = deserializePlayerProgress(serialized);
-assert.deepEqual(hydrated, withManualFlag);
+assert.deepEqual(hydrated, withQuestFlags);
 
 console.log("Player progress state test passed.");
