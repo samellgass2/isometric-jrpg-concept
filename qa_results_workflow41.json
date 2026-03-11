@@ -5,57 +5,56 @@
       "description": "Main menu loads with playable UI",
       "status": "PASS",
       "screenshot": "screenshots/wf41-01-main-menu.png",
-      "notes": "Completed in 654ms"
+      "notes": "Completed in 417ms"
     },
     {
       "id": 2,
       "description": "Start Game transitions from menu to Overworld",
       "status": "PASS",
       "screenshot": "screenshots/wf41-02-overworld-entry.png",
-      "notes": "Completed in 1476ms"
+      "notes": "Completed in 1517ms"
     },
     {
       "id": 3,
       "description": "Dialogue overlay opens/closes with UI transition polish",
       "status": "PASS",
       "screenshot": "screenshots/wf41-04-dialogue-closed.png",
-      "notes": "Completed in 5007ms"
+      "notes": "Completed in 5070ms"
     },
     {
       "id": 4,
       "description": "Overworld encounter transitions into Battle scene",
       "status": "PASS",
       "screenshot": "screenshots/wf41-05-battle-entry.png",
-      "notes": "Completed in 3115ms"
+      "notes": "Completed in 3132ms"
     },
     {
       "id": 5,
       "description": "Battle scene provides active turn feedback and debug snapshot",
       "status": "PASS",
       "screenshot": "screenshots/wf41-06-battle-debug.png",
-      "notes": "Completed in 561ms"
+      "notes": "Completed in 573ms"
     },
     {
       "id": 6,
       "description": "Battle hit feedback path executes during enemy attacks",
       "status": "PASS",
       "screenshot": "screenshots/wf41-07-post-enemy-phase.png",
-      "notes": "Completed in 6335ms"
+      "notes": "Completed in 6252ms"
     },
     {
       "id": 7,
       "description": "Stabilize ability path executes and updates HP state",
-      "status": "FAIL",
+      "status": "PASS",
       "screenshot": "screenshots/wf41-08-stabilize.png",
-      "notes": "Expected enemy hit to reduce HP (initial=100, after=100)",
-      "bug_title": "Stabilize ability path executes and updates HP state failed"
+      "notes": "Completed in 2327ms"
     },
     {
       "id": 8,
       "description": "Battle completion returns to Overworld with transition feedback",
-      "status": "BLOCKED",
+      "status": "PASS",
       "screenshot": "screenshots/wf41-09-return-overworld.png",
-      "notes": "Blocked after 120807ms: Battle did not resolve back to Overworld within one 2-minute attempt."
+      "notes": "Completed in 13975ms"
     }
   ],
   "console_events": [
@@ -74,22 +73,22 @@
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0xd1400147600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "text": "[.WebGL-0x1ef400146c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
       "args": []
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0xd1400147600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "text": "[.WebGL-0x1ef400146c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
       "args": []
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0xd1400147600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "text": "[.WebGL-0x1ef400146c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
       "args": []
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0xd1400147600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+      "text": "[.WebGL-0x1ef400146c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
       "args": []
     },
     {
@@ -140,7 +139,31 @@
               "id": "protagonist",
               "name": "Protagonist",
               "level": 1,
-              "currentHp": 100,
+              "currentHp": 89,
+              "maxHp": 100
+            }
+          ],
+          "inventory": {},
+          "storyFlags": {
+            "defeatedFirstDrone": false,
+            "level1TrainingAmbushCleared": false,
+            "level2CanyonGauntletCleared": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "log",
+      "text": "[BattleScene] Debug snapshot {party: Array(1), inventory: Object, storyFlags: Object}",
+      "args": [
+        "[BattleScene] Debug snapshot",
+        {
+          "party": [
+            {
+              "id": "protagonist",
+              "name": "Protagonist",
+              "level": 1,
+              "currentHp": 89,
               "maxHp": 100
             }
           ],
