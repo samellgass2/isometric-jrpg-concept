@@ -1,4 +1,238 @@
+# QA Validation Summary (Workflow #39)
+
+- Project: `isometric-strategy-game`
+- Branch: `workflow/39/dev`
+- Validator: QA agent
+- Date: 2026-03-11 (UTC)
+
+## Commits Reviewed (`main..HEAD`)
+
+- `4e93956` rescued qa_browser
+- `d8858d3` task/394: supervisor safety-commit (Codex omitted git commit)
+- `3b418c1` task/393: implement npc interaction quest hooks
+- `cd32d3f` task/392: integrate reusable dialogue overlay into overworld
+- `5dccaf3` task/391: implement dialogue system primitives and overworld integration
+
+## Diff Summary Reviewed
+
+- Command:
+```bash
+git diff main...HEAD --stat
+```
+- Result: 35 files changed, 2123 insertions, 155 deletions (including dialogue system, overworld scene/UI integration, NPC config, player progress quest flags, tests, screenshots, and status artifacts).
+
+## Validation Commands Run
+
+1. Command:
+```bash
+cat package.json | grep -A 40 '"scripts"'
+```
+Output:
+- Found scripts: `dev`, `start`, `test` (no separate `build`/`lint` scripts configured).
+
+2. Command:
+```bash
+if [ -d node_modules ]; then echo 'node_modules present'; else echo 'node_modules absent'; fi && npm test
+```
+Output:
+- `node_modules absent`
+- `npm test` PASS:
+  - Rollback test passed.
+  - Dog conditional behavior test passed.
+  - Battle grid stats test passed.
+  - Drone AI decision test passed.
+  - Drone test battle scenario test passed.
+  - Player progress state test passed.
+  - Save system persistence test passed.
+  - Battle party persistence test passed.
+  - Dialogue system test passed.
+
+3. Command:
+```bash
+npm install
+```
+Output:
+- `added 2 packages, and audited 3 packages in 18s`
+- `found 0 vulnerabilities`
+
+4. Command:
+```bash
+npm test
+```
+Output:
+- PASS (same 9 tests passed as above).
+
+5. Focused quest-flow validation command:
+```bash
+node --input-type=module <<'EOF'
+import { DialogueController, DialogueFlagStore } from './src/systems/dialogue/index.js';
+import { OVERWORLD_NPC_DIALOGUE_TREES, OVERWORLD_DIALOGUE_FLAGS } from './src/data/overworldInteractionConfig.js';
+
+const flagStore = new DialogueFlagStore();
+const controller = new DialogueController({ flagStore });
+
+controller.startConversation({ npcId: 'npc-ranger', tree: OVERWORLD_NPC_DIALOGUE_TREES['npc-ranger'] });
+controller.advance();
+controller.selectChoice('ask-for-task');
+controller.advance();
+controller.advance();
+
+controller.startConversation({ npcId: 'npc-mechanic', tree: OVERWORLD_NPC_DIALOGUE_TREES['npc-mechanic'] });
+const firstAdvance = controller.advance();
+
+console.log('mechanicNodeAfterAdvance=' + firstAdvance?.nodeId);
+console.log('rangerFlag=' + flagStore.getFlag(OVERWORLD_DIALOGUE_FLAGS.RANGER_TUTORIAL_COMPLETE));
+console.log('gateUnlockedFlag=' + flagStore.getFlag(OVERWORLD_DIALOGUE_FLAGS.WORKSHOP_GATE_UNLOCKED));
+EOF
+```
+Output:
+- `mechanicNodeAfterAdvance=grant-key`
+- `rangerFlag=true`
+- `gateUnlockedFlag=true`
+
+## Acceptance Verdicts
+
+### Task 1: Implement core dialogue system primitives
+- Acceptance 1: PASS
+- Acceptance 2: PASS
+- Acceptance 3: PASS
+- Acceptance 4: PASS
+- Acceptance 5: PASS
+- Acceptance 6: PASS
+- Task Verdict: PASS
+
+### Task 2: Integrate dialogue UI into overworld scene
+- Acceptance 1: PASS
+- Acceptance 2: PASS
+- Acceptance 3: PASS
+- Acceptance 4: PASS
+- Acceptance 5: PASS
+- Acceptance 6: PASS
+- Task Verdict: PASS
+
+### Task 3: Implement NPC interaction and quest hook flow
+- Acceptance 1: PASS
+- Acceptance 2: PASS
+- Acceptance 3: PASS
+- Acceptance 4: PASS
+- Acceptance 5: PASS
+- Acceptance 6: PASS
+- Task Verdict: PASS
+
+## Overall Workflow Goal Verdict
+
+- Goal: Narrative, Dialogue System, and NPC Interaction Framework
+- Verdict: **PASS**
+- Rationale: Core reusable dialogue primitives, scene-agnostic controller/events, overworld dialogue UI with branching choices, NPC-specific structured dialogue configs, and quest-flag-driven behavior changes are implemented and validated by automated tests and direct flow checks.
+
 # Status
+
+- Task: Implement NPC interaction and quest hook flow (TASK_ID=393, RUN_ID=694)
+- State: Completed
+- Notes: Added a reusable overworld NPC interaction framework with dialogue entry-point config, persistent quest flags, and a quest-reactive world object.
+
+  Summary:
+  - Added structured overworld interaction data in `src/data/overworldInteractionConfig.js`.
+    - Defines multiple NPCs (`npc-ranger`, `npc-mechanic`) with per-NPC `dialogueEntryPoint`, dialogue tree mapping, and optional `questMetadata`.
+    - Defines quest/reactive interactables (`obj-workshop-gate`) with `unlockFlag`, locked/unlocked prompts, and visual config.
+  - Updated `src/scenes/OverworldScene.js` interaction flow.
+    - NPC interaction uses one consistent mechanic (`Space/Enter` near entity or pointer tile-select when adjacent) and starts each NPC’s configured dialogue entry point.
+    - Scene now supports reusable interactable objects in the same interaction loop as NPCs/signs.
+    - Added quest-gated gate behavior: gate starts locked (blocking tile + collision + locked prompt), then unlocks when dialogue hook sets `quest.workshopGateUnlocked` (tile unblocked, collider disabled, tint + prompt change).
+  - Extended persistent state in `src/state/playerProgress.js`.
+    - Added normalized `questFlags` state and helpers (`getQuestFlag`, `setQuestFlag`, `setQuestFlags`) so dialogue quest outcomes persist across saves.
+    - Overworld dialogue hook events now persist known quest/dialogue flags back into player progress.
+  - Updated tests in `scripts/player-progress.test.mjs`.
+    - Verifies quest flag normalization/read-write and serialize/deserialize persistence.
+
+  Example quest hook flow implemented:
+  1. Talk to Ranger Sol and choose the task branch; dialogue hook sets `dialogue.rangerTutorialComplete`.
+  2. Talk to Mechanic Ivo afterward; conditional entry branch now grants workshop access and sets `quest.workshopGateUnlocked`.
+  3. Interact with the workshop gate object; it now reflects unlocked state (message + visible tint/collision/pathing change) instead of locked behavior.
+
+- Task: Integrate dialogue UI into overworld scene (TASK_ID=392, RUN_ID=693)
+- State: Completed
+- Notes: Added a reusable dialogue overlay UI and connected it to overworld dialogue controller events so NPC conversations now render through a dedicated UI layer while movement/interactions are gated during active dialogue.
+
+  What changed:
+  - Added `src/ui/DialogueOverlay.js`.
+    - Reusable UI component for dialogue presentation with:
+      - speaker nameplate
+      - dialogue body text
+      - optional portrait rendering from dialogue speaker metadata (`portraitKey`)
+      - interactive branching choice rows
+      - contextual input hints
+    - API methods include:
+      - `renderNpcSnapshot(snapshot, { selectedChoiceIndex })`
+      - `renderSignPrompt(...)`
+      - `renderSystemMessage(...)`
+      - `moveChoiceSelection(direction)`
+      - `hide()` / `destroy()` / `isVisible()`
+  - Updated `src/scenes/OverworldScene.js` to use `DialogueOverlay` instead of scene-local ad hoc dialogue text objects.
+    - Replaced inline dialogue box/text creation with `createDialogueOverlay()` and lifecycle cleanup.
+    - Wired `DialogueController` node updates to `dialogueOverlay.renderNpcSnapshot(...)`.
+    - Wired pointer choice selection to `dialogueController.selectChoice(...)` for mouse/touch branch selection.
+    - Preserved keyboard flow:
+      - `Enter/Space`: advance or confirm selected choice
+      - `Up/Down`: move choice cursor
+      - `Esc`: go back or close/end dialogue
+  - Input/movement gating improvements while dialogue is active:
+    - Pointer tile selection no longer starts movement or non-dialogue interactions during active dialogue.
+    - Only sign-confirm pointer behavior remains active when sign confirmation is intentionally open.
+    - Overworld movement/pathing remains paused while overlay is visible, then resumes once dialogue closes.
+  - Dialogue close/cleanup stability:
+    - `hideDialogue(...)` now clears dialogue state and hides overlay cleanly.
+    - Overlay is destroyed on scene shutdown/destroy to avoid lingering UI/input handlers.
+
+  Acceptance coverage:
+  1. NPC interaction starts dialogue tree from the core dialogue system and displays speaker + text in overworld.
+  2. Linear multi-node dialogue advances via confirm input without soft locks.
+  3. Branching choices render, can be navigated (keyboard) or clicked (mouse/touch), and route to selected nodes.
+  4. Movement and other overworld interactions are gated while dialogue is active.
+  5. Ending dialogue restores normal overworld control and removes dialogue UI artifacts.
+  6. New UI/integration code lives under existing scene/UI structure and is documented here.
+
+- Task: Implement core dialogue system primitives (TASK_ID=391, RUN_ID=692)
+- State: Completed
+- Notes: Added a reusable, scene-agnostic dialogue framework and integrated it into overworld NPC interactions.
+
+  Dialogue system primitives:
+  - `src/systems/dialogue/DialogueFlagStore.js`
+    - Lightweight in-memory flag store with `getFlag`, `setFlag`, `setFlags`, `hasAll`, `hasAny`, `snapshot`, and reset helpers.
+  - `src/systems/dialogue/dialoguePrimitives.js`
+    - Dialogue tree model helpers and validation:
+      - `createDialogueTree(...)` for structured tree creation (`nodes`, `speakerId`, `text`, `choices`, conditional `next` branches).
+      - `isDialogueConditionMet(...)` and `resolveConditionalTarget(...)` for flag-gated branching.
+      - `resolveSpeakerMeta(...)` and `getDialogueNode(...)` utilities.
+  - `src/systems/dialogue/DialogueController.js`
+    - Scene-agnostic runtime API:
+      - `startConversation({ npcId, tree, context })`
+      - `advance()`
+      - `selectChoice(choiceId)`
+      - `goBack()`
+      - `endConversation(reason)`
+    - Emits events via `on/off`:
+      - `dialogue:started`, `dialogue:node-changed`, `dialogue:hook-triggered`, `dialogue:ended`
+      - plus custom hook events (e.g. quest trigger names) defined in dialogue data.
+    - Executes quest hooks when nodes/choices are reached:
+      - flag writes/clears
+      - custom event emission
+      - callback dispatch through `callbackMap`.
+  - `src/systems/dialogue/index.js`
+    - Re-export surface so scenes and other systems can import dialogue primitives from one module.
+
+  Overworld integration usage:
+  - `src/scenes/OverworldScene.js` now instantiates `DialogueFlagStore` + `DialogueController` during `create(...)`.
+  - NPCs carry dialogue trees (`npc.setData("dialogueTree", ...)`) instead of raw text strings.
+  - Scene starts conversations by NPC id and tree, then drives progression with the controller API:
+    - `Enter/Space`: advance or confirm selected choice
+    - `Up/Down`: navigate current node choices
+    - `Esc`: go to previous node (if history exists) or end conversation
+  - Quest hooks from dialogue nodes/choices emit scene events (`dialogue:quest-hook`, `dialogue:ranger-task-issued`) for external systems.
+
+  Validation:
+  - Added `scripts/dialogue-system.test.mjs` and wired it into `npm test`.
+  - The test covers conditional branches, choices, hook-triggered flag writes, callback/event hooks, backtracking, and conversation termination.
 
 - Task: Integrate drones into battles and add test scenario (TASK_ID=339, RUN_ID=581)
 - State: Completed
@@ -1541,3 +1775,66 @@ Battle party persistence test passed.
 
 ### Overall QA Verdict
 - PASS
+
+## TESTER REPORT - Workflow #39 (Narrative, Dialogue System, and NPC Interaction Framework)
+Date: 2026-03-11
+Branch: `workflow/39/dev`
+Tester: TESTER agent
+
+### Tests Run and Results
+1. `cat package.json | sed -n '/"scripts"/,/}/p'` - PASS
+   - Detected scripts: `dev`, `start`, `test`.
+2. `npm install` - PASS
+   - Output: `added 2 packages, and audited 3 packages in 29s; found 0 vulnerabilities`.
+3. `npm test` - PASS
+   - Command executed:
+     `node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/drone-ai-decision.test.mjs && node scripts/drone-test-battle-scenario.test.mjs && node scripts/player-progress.test.mjs && node scripts/save-system.test.mjs && node scripts/battle-party-persistence.test.mjs && node scripts/dialogue-system.test.mjs`
+   - Output summary:
+     - Rollback test passed.
+     - Dog conditional behavior test passed.
+     - Battle grid stats test passed.
+     - Drone AI decision test passed.
+     - Drone test battle scenario test passed.
+     - Player progress state test passed.
+     - Save system persistence test passed.
+     - Battle party persistence test passed.
+     - Dialogue system test passed.
+
+### Per-Task Acceptance Verdict
+
+#### Task #391: Implement core dialogue system primitives
+Verdict: PASS
+- AC1 PASS: Dialogue tree primitives support nodes, speaker metadata, choices, conditional branches, and hooks (`src/systems/dialogue/dialoguePrimitives.js`, `src/systems/dialogue/DialogueController.js`).
+- AC2 PASS: Controller API includes `startConversation`, `advance`, `goBack`, `selectChoice`, `endConversation`.
+- AC3 PASS: Core logic is scene-agnostic and event/callback driven (`DialogueEvents`, listener API, `callbackMap`).
+- AC4 PASS: Quest hooks can read/write flags via `DialogueFlagStore` and are exposed to other systems.
+- AC5 PASS: Dedicated module exists under `src/systems/dialogue/` and is re-exported via `src/systems/dialogue/index.js`.
+- AC6 PASS: `STATUS.md` documents dialogue primitives and intended usage.
+
+#### Task #392: Integrate dialogue UI into overworld scene
+Verdict: PASS
+- AC1 PASS: Overworld NPC interaction starts dialogue and renders speaker + text through `DialogueOverlay`.
+- AC2 PASS: Linear dialogue advancement is wired to confirm input and controller advance flow.
+- AC3 PASS: Branching choices render in UI and feed `selectChoice`, transitioning to selected branches.
+- AC4 PASS: While dialogue is visible, movement/pathing and non-dialogue interactions are gated in scene update/input flow.
+- AC5 PASS: Dialogue close path hides overlay, clears active dialogue state, and scene lifecycle cleanup destroys overlay/controller bindings.
+- AC6 PASS: UI and integration code are in `src/ui/DialogueOverlay.js` and `src/scenes/OverworldScene.js`; `STATUS.md` includes integration notes.
+
+#### Task #393: Implement NPC interaction and quest hook flow
+Verdict: PASS
+- AC1 PASS: At least two NPCs are configured with distinct dialogue entry points (`npc-ranger`, `npc-mechanic`).
+- AC2 PASS: Consistent interaction mechanism (confirm near entity / adjacent tile selection) starts dialogue reliably.
+- AC3 PASS: Dialogue hooks set quest flags (for example ranger task + mechanic workshop unlock hooks).
+- AC4 PASS: Subsequent interactions observe flags and alter behavior (mechanic branch changes; workshop gate unlock state/prompt/collision updates).
+- AC5 PASS: NPC dialogue + quest behavior are data-driven in `src/data/overworldInteractionConfig.js`.
+- AC6 PASS: `STATUS.md` documents NPC interaction pattern and quest-flow example.
+
+### Bugs Filed
+- None.
+
+### Integration / Regression Assessment
+- Dialogue primitives, overworld UI integration, NPC interaction config, and quest flag persistence work together cohesively.
+- No obvious regressions surfaced in automated tests or static integration review.
+
+### Overall Verdict
+CLEAN

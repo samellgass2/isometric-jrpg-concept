@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Initial state loads (main menu)",
+    "status": "PASS",
+    "screenshot": "screenshots/01-initial-main-menu.png",
+    "notes": "Canvas main menu loaded successfully."
+  },
+  {
+    "name": "Narrative dialogue path with Ranger sets tutorial flag",
+    "status": "PASS",
+    "screenshot": "screenshots/04-ranger-dialogue-result.png",
+    "notes": "Validated via quest flag dialogue.rangerTutorialComplete."
+  },
+  {
+    "name": "NPC mechanic interaction unlocks workshop gate progression",
+    "status": "FAIL",
+    "screenshot": "screenshots/06-mechanic-dialogue-result.png",
+    "notes": "Workshop gate unlock flag not set after mechanic interaction attempts."
+  },
+  {
+    "name": "Workshop gate interaction prompt available after progression",
+    "status": "FAIL",
+    "screenshot": "screenshots/08-gate-prompt.png",
+    "notes": "Gate prompt captured but unlock flag missing, progression likely failed."
+  },
+  {
+    "name": "Repeat NPC interaction remains available after progression",
+    "status": "PASS",
+    "screenshot": "screenshots/09-ranger-repeat-interaction.png",
+    "notes": "Dialogue overlay reopened on repeat interaction."
+  }
+]

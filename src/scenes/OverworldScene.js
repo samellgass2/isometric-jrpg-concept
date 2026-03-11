@@ -1,13 +1,23 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
+import DialogueOverlay from "../ui/DialogueOverlay.js";
 import {
   getBattleOutcomeFlag,
+  getQuestFlag,
   KEY_BATTLE_OUTCOME_FLAGS,
   normalizePlayerProgressState,
+  setQuestFlags,
   updateOverworldPosition,
 } from "../state/playerProgress.js";
 import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
+import { DialogueController, DialogueEvents, DialogueFlagStore } from "../systems/dialogue/index.js";
+import {
+  OVERWORLD_DIALOGUE_FLAGS,
+  OVERWORLD_INTERACTABLE_DEFINITIONS,
+  OVERWORLD_NPC_DEFINITIONS,
+  OVERWORLD_NPC_DIALOGUE_TREES,
+} from "../data/overworldInteractionConfig.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 16;
@@ -25,29 +35,6 @@ const PLAYER_TEXTURES = {
   walkA: "player-walk-a",
   walkB: "player-walk-b",
 };
-
-const NPC_DEFINITIONS = [
-  {
-    id: "npc-ranger",
-    name: "Ranger Sol",
-    texture: "npc-ranger",
-    bodyColor: 0x3f8f7d,
-    accentColor: 0xc5f7d9,
-    tileX: 8,
-    tileY: 4,
-    dialogue: "Ranger Sol: Trails ahead are rough. Stay inside the marked paths.",
-  },
-  {
-    id: "npc-mechanic",
-    name: "Mechanic Ivo",
-    texture: "npc-mechanic",
-    bodyColor: 0x9d6ac9,
-    accentColor: 0xffd58a,
-    tileX: 11,
-    tileY: 8,
-    dialogue: "Mechanic Ivo: Placeholder line... my workshop will open in a later build.",
-  },
-];
 
 const LEVEL_SIGN_DEFINITIONS = [
   {
@@ -122,18 +109,24 @@ class OverworldScene extends Phaser.Scene {
     this.inputUnsubscribe = null;
     this.npcGroup = null;
     this.signGroup = null;
+    this.interactableGroup = null;
     this.npcEntities = [];
     this.levelSigns = [];
-    this.dialogueBox = null;
-    this.dialogueText = null;
-    this.dialogueHintText = null;
+    this.interactableEntities = [];
+    this.dialogueOverlay = null;
     this.activeDialogueNpcId = null;
     this.activeDialogueSignId = null;
     this.awaitingSignEnterChoice = false;
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+    this.dialogueController = null;
+    this.dialogueFlagStore = null;
+    this.dialogueUnsubscribeFns = [];
     this.pointerPath = [];
     this.pointerPathTiles = [];
     this.npcTileSet = new Set();
     this.signTileSet = new Set();
+    this.blockingInteractableTileSet = new Set();
     this.isTransitioning = false;
     this.hudOverlay = null;
     this.hudLastKey = "";
@@ -159,6 +152,8 @@ class OverworldScene extends Phaser.Scene {
 
     this.npcGroup = this.physics.add.staticGroup();
     this.signGroup = this.physics.add.staticGroup();
+    this.interactableGroup = this.physics.add.staticGroup();
+    this.initializeDialogueSystem(progress);
 
     this.renderTerrain();
     this.renderCollisionOverlay();
@@ -166,9 +161,10 @@ class OverworldScene extends Phaser.Scene {
     const spawnTile = this.resolveSpawnTile(requestedSpawnPointId, progress?.overworld);
     this.createPlayerCharacter(spawnTile);
     this.createNpcPlaceholders();
+    this.createQuestInteractables();
     this.createLevelSigns();
     this.setupInputManager();
-    this.createDialogueUi();
+    this.createDialogueOverlay();
     this.createHudOverlay(data);
 
     this.add
@@ -194,6 +190,9 @@ class OverworldScene extends Phaser.Scene {
       spawnPointId: requestedSpawnPointId,
       currentSceneKey: this.scene.key,
     });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyDialogueSystem());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyDialogueSystem());
   }
 
   createHudOverlay(data = {}) {
@@ -332,6 +331,26 @@ class OverworldScene extends Phaser.Scene {
     frame.destroy();
   }
 
+  createInteractableTexture(textureKey, colors = {}) {
+    if (this.textures.exists(textureKey)) {
+      return;
+    }
+
+    const frameColor = Number.isFinite(colors.frame) ? colors.frame : 0x263244;
+    const fillColor = Number.isFinite(colors.lockedFill) ? colors.lockedFill : 0xb24a4a;
+
+    const frame = this.make.graphics({ x: 0, y: 0, add: false });
+    frame.fillStyle(frameColor, 1);
+    frame.fillRoundedRect(1, 2, 22, 28, 2);
+    frame.fillStyle(fillColor, 1);
+    frame.fillRect(4, 6, 16, 20);
+    frame.fillStyle(0x000000, 0.25);
+    frame.fillRect(6, 10, 12, 2);
+    frame.fillRect(6, 14, 12, 2);
+    frame.generateTexture(textureKey, 24, 32);
+    frame.destroy();
+  }
+
   renderTerrain() {
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
@@ -416,6 +435,69 @@ class OverworldScene extends Phaser.Scene {
     return normalizePlayerProgressState(loadProgress());
   }
 
+  initializeDialogueSystem(progressState) {
+    const initialQuestFlags = Object.values(OVERWORLD_DIALOGUE_FLAGS).reduce((acc, flagKey) => {
+      acc[flagKey] = getQuestFlag(progressState, flagKey);
+      return acc;
+    }, {});
+
+    const initialFlags = {
+      [KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED]: getBattleOutcomeFlag(
+        progressState,
+        KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED
+      ),
+      [KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED]: getBattleOutcomeFlag(
+        progressState,
+        KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED
+      ),
+      ...initialQuestFlags,
+    };
+
+    this.dialogueFlagStore = new DialogueFlagStore(initialFlags);
+    this.dialogueController = new DialogueController({
+      flagStore: this.dialogueFlagStore,
+      callbackMap: {
+        onMechanicIntroComplete: () => {
+          this.events.emit("dialogue:mechanic-intro-complete", {
+            npcId: "npc-mechanic",
+            flag: OVERWORLD_DIALOGUE_FLAGS.MECHANIC_INTRO_COMPLETE,
+          });
+        },
+        onWorkshopGateUnlocked: () => {
+          this.syncInteractablesFromFlags();
+        },
+      },
+    });
+
+    this.dialogueUnsubscribeFns = [
+      this.dialogueController.on(DialogueEvents.NODE_CHANGED, (snapshot) =>
+        this.renderNpcDialogueSnapshot(snapshot)
+      ),
+      this.dialogueController.on(DialogueEvents.HOOK_TRIGGERED, (payload) => {
+        this.persistDialogueFlagsToProgress(payload.flags);
+        this.syncInteractablesFromFlags();
+        this.events.emit("dialogue:quest-hook", payload);
+      }),
+      this.dialogueController.on("quest:ranger-task-issued", (payload) => {
+        this.events.emit("dialogue:ranger-task-issued", payload);
+      }),
+      this.dialogueController.on(DialogueEvents.ENDED, () => {
+        if (this.activeDialogueNpcId) {
+          this.hideDialogue({ keepSignPrompt: false, endNpcConversation: false });
+        }
+      }),
+    ];
+  }
+
+  destroyDialogueSystem() {
+    this.dialogueUnsubscribeFns.forEach((unsubscribe) => unsubscribe?.());
+    this.dialogueUnsubscribeFns = [];
+    this.dialogueController = null;
+    this.dialogueFlagStore = null;
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+  }
+
   commitProgress(updater) {
     const setPlayerProgress = this.game?.registry?.get("setPlayerProgress");
     const current = this.getProgressState();
@@ -429,6 +511,27 @@ class OverworldScene extends Phaser.Scene {
     this.game?.registry?.set?.("playerProgress", normalized);
     saveProgress(normalized);
     return normalized;
+  }
+
+  persistDialogueFlagsToProgress(flagSnapshot = {}) {
+    const candidateFlags = Object.values(OVERWORLD_DIALOGUE_FLAGS).reduce((acc, flagKey) => {
+      if (flagSnapshot[flagKey] === true) {
+        acc[flagKey] = true;
+      }
+      return acc;
+    }, {});
+
+    if (Object.keys(candidateFlags).length === 0) {
+      return;
+    }
+
+    this.commitProgress((current) => setQuestFlags(current, candidateFlags));
+  }
+
+  syncInteractablesFromFlags() {
+    this.interactableEntities.forEach((entity) => {
+      this.applyInteractableFlagState(entity);
+    });
   }
 
   persistOverworldProgress(options = {}) {
@@ -478,11 +581,12 @@ class OverworldScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.collisionBodies);
     this.physics.add.collider(this.player, this.npcGroup);
     this.physics.add.collider(this.player, this.signGroup);
+    this.physics.add.collider(this.player, this.interactableGroup);
     this.characterLayer.add(this.player);
   }
 
   createNpcPlaceholders() {
-    NPC_DEFINITIONS.forEach((npcConfig) => {
+    OVERWORLD_NPC_DEFINITIONS.forEach((npcConfig) => {
       this.createNpcTexture(npcConfig.texture, npcConfig.bodyColor, npcConfig.accentColor);
       const world = tileToWorld(npcConfig.tileX, npcConfig.tileY);
       const npc = this.npcGroup.create(world.x, world.y, npcConfig.texture);
@@ -490,7 +594,9 @@ class OverworldScene extends Phaser.Scene {
       npc.setDataEnabled();
       npc.setData("npcId", npcConfig.id);
       npc.setData("name", npcConfig.name);
-      npc.setData("dialogue", this.resolveNpcDialogue(npcConfig));
+      npc.setData("dialogueTree", OVERWORLD_NPC_DIALOGUE_TREES[npcConfig.id] ?? null);
+      npc.setData("dialogueEntryPoint", npcConfig.dialogueEntryPoint ?? null);
+      npc.setData("questMetadata", npcConfig.questMetadata ?? null);
       npc.refreshBody();
       this.characterLayer.add(npc);
       this.npcEntities.push(npc);
@@ -498,25 +604,51 @@ class OverworldScene extends Phaser.Scene {
     });
   }
 
-  resolveNpcDialogue(npcConfig) {
-    const baseDialogue = npcConfig?.dialogue || `${npcConfig?.name ?? "NPC"}: Placeholder dialogue.`;
-    const progress = this.progressSnapshot;
+  createQuestInteractables() {
+    OVERWORLD_INTERACTABLE_DEFINITIONS.forEach((config) => {
+      this.createInteractableTexture(config.texture, config.colors);
+      const world = tileToWorld(config.tileX, config.tileY);
+      const entity = this.interactableGroup.create(world.x, world.y, config.texture);
+      entity.setDepth(8);
+      entity.setDataEnabled();
+      entity.setData("objectId", config.id);
+      entity.setData("type", config.type ?? "object");
+      entity.setData("label", config.label ?? "Object");
+      entity.setData("tileX", config.tileX);
+      entity.setData("tileY", config.tileY);
+      entity.setData("unlockFlag", config.unlockFlag ?? null);
+      entity.setData("promptLocked", config.promptLocked ?? "It does not move.");
+      entity.setData("promptUnlocked", config.promptUnlocked ?? "It is already unlocked.");
+      entity.setData("lockedColor", config.colors?.lockedFill ?? 0xb24a4a);
+      entity.setData("unlockedColor", config.colors?.unlockedFill ?? 0x4a9f63);
+      entity.refreshBody();
+      this.characterLayer.add(entity);
+      this.interactableEntities.push(entity);
+      this.applyInteractableFlagState(entity);
+    });
+  }
 
-    if (
-      npcConfig?.id === "npc-ranger" &&
-      getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED)
-    ) {
-      return "Ranger Sol: Nice work in the training ambush. Head to Canyon Crossing when you're ready.";
+  applyInteractableFlagState(entity) {
+    const tileX = entity.getData("tileX");
+    const tileY = entity.getData("tileY");
+    const unlockFlag = entity.getData("unlockFlag");
+    const isUnlocked = unlockFlag ? this.dialogueFlagStore?.getFlag(unlockFlag) === true : false;
+    const tileKey = keyForTile(tileX, tileY);
+
+    entity.setData("isUnlocked", isUnlocked);
+    if (isUnlocked) {
+      entity.setTint(entity.getData("unlockedColor"));
+      this.blockingInteractableTileSet.delete(tileKey);
+      if (entity.body) {
+        entity.body.enable = false;
+      }
+    } else {
+      entity.setTint(entity.getData("lockedColor"));
+      this.blockingInteractableTileSet.add(tileKey);
+      if (entity.body) {
+        entity.body.enable = true;
+      }
     }
-
-    if (
-      npcConfig?.id === "npc-mechanic" &&
-      getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED)
-    ) {
-      return "Mechanic Ivo: You cleared the canyon gauntlet. I can tune your gear next time you visit.";
-    }
-
-    return baseDialogue;
   }
 
   createLevelSigns() {
@@ -593,9 +725,19 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
+    if (event.action === InputActions.MOVE_UP) {
+      this.handleDialogueChoiceNavigation(-1);
+      return;
+    }
+
+    if (event.action === InputActions.MOVE_DOWN) {
+      this.handleDialogueChoiceNavigation(1);
+      return;
+    }
+
     if (event.action === InputActions.CANCEL) {
-      if (this.dialogueBox?.visible) {
-        this.hideDialogue();
+      if (this.isDialogueVisible()) {
+        this.handleCancelAction();
       }
       this.clearPointerPath();
     }
@@ -611,11 +753,14 @@ class OverworldScene extends Phaser.Scene {
     }
 
     const targetTile = { x: event.tileX, y: event.tileY };
-    if (this.handleTileInteractionSelection(targetTile)) {
+    if (this.isDialogueVisible()) {
+      if (this.handleDialoguePointerSelection(targetTile)) {
+        return;
+      }
       return;
     }
 
-    if (this.dialogueBox?.visible) {
+    if (this.handleTileInteractionSelection(targetTile)) {
       return;
     }
 
@@ -640,6 +785,11 @@ class OverworldScene extends Phaser.Scene {
   }
 
   handleTileInteractionSelection(targetTile) {
+    const interactable = this.findInteractableAtTile(targetTile.x, targetTile.y);
+    if (interactable) {
+      return this.tryInteractWithInteractable(interactable);
+    }
+
     const sign = this.findSignAtTile(targetTile.x, targetTile.y);
     if (sign) {
       return this.tryInteractWithSign(sign);
@@ -654,12 +804,18 @@ class OverworldScene extends Phaser.Scene {
   }
 
   handleConfirmAction() {
-    if (this.dialogueBox?.visible) {
+    if (this.isDialogueVisible()) {
       if (this.activeDialogueSignId && this.awaitingSignEnterChoice) {
         this.confirmLevelSignSelection();
         return;
       }
-      this.hideDialogue();
+
+      if (this.activeDialogueNpcId) {
+        this.confirmNpcDialogueStep();
+        return;
+      }
+
+      this.hideDialogue({ keepSignPrompt: false });
       return;
     }
 
@@ -669,17 +825,83 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
+    const nearbyInteractable = this.findNearbyInteractable();
+    if (nearbyInteractable) {
+      this.tryInteractWithInteractable(nearbyInteractable);
+      return;
+    }
+
     const nearbyNpc = this.findNearbyNpc();
     if (!nearbyNpc) {
       return;
     }
 
-    this.showDialogue(nearbyNpc);
+    this.startNpcDialogueConversation(nearbyNpc);
+  }
+
+  handleCancelAction() {
+    if (this.activeDialogueSignId && this.awaitingSignEnterChoice) {
+      this.hideDialogue({ keepSignPrompt: false });
+      return;
+    }
+
+    if (!this.activeDialogueNpcId || !this.dialogueController?.isActive()) {
+      this.hideDialogue({ keepSignPrompt: false, endNpcConversation: false });
+      return;
+    }
+
+    if (this.dialogueController.canGoBack()) {
+      this.dialogueController.goBack();
+      return;
+    }
+
+    this.dialogueController.endConversation("cancelled");
+  }
+
+  handleDialogueChoiceNavigation(direction) {
+    if (!this.isDialogueVisible() || !this.activeDialogueNpcId) {
+      return;
+    }
+
+    this.moveDialogueChoice(direction);
+  }
+
+  confirmNpcDialogueStep() {
+    if (!this.dialogueController?.isActive()) {
+      this.hideDialogue({ keepSignPrompt: false, endNpcConversation: false });
+      return;
+    }
+
+    if (this.activeDialogueChoices.length > 0) {
+      const selected = this.activeDialogueChoices[this.activeDialogueChoiceIndex];
+      if (selected?.id) {
+        this.dialogueController.selectChoice(selected.id);
+      }
+      return;
+    }
+
+    this.dialogueController.advance();
   }
 
   clearPointerPath() {
     this.pointerPath = [];
     this.pointerPathTiles = [];
+  }
+
+  isDialogueVisible() {
+    return this.dialogueOverlay?.isVisible() === true;
+  }
+
+  handleDialoguePointerSelection(targetTile) {
+    if (this.activeDialogueSignId && this.awaitingSignEnterChoice) {
+      const sign = this.findSignAtTile(targetTile.x, targetTile.y);
+      if (sign && sign.getData("signId") === this.activeDialogueSignId) {
+        this.transitionToLevel(sign);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   getPlayerTile() {
@@ -704,6 +926,9 @@ class OverworldScene extends Phaser.Scene {
       return false;
     }
     if (this.signTileSet.has(keyForTile(tileX, tileY))) {
+      return false;
+    }
+    if (this.blockingInteractableTileSet.has(keyForTile(tileX, tileY))) {
       return false;
     }
     return true;
@@ -767,34 +992,41 @@ class OverworldScene extends Phaser.Scene {
     return path;
   }
 
-  createDialogueUi() {
-    this.dialogueBox = this.add
-      .rectangle(400, 540, 760, 96, 0x111827, 0.9)
-      .setStrokeStyle(2, 0x7ea8ff, 1)
-      .setScrollFactor(0)
-      .setDepth(UI_DEPTH)
-      .setVisible(false);
+  createDialogueOverlay() {
+    this.dialogueOverlay = new DialogueOverlay(this, {
+      depth: UI_DEPTH + 2,
+      width: 760,
+      height: 148,
+      x: 400,
+      y: 594,
+    })
+      .create()
+      .onChoiceSelected((payload) => this.handleDialogueChoiceClick(payload));
 
-    this.dialogueText = this.add
-      .text(32, 508, "", {
-        color: "#ffffff",
-        fontFamily: "monospace",
-        fontSize: "15px",
-        wordWrap: { width: 730, useAdvancedWrap: true },
-      })
-      .setScrollFactor(0)
-      .setDepth(UI_DEPTH)
-      .setVisible(false);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyDialogueOverlay());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyDialogueOverlay());
+  }
 
-    this.dialogueHintText = this.add
-      .text(32, 568, "Press Space or Enter to close", {
-        color: "#c5d9ff",
-        fontFamily: "monospace",
-        fontSize: "12px",
-      })
-      .setScrollFactor(0)
-      .setDepth(UI_DEPTH)
-      .setVisible(false);
+  destroyDialogueOverlay() {
+    this.dialogueOverlay?.destroy();
+    this.dialogueOverlay = null;
+  }
+
+  handleDialogueChoiceClick(payload) {
+    if (!this.activeDialogueNpcId || !this.dialogueController?.isActive()) {
+      return;
+    }
+
+    const choiceId = payload?.choice?.id;
+    const index = Number.isInteger(payload?.index) ? payload.index : -1;
+    if (index >= 0) {
+      this.activeDialogueChoiceIndex = index;
+    }
+    if (!choiceId) {
+      return;
+    }
+
+    this.dialogueController.selectChoice(choiceId);
   }
 
   findNearbyNpc() {
@@ -835,6 +1067,25 @@ class OverworldScene extends Phaser.Scene {
     return closestSign;
   }
 
+  findNearbyInteractable() {
+    if (!this.player || this.interactableEntities.length === 0) {
+      return null;
+    }
+
+    let closestEntity = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    this.interactableEntities.forEach((entity) => {
+      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, entity.x, entity.y);
+      if (distance <= SIGN_INTERACTION_DISTANCE && distance < closestDistance) {
+        closestDistance = distance;
+        closestEntity = entity;
+      }
+    });
+
+    return closestEntity;
+  }
+
   findSignAtTile(tileX, tileY) {
     if (!Number.isInteger(tileX) || !Number.isInteger(tileY)) {
       return null;
@@ -861,6 +1112,19 @@ class OverworldScene extends Phaser.Scene {
     );
   }
 
+  findInteractableAtTile(tileX, tileY) {
+    if (!Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+      return null;
+    }
+
+    return (
+      this.interactableEntities.find((entity) => {
+        const entityTile = worldToTile(entity.x, entity.y);
+        return entityTile.x === tileX && entityTile.y === tileY;
+      }) ?? null
+    );
+  }
+
   tryInteractWithSign(sign) {
     if (!this.player || !sign) {
       return false;
@@ -871,11 +1135,7 @@ class OverworldScene extends Phaser.Scene {
       return false;
     }
 
-    if (
-      this.dialogueBox?.visible &&
-      this.awaitingSignEnterChoice &&
-      this.activeDialogueSignId === sign.getData("signId")
-    ) {
+    if (this.isDialogueVisible() && this.awaitingSignEnterChoice && this.activeDialogueSignId === sign.getData("signId")) {
       this.transitionToLevel(sign);
       return true;
     }
@@ -896,21 +1156,94 @@ class OverworldScene extends Phaser.Scene {
     }
 
     this.clearPointerPath();
-    this.showDialogue(npc);
+    this.startNpcDialogueConversation(npc);
     return true;
   }
 
-  showDialogue(npc) {
-    const npcName = npc.getData("name") || "NPC";
-    const npcDialogue = npc.getData("dialogue") || `${npcName}: Placeholder dialogue.`;
-    this.activeDialogueNpcId = npc.getData("npcId") || null;
+  tryInteractWithInteractable(entity) {
+    if (!this.player || !entity) {
+      return false;
+    }
+
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, entity.x, entity.y);
+    if (distance > SIGN_INTERACTION_DISTANCE) {
+      return false;
+    }
+
+    this.clearPointerPath();
+    const isUnlocked = entity.getData("isUnlocked") === true;
+    const prompt = isUnlocked ? entity.getData("promptUnlocked") : entity.getData("promptLocked");
+    const speakerName = entity.getData("label") ?? "Interactable";
+    this.dialogueOverlay?.renderSystemMessage(prompt, {
+      speakerName,
+      hintText: "Press Space, Enter, or Esc to close",
+    });
+    this.activeDialogueNpcId = null;
     this.activeDialogueSignId = null;
     this.awaitingSignEnterChoice = false;
-    this.dialogueText.setText(npcDialogue);
-    this.dialogueHintText.setText("Press Space or Enter to close");
-    this.dialogueBox.setVisible(true);
-    this.dialogueText.setVisible(true);
-    this.dialogueHintText.setVisible(true);
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+    return true;
+  }
+
+  startNpcDialogueConversation(npc) {
+    if (!this.dialogueController) {
+      return;
+    }
+
+    const npcId = npc.getData("npcId") || null;
+    const dialogueTree = npc.getData("dialogueTree");
+    const entryNodeId = npc.getData("dialogueEntryPoint") || null;
+    if (!npcId || !dialogueTree) {
+      this.dialogueOverlay?.renderSystemMessage("This NPC does not have a dialogue tree yet.", {
+        speakerName: "System",
+      });
+      return;
+    }
+
+    this.activeDialogueNpcId = npcId;
+    this.activeDialogueSignId = null;
+    this.awaitingSignEnterChoice = false;
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+    this.dialogueController.startConversation({
+      npcId,
+      tree: dialogueTree,
+      startNodeId: entryNodeId,
+      context: {
+        sceneKey: this.scene.key,
+        playerTile: this.getPlayerTile(),
+      },
+    });
+  }
+
+  renderNpcDialogueSnapshot(snapshot) {
+    if (!snapshot || !snapshot.node) {
+      return;
+    }
+
+    this.activeDialogueChoices = Array.isArray(snapshot.choices) ? [...snapshot.choices] : [];
+    if (this.activeDialogueChoiceIndex >= this.activeDialogueChoices.length) {
+      this.activeDialogueChoiceIndex = 0;
+    }
+
+    this.activeDialogueSignId = null;
+    this.awaitingSignEnterChoice = false;
+    this.dialogueOverlay?.renderNpcSnapshot(snapshot, {
+      selectedChoiceIndex: this.activeDialogueChoiceIndex,
+      npcId: this.activeDialogueNpcId,
+    });
+  }
+
+  moveDialogueChoice(direction) {
+    if (!this.activeDialogueChoices || this.activeDialogueChoices.length === 0) {
+      return;
+    }
+
+    const nextIndex = this.dialogueOverlay?.moveChoiceSelection(direction);
+    if (Number.isInteger(nextIndex)) {
+      this.activeDialogueChoiceIndex = nextIndex;
+    }
   }
 
   showLevelSignPrompt(sign) {
@@ -919,13 +1252,13 @@ class OverworldScene extends Phaser.Scene {
     this.activeDialogueNpcId = null;
     this.activeDialogueSignId = sign.getData("signId") || null;
     this.awaitingSignEnterChoice = true;
-    this.dialogueText.setText(
-      `${signPrompt}\nPress Enter to travel to ${signLabel}. Tap/click the sign tile again to confirm. Space closes.`
-    );
-    this.dialogueHintText.setText("Enter or sign-tile tap: travel  Space: close");
-    this.dialogueBox.setVisible(true);
-    this.dialogueText.setVisible(true);
-    this.dialogueHintText.setVisible(true);
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+    this.dialogueOverlay?.renderSignPrompt({
+      signId: this.activeDialogueSignId,
+      signLabel,
+      signPrompt,
+    });
   }
 
   transitionToLevel(sign) {
@@ -936,8 +1269,9 @@ class OverworldScene extends Phaser.Scene {
     const signId = sign.getData("signId");
     const sceneKey = LEVEL_SCENE_BY_SIGN_ID[signId];
     if (!sceneKey) {
-      this.dialogueText.setText("This sign is not mapped to a playable level yet.");
-      this.dialogueHintText.setText("Press Space or Enter to close");
+      this.dialogueOverlay?.renderSystemMessage("This sign is not mapped to a playable level yet.", {
+        speakerName: "System",
+      });
       this.awaitingSignEnterChoice = false;
       return;
     }
@@ -962,13 +1296,20 @@ class OverworldScene extends Phaser.Scene {
     this.transitionToLevel(sign);
   }
 
-  hideDialogue() {
+  hideDialogue(options = {}) {
+    const keepSignPrompt = options.keepSignPrompt === true;
+    const endNpcConversation = options.endNpcConversation !== false;
+
+    if (endNpcConversation && this.activeDialogueNpcId && this.dialogueController?.isActive()) {
+      this.dialogueController.endConversation("closed");
+    }
+
     this.activeDialogueNpcId = null;
-    this.activeDialogueSignId = null;
-    this.awaitingSignEnterChoice = false;
-    this.dialogueBox.setVisible(false);
-    this.dialogueText.setVisible(false);
-    this.dialogueHintText.setVisible(false);
+    this.activeDialogueSignId = keepSignPrompt ? this.activeDialogueSignId : null;
+    this.awaitingSignEnterChoice = keepSignPrompt && this.awaitingSignEnterChoice;
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+    this.dialogueOverlay?.hide();
   }
 
   getMovementVector() {
@@ -1050,7 +1391,7 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    if (this.dialogueBox.visible) {
+    if (this.isDialogueVisible()) {
       this.clearPointerPath();
       this.player.body.setVelocity(0, 0);
       this.player.anims.play("player-idle", true);

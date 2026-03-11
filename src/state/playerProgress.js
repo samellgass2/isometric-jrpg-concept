@@ -126,6 +126,21 @@ function normalizeEncounterResults(outcomes) {
   }, {});
 }
 
+function normalizeQuestFlags(flags) {
+  if (!isPlainObject(flags)) {
+    return {};
+  }
+
+  return Object.entries(flags).reduce((acc, [flagKey, flagValue]) => {
+    const normalizedFlagKey = typeof flagKey === "string" ? flagKey.trim() : "";
+    if (!normalizedFlagKey) {
+      return acc;
+    }
+    acc[normalizedFlagKey] = flagValue === true;
+    return acc;
+  }, {});
+}
+
 function isOutcomeVictory(outcome) {
   if (typeof outcome === "string") {
     return outcome === "victory";
@@ -209,6 +224,7 @@ export function createInitialPlayerProgressState(overrides = {}) {
       keyBattles: { ...KEY_BATTLE_OUTCOME_FLAG_DEFAULTS },
       encounterResults: {},
     },
+    questFlags: {},
   };
 
   return normalizePlayerProgressState({
@@ -253,6 +269,7 @@ export function normalizePlayerProgressState(state) {
       members: normalizedMembers,
     },
     battleOutcomes: normalizeBattleOutcomes(source.battleOutcomes),
+    questFlags: normalizeQuestFlags(source.questFlags),
   };
 }
 
@@ -304,6 +321,43 @@ export function setBattleOutcomeFlag(previousState, flagKey, value = true) {
         ...current.battleOutcomes.keyBattles,
         [normalizedFlagKey]: value === true,
       },
+    },
+  };
+}
+
+export function getQuestFlag(state, flagKey) {
+  const current = normalizePlayerProgressState(state);
+  const normalizedFlagKey = typeof flagKey === "string" ? flagKey.trim() : "";
+  if (!normalizedFlagKey) {
+    return false;
+  }
+
+  return current.questFlags[normalizedFlagKey] === true;
+}
+
+export function setQuestFlag(previousState, flagKey, value = true) {
+  const normalizedFlagKey = typeof flagKey === "string" ? flagKey.trim() : "";
+  if (!normalizedFlagKey) {
+    return normalizePlayerProgressState(previousState);
+  }
+
+  return setQuestFlags(previousState, {
+    [normalizedFlagKey]: value === true,
+  });
+}
+
+export function setQuestFlags(previousState, flags = {}) {
+  const current = normalizePlayerProgressState(previousState);
+  const normalizedFlags = normalizeQuestFlags(flags);
+  if (Object.keys(normalizedFlags).length === 0) {
+    return current;
+  }
+
+  return {
+    ...current,
+    questFlags: {
+      ...current.questFlags,
+      ...normalizedFlags,
     },
   };
 }
