@@ -1,3 +1,47 @@
+## Status
+
+- Task: Define core game state model (TASK_ID=398, RUN_ID=705)
+- State: Completed
+- Notes: Added a centralized, engine-agnostic game state store at `src/state/gameState.js` for party, health, inventory, and story flags.
+
+  API surface:
+  - Initialization/reading:
+    - `initGameState(overrides)`
+    - `hydrateGameStateFromProgress(progressState)`
+    - `getGameState()`
+    - `subscribeToGameState(listener)`
+  - Party + health:
+    - `getPartyMember(memberId)`
+    - `addPartyMember(member)`
+    - `removePartyMember(memberId)`
+    - `adjustPartyMemberHealth(memberId, delta)`
+    - `setPartyMemberHealth(memberId, { currentHp, maxHp })`
+  - Inventory:
+    - `addInventoryItem(itemId, amount)`
+    - `removeInventoryItem(itemId, amount)`
+    - `getInventoryCount(itemId)`
+  - Story flags:
+    - `setStoryFlag(flagKey, value)`
+    - `setStoryFlags(flags)`
+    - `getStoryFlag(flagKey, fallback)`
+    - `hasStoryFlag(flagKey)`
+  - Progress bridge helpers:
+    - `createGameStateFromPlayerProgress(progressState)`
+    - `applyGameStateToPlayerProgress(gameState, previousProgressState)`
+    - `exportGameStateToPlayerProgress(previousProgressState)`
+
+  Integration details:
+  - `src/main.js` now hydrates game state from persisted `playerProgress` during boot and re-hydrates whenever progress is committed through registry `setPlayerProgress`.
+  - `src/scenes/OverworldScene.js` now consumes central game state for:
+    - story flag reads (`getStoryFlag`) when building dialogue flags
+    - story flag writes (`setStoryFlags`) when persisting dialogue hook outcomes
+    - protagonist HUD stats/name seed (`getPartyMember(\"protagonist\")`) instead of relying only on scene-local defaults
+  - Overworld, battle, and dialogue systems are expected to treat this store as the runtime source of truth and use `playerProgress` as persistence serialization.
+
+  Verification:
+  - Added `scripts/game-state-model.test.mjs` covering initialization, party/health mutations, inventory add/remove, story flag set/get, and progress bridging.
+  - Added test execution to `npm test` script chain.
+
 # QA Validation Summary (Workflow #39)
 
 - Project: `isometric-strategy-game`

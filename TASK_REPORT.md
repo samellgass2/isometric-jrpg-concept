@@ -1,68 +1,61 @@
-# TASK REPORT
+# Task Report - TASK_ID=398 RUN_ID=705
 
-- Task ID: 393
-- Run ID: 694
-- Title: Implement NPC interaction and quest hook flow
-- Status: Completed
+## Summary
+Implemented a centralized, engine-agnostic client-side game state model in `src/state/gameState.js` as a single runtime source of truth for:
+- party composition
+- per-member health
+- inventory
+- story flags
 
-## What Was Implemented
-
-1. Reusable NPC/dialogue/quest configuration
-- Added `src/data/overworldInteractionConfig.js`.
-- NPCs are now configured via data with:
-  - `id`, `name`, position/visual fields
-  - `dialogueEntryPoint`
-  - optional `questMetadata`
-- Dialogue trees are mapped by NPC id in structured objects.
-- Added structured quest-reactive interactable config (`obj-workshop-gate`) with `unlockFlag` and locked/unlocked prompts.
-
-2. Overworld interaction framework updates
-- Updated `src/scenes/OverworldScene.js` to consume config data.
-- NPC interactions consistently use existing overworld interaction mechanics:
-  - `Space/Enter` near interactable
-  - pointer tile interaction when adjacent
-- NPC conversations now start from configured `dialogueEntryPoint`.
-- Added generic interactable support in the same interaction loop as signs/NPCs.
-
-3. Quest hook flow + visible world-state change
-- Ranger dialogue can set `dialogue.rangerTutorialComplete`.
-- Mechanic dialogue checks that flag and can set:
-  - `quest.workshopKeyGranted`
-  - `quest.workshopGateUnlocked`
-- Workshop gate behavior changes after unlock flag:
-  - locked -> blocks path/collision + locked prompt + locked tint
-  - unlocked -> passable + unlocked prompt + unlocked tint
-
-4. Persisted quest flags in player state
-- Extended `src/state/playerProgress.js` with normalized `questFlags`.
-- Added helpers:
-  - `getQuestFlag`
-  - `setQuestFlag`
-  - `setQuestFlags`
-- Overworld dialogue hook events persist recognized dialogue/quest flags to progress.
-
-5. Test updates
-- Updated `scripts/player-progress.test.mjs` to validate quest flag persistence and serialization behavior.
-
-## Acceptance Criteria Coverage
-
-1. Two distinct NPCs with different dialogue entry points: PASS (`npc-ranger`, `npc-mechanic`).
-2. Consistent interaction mechanic opening dialogue UI: PASS (same confirm/select flow in overworld).
-3. Dialogue quest hook sets quest flag: PASS (`mechanic-grant-workshop-key`, ranger task hook).
-4. Subsequent interaction observes flag and alters behavior: PASS (mechanic branch + workshop gate unlock state).
-5. Structured reusable NPC/quest configuration: PASS (`src/data/overworldInteractionConfig.js`).
-6. STATUS document updated: PASS (`STATUS.md` updated with task entry and touched files).
+The module exports documented initialization, read, subscribe, and mutation helpers, and bridges to existing `playerProgress` persistence data.
 
 ## Files Changed
-
-- `src/data/overworldInteractionConfig.js` (new)
+- `src/state/gameState.js` (new)
+- `src/main.js`
 - `src/scenes/OverworldScene.js`
-- `src/state/playerProgress.js`
-- `scripts/player-progress.test.mjs`
+- `scripts/game-state-model.test.mjs` (new)
+- `package.json`
 - `STATUS.md`
-- `TASK_REPORT.md`
 
-## Validation
+## API Added (`src/state/gameState.js`)
+- Init/read/subscribe:
+  - `initGameState(overrides)`
+  - `hydrateGameStateFromProgress(progressState)`
+  - `getGameState()`
+  - `subscribeToGameState(listener)`
+- Party + health:
+  - `getPartyMember(memberId)`
+  - `addPartyMember(member)`
+  - `removePartyMember(memberId)`
+  - `adjustPartyMemberHealth(memberId, delta)`
+  - `setPartyMemberHealth(memberId, { currentHp, maxHp })`
+- Inventory:
+  - `addInventoryItem(itemId, amount)`
+  - `removeInventoryItem(itemId, amount)`
+  - `getInventoryCount(itemId)`
+- Story flags:
+  - `setStoryFlag(flagKey, value)`
+  - `setStoryFlags(flags)`
+  - `getStoryFlag(flagKey, fallback)`
+  - `hasStoryFlag(flagKey)`
+- Persistence bridge:
+  - `createGameStateFromPlayerProgress(progressState)`
+  - `applyGameStateToPlayerProgress(gameState, previousProgressState)`
+  - `exportGameStateToPlayerProgress(previousProgressState)`
 
-- Command: `npm test`
-- Result: PASS
+## Integration
+- `src/main.js`
+  - Hydrates game state from persisted progress during startup.
+  - Re-hydrates game state whenever registry `setPlayerProgress` is called.
+- `src/scenes/OverworldScene.js`
+  - Uses `getStoryFlag` for dialogue flag initialization.
+  - Uses `setStoryFlags` when dialogue hooks set quest/story flags.
+  - Seeds HUD player name/HP from centralized party state via `getPartyMember("protagonist")`.
+
+## Verification
+Executed `npm test` (full suite) successfully, including new script:
+- `scripts/game-state-model.test.mjs`
+
+Test output included:
+- `Game state model test passed.`
+- Existing tests also passed (rollback, dog behavior, battle grid, drone AI/scenario, player progress, save system, party persistence, dialogue).

@@ -4,12 +4,16 @@ import HUDOverlay from "../ui/HUDOverlay.js";
 import DialogueOverlay from "../ui/DialogueOverlay.js";
 import {
   getBattleOutcomeFlag,
-  getQuestFlag,
   KEY_BATTLE_OUTCOME_FLAGS,
   normalizePlayerProgressState,
   setQuestFlags,
   updateOverworldPosition,
 } from "../state/playerProgress.js";
+import {
+  getPartyMember,
+  getStoryFlag,
+  setStoryFlags,
+} from "../state/gameState.js";
 import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
 import { DialogueController, DialogueEvents, DialogueFlagStore } from "../systems/dialogue/index.js";
 import {
@@ -196,13 +200,20 @@ class OverworldScene extends Phaser.Scene {
   }
 
   createHudOverlay(data = {}) {
+    const protagonist = getPartyMember("protagonist");
     const configuredName = typeof data.playerName === "string" ? data.playerName.trim() : "";
     if (configuredName) {
       this.playerDisplayName = configuredName;
+    } else if (protagonist?.name) {
+      this.playerDisplayName = protagonist.name;
     }
 
-    const hp = Number.isFinite(data.playerHp) ? data.playerHp : this.playerStats.hp;
-    const maxHp = Number.isFinite(data.playerMaxHp) ? data.playerMaxHp : this.playerStats.maxHp;
+    const hp = Number.isFinite(data.playerHp)
+      ? data.playerHp
+      : protagonist?.currentHp ?? this.playerStats.hp;
+    const maxHp = Number.isFinite(data.playerMaxHp)
+      ? data.playerMaxHp
+      : protagonist?.maxHp ?? this.playerStats.maxHp;
     this.playerStats.maxHp = Math.max(1, Math.floor(maxHp));
     this.playerStats.hp = Phaser.Math.Clamp(Math.floor(hp), 0, this.playerStats.maxHp);
 
@@ -437,7 +448,7 @@ class OverworldScene extends Phaser.Scene {
 
   initializeDialogueSystem(progressState) {
     const initialQuestFlags = Object.values(OVERWORLD_DIALOGUE_FLAGS).reduce((acc, flagKey) => {
-      acc[flagKey] = getQuestFlag(progressState, flagKey);
+      acc[flagKey] = getStoryFlag(flagKey, false) === true;
       return acc;
     }, {});
 
@@ -525,6 +536,7 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
+    setStoryFlags(candidateFlags);
     this.commitProgress((current) => setQuestFlags(current, candidateFlags));
   }
 

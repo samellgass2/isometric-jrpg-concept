@@ -2,6 +2,7 @@ import * as Phaser from "../node_modules/phaser/dist/phaser.esm.js";
 import gameConfig from "./gameConfig.js";
 import { normalizePlayerProgressState } from "./state/playerProgress.js";
 import { loadProgress, saveProgress } from "./persistence/saveSystem.js";
+import { hydrateGameStateFromProgress } from "./state/gameState.js";
 
 const app = document.getElementById("app");
 
@@ -11,6 +12,7 @@ if (!app) {
 
 app.replaceChildren();
 const hydratedProgress = loadProgress();
+hydrateGameStateFromProgress(hydratedProgress);
 const existingPreBoot = gameConfig.callbacks?.preBoot;
 
 gameConfig.callbacks = {
@@ -20,6 +22,7 @@ gameConfig.callbacks = {
     game.registry.set("setPlayerProgress", (nextState) => {
       const normalized = normalizePlayerProgressState(nextState);
       game.registry.set("playerProgress", normalized);
+      hydrateGameStateFromProgress(normalized);
       saveProgress(normalized);
       return normalized;
     });
