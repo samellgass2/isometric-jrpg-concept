@@ -5,21 +5,21 @@
       "description": "Main menu initial state loads",
       "status": "PASS",
       "screenshot": "screenshots/01-main-menu.png",
-      "notes": "Completed in 864ms"
+      "notes": "Completed in 6080ms"
     },
     {
       "id": 2,
       "description": "Start Game enters Overworld scene",
       "status": "PASS",
       "screenshot": "screenshots/02-overworld-entry.png",
-      "notes": "Completed in 1719ms"
+      "notes": "Completed in 2058ms"
     },
     {
       "id": 3,
       "description": "Ranger dialogue progression sets tutorial completion flag",
       "status": "FAIL",
       "screenshot": "screenshots/05-ranger-dialogue-complete.png",
-      "notes": "Timeout after 10233ms: Page.wait_for_function: Timeout 9000ms exceeded.",
+      "notes": "Timeout after 9977ms: Page.wait_for_function: Timeout 9000ms exceeded.",
       "bug_title": "Ranger dialogue progression sets tutorial completion flag does not complete (timeout)"
     },
     {
@@ -27,7 +27,7 @@
       "description": "Mechanic interaction unlocks workshop gate progression",
       "status": "FAIL",
       "screenshot": "screenshots/08-mechanic-dialogue-complete.png",
-      "notes": "Timeout after 10282ms: Page.wait_for_function: Timeout 9000ms exceeded.",
+      "notes": "Timeout after 9840ms: Page.wait_for_function: Timeout 9000ms exceeded.",
       "bug_title": "Mechanic interaction unlocks workshop gate progression does not complete (timeout)"
     },
     {
@@ -35,7 +35,7 @@
       "description": "Workshop gate interaction prompt is available after unlock",
       "status": "FAIL",
       "screenshot": "screenshots/09-workshop-gate-prompt.png",
-      "notes": "Timeout after 10186ms: Page.wait_for_function: Timeout 9000ms exceeded.",
+      "notes": "Timeout after 9973ms: Page.wait_for_function: Timeout 9000ms exceeded.",
       "bug_title": "Workshop gate interaction prompt is available after unlock does not complete (timeout)"
     },
     {
@@ -43,7 +43,7 @@
       "description": "Supply cache pickup grants workshop pass and checkpoint unlock flag",
       "status": "FAIL",
       "screenshot": "screenshots/10-supply-cache-pickup.png",
-      "notes": "Timeout after 10112ms: Page.wait_for_function: Timeout 9000ms exceeded.",
+      "notes": "Timeout after 9625ms: Page.wait_for_function: Timeout 9000ms exceeded.",
       "bug_title": "Supply cache pickup grants workshop pass and checkpoint unlock flag does not complete (timeout)"
     },
     {
@@ -51,22 +51,22 @@
       "description": "Canyon checkpoint interaction works after pass unlock",
       "status": "FAIL",
       "screenshot": "screenshots/11-canyon-checkpoint-prompt.png",
-      "notes": "Checkpoint flag unexpectedly false",
-      "bug_title": "Canyon checkpoint interaction works after pass unlock failed"
+      "notes": "Timeout after 9698ms: Page.wait_for_function: Timeout 9000ms exceeded.",
+      "bug_title": "Canyon checkpoint interaction works after pass unlock does not complete (timeout)"
     },
     {
       "id": 8,
       "description": "Drone patrol triggers battle transition and battle debug snapshot hotkey works",
       "status": "PASS",
       "screenshot": "screenshots/12-battle-entry.png",
-      "notes": "Completed in 4101ms"
+      "notes": "Completed in 2501ms"
     },
     {
       "id": 9,
       "description": "Load/Continue flow uses persisted save state",
       "status": "PASS",
       "screenshot": "screenshots/14-continue-after-load.png",
-      "notes": "Completed in 10025ms"
+      "notes": "Completed in 3014ms"
     }
   ],
   "console_events": [
@@ -76,19 +76,19 @@
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x2ae400140200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x7f40011ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x2ae400140200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x7f40011ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x2ae400140200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x7f40011ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x2ae400140200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      "text": "[.WebGL-0x7f40011ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
     },
     {
       "type": "log",
