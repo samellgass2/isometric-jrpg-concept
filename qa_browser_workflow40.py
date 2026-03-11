@@ -219,7 +219,7 @@ with sync_playwright() as p:
     )
 
     def c5():
-        goto_overworld_tile(9, 8)
+        goto_overworld_tile(8, 8)
         page.wait_for_timeout(250)
         step_dialogue(presses=1)
         page.wait_for_timeout(250)
