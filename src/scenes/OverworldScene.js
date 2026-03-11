@@ -1531,12 +1531,14 @@ class OverworldScene extends Phaser.Scene {
     return { x: 0, y: 0 };
   }
 
-  moveAlongPointerPath() {
+  moveAlongPointerPath(deltaMs = 0) {
     if (!this.player?.body || this.pointerPath.length === 0) {
       return false;
     }
 
     const nextWaypoint = this.pointerPath[0];
+    const frameTravelDistance = Math.max(0, (Number(deltaMs) || 0) * (PLAYER_SPEED / 1000));
+    const snapThreshold = Math.max(ARRIVAL_THRESHOLD, frameTravelDistance + 1);
     const distance = Phaser.Math.Distance.Between(
       this.player.x,
       this.player.y,
@@ -1544,7 +1546,7 @@ class OverworldScene extends Phaser.Scene {
       nextWaypoint.y
     );
 
-    if (distance <= ARRIVAL_THRESHOLD) {
+    if (distance <= snapThreshold) {
       this.player.setPosition(nextWaypoint.x, nextWaypoint.y);
       this.pointerPath.shift();
       this.pointerPathTiles.shift();
@@ -1576,7 +1578,7 @@ class OverworldScene extends Phaser.Scene {
     return true;
   }
 
-  update() {
+  update(_time, delta) {
     if (!this.player || !this.player.body || this.isTransitioning) {
       return;
     }
@@ -1608,7 +1610,7 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    if (this.moveAlongPointerPath()) {
+    if (this.moveAlongPointerPath(delta)) {
       this.syncHudOverlay();
       this.syncStateDebugOverlay();
       this.persistOverworldProgress();
