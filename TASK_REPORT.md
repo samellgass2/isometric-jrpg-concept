@@ -1,32 +1,37 @@
-# TASK 414 Report
+# Task Report: TASK_ID=415 RUN_ID=731
 
 ## Summary
-Implemented battle hit/ability/turn feedback polish in `src/scenes/BattleScene.js` using the shared `AudioManager`.
+Implemented lightweight visual/audio transition feedback for major game-state changes and key UI overlays.
 
-## What Changed
-- Added battle audio key map and centralized `playBattleSfx(...)` helper for:
-  - basic hit (`sfx-battle-hit`)
-  - damage taken (`sfx-battle-damage`)
-  - ability activation (`sfx-battle-ability`)
-  - turn transition (`sfx-battle-turn-shift`)
-  - victory/defeat (`sfx-battle-victory`, `sfx-battle-defeat`)
-- Added attack impact visuals (`playAttackImpactFeedback(...)`): impact flash + target snap jitter.
-- Added damage visuals (`playDamageFeedback(...)`): flash pulse, burst ring, camera shake (stronger on defeat).
-- Added ability visuals (`playAbilityFeedback(...)`) and wired into `useStabilizeAction(...)`.
-- Added turn-transition cue banner (`createTurnCueBanner`, `showTurnTransitionCue`) plus concise camera cue.
-- Added outcome camera flash in `finishBattle(...)`.
-- Added cleanup path for temporary tweens/UI (`cleanupBattleFx`) on scene shutdown/destroy.
-- Updated `STATUS.md` with hook locations and extension instructions for adding new ability sounds/VFX.
+### Implemented
+- Added shared transition helper module: `src/systems/transitionFeedback.js`
+  - `transitionToScene(scene, options)` for fade-out + scene start + optional stingers/music-stop.
+  - `applySceneEntryTransition(scene, data, defaults)` for destination fade-in + optional entry stinger.
+  - `TRANSITION_STINGER_KEYS` with battle start/return stinger keys.
+- Wired overworld <-> battle transitions with helper-based fades and stinger hooks:
+  - `src/scenes/OverworldScene.js`
+  - `src/scenes/BattleScene.js`
+- Wired Level1/Level2 battle entry and return paths to same helper for consistency:
+  - `src/scenes/Level1Scene.js`
+  - `src/scenes/Level2Scene.js`
+- Added tweened major UI overlay transitions:
+  - `src/ui/DialogueOverlay.js`
+  - `show()` and `hide()` now use short fade/slide tweens with tween cleanup safeguards.
+- Updated status documentation with extension guidance:
+  - `STATUS.md`
 
 ## Acceptance Criteria Mapping
-1. Shared audio manager integration: PASS (`audioManager` + `playBattleSfx`; no new direct Phaser sound object usage in battle logic).
-2. Basic attack hit sound + target visual feedback: PASS (`playAttackImpactFeedback`, `playDamageFeedback`).
-3. Special ability distinct sound + visible VFX: PASS (`useStabilizeAction` -> `playAbilityFeedback` + ability SFX).
-4. Unit damage visual cue beyond HP updates: PASS (`playDamageFeedback`).
-5. Turn change audio + visible indicator while preserving sequence: PASS (`showTurnTransitionCue` at player->enemy and enemy->player transitions).
-6. Battle BGM and clean transitions: PASS (battle scene uses shared music; overworld already stops track before battle/level transitions preventing overlap).
-7. STATUS doc updated with feedback hooks and extension path: PASS (`STATUS.md` updated with Task 414 section).
+1. Entering battle from overworld now uses helper-driven fade-out + battle scene fade-in and start stinger hook.
+2. Exiting battle to overworld now uses helper-driven fade-out + overworld scene fade-in and return stinger hook; return payload/state is preserved.
+3. Dialogue overlay (major UI layer) no longer appears/disappears instantly; it now tween-fades/slides.
+4. Transition events call shared `AudioManager` for stingers (`sfx-transition-battle-start`, `sfx-transition-battle-return`).
+5. All transitions are automatic and timer/event driven; no extra input required.
+6. Automated tests pass; no new navigation/state-test regressions detected in existing suite.
+7. `STATUS.md` includes modules touched, behaviors added, and future extension recommendations.
 
 ## Validation
-- Ran test suite: `npm test`
-- Result: all tests passed.
+- Ran: `npm test`
+- Result: PASS (all configured script tests)
+
+## Commit
+- `646b3a2` — `task/415: add scene and overlay transition feedback`
