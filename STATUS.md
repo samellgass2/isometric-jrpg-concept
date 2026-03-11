@@ -1648,3 +1648,66 @@ Battle party persistence test passed.
 
 ### Overall QA Verdict
 - PASS
+
+## TESTER REPORT - Workflow #39 (Narrative, Dialogue System, and NPC Interaction Framework)
+Date: 2026-03-11
+Branch: `workflow/39/dev`
+Tester: TESTER agent
+
+### Tests Run and Results
+1. `cat package.json | sed -n '/"scripts"/,/}/p'` - PASS
+   - Detected scripts: `dev`, `start`, `test`.
+2. `npm install` - PASS
+   - Output: `added 2 packages, and audited 3 packages in 29s; found 0 vulnerabilities`.
+3. `npm test` - PASS
+   - Command executed:
+     `node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/drone-ai-decision.test.mjs && node scripts/drone-test-battle-scenario.test.mjs && node scripts/player-progress.test.mjs && node scripts/save-system.test.mjs && node scripts/battle-party-persistence.test.mjs && node scripts/dialogue-system.test.mjs`
+   - Output summary:
+     - Rollback test passed.
+     - Dog conditional behavior test passed.
+     - Battle grid stats test passed.
+     - Drone AI decision test passed.
+     - Drone test battle scenario test passed.
+     - Player progress state test passed.
+     - Save system persistence test passed.
+     - Battle party persistence test passed.
+     - Dialogue system test passed.
+
+### Per-Task Acceptance Verdict
+
+#### Task #391: Implement core dialogue system primitives
+Verdict: PASS
+- AC1 PASS: Dialogue tree primitives support nodes, speaker metadata, choices, conditional branches, and hooks (`src/systems/dialogue/dialoguePrimitives.js`, `src/systems/dialogue/DialogueController.js`).
+- AC2 PASS: Controller API includes `startConversation`, `advance`, `goBack`, `selectChoice`, `endConversation`.
+- AC3 PASS: Core logic is scene-agnostic and event/callback driven (`DialogueEvents`, listener API, `callbackMap`).
+- AC4 PASS: Quest hooks can read/write flags via `DialogueFlagStore` and are exposed to other systems.
+- AC5 PASS: Dedicated module exists under `src/systems/dialogue/` and is re-exported via `src/systems/dialogue/index.js`.
+- AC6 PASS: `STATUS.md` documents dialogue primitives and intended usage.
+
+#### Task #392: Integrate dialogue UI into overworld scene
+Verdict: PASS
+- AC1 PASS: Overworld NPC interaction starts dialogue and renders speaker + text through `DialogueOverlay`.
+- AC2 PASS: Linear dialogue advancement is wired to confirm input and controller advance flow.
+- AC3 PASS: Branching choices render in UI and feed `selectChoice`, transitioning to selected branches.
+- AC4 PASS: While dialogue is visible, movement/pathing and non-dialogue interactions are gated in scene update/input flow.
+- AC5 PASS: Dialogue close path hides overlay, clears active dialogue state, and scene lifecycle cleanup destroys overlay/controller bindings.
+- AC6 PASS: UI and integration code are in `src/ui/DialogueOverlay.js` and `src/scenes/OverworldScene.js`; `STATUS.md` includes integration notes.
+
+#### Task #393: Implement NPC interaction and quest hook flow
+Verdict: PASS
+- AC1 PASS: At least two NPCs are configured with distinct dialogue entry points (`npc-ranger`, `npc-mechanic`).
+- AC2 PASS: Consistent interaction mechanism (confirm near entity / adjacent tile selection) starts dialogue reliably.
+- AC3 PASS: Dialogue hooks set quest flags (for example ranger task + mechanic workshop unlock hooks).
+- AC4 PASS: Subsequent interactions observe flags and alter behavior (mechanic branch changes; workshop gate unlock state/prompt/collision updates).
+- AC5 PASS: NPC dialogue + quest behavior are data-driven in `src/data/overworldInteractionConfig.js`.
+- AC6 PASS: `STATUS.md` documents NPC interaction pattern and quest-flow example.
+
+### Bugs Filed
+- None.
+
+### Integration / Regression Assessment
+- Dialogue primitives, overworld UI integration, NPC interaction config, and quest flag persistence work together cohesively.
+- No obvious regressions surfaced in automated tests or static integration review.
+
+### Overall Verdict
+CLEAN
