@@ -2635,3 +2635,70 @@ CLEAN
 
 ### Overall Verdict
 - CLEAN
+
+## Tester Report - Workflow #41 Verification (2026-03-11)
+
+### Tests Run
+- `npm test`
+  - Result: PASS
+  - Output summary:
+    - Rollback test passed.
+    - Dog conditional behavior test passed.
+    - Battle grid stats test passed.
+    - Drone AI decision test passed.
+    - Drone test battle scenario test passed.
+    - Player progress state test passed.
+    - Game state model test passed.
+    - Save system persistence test passed.
+    - Runtime save/load state tools test passed.
+    - Battle party persistence test passed.
+    - Dialogue system test passed.
+- `python qa_browser_workflow41.py` (with `npm run dev` active)
+  - Result: PASS (8/8)
+  - Output summary:
+    - Main menu loads with playable UI.
+    - Start Game transitions from menu to Overworld.
+    - Dialogue overlay opens/closes with transition polish.
+    - Overworld encounter transitions into Battle scene.
+    - Battle scene provides turn feedback and debug snapshot.
+    - Battle hit feedback path executes during enemy attacks.
+    - Stabilize ability path executes and updates HP state.
+    - Battle completion returns to Overworld with transition feedback.
+
+### Acceptance Verification By Task
+- Task #412: PASS
+  - Dedicated audio manager exists at `src/audio/AudioManager.js`, initialized in `src/main.js`, with `playSfx`, `playMusic`, `stopMusic`, `setVolume` API.
+  - Shared singleton instance is used via game registry across scenes.
+  - Defensive checks/no-op behavior for unavailable audio and missing keys are present.
+  - `STATUS.md` documents API and usage.
+- Task #413: PASS
+  - Overworld uses shared audio manager only.
+  - Movement footstep SFX is tile-change + interval gated (no idle spam / blocked spam).
+  - NPC dialogue start and interact/pickup events trigger distinct SFX hooks.
+  - Overworld BGM starts on entry and cleanly stops on transitions.
+  - `STATUS.md` documents wired events and extension pattern.
+- Task #414: PASS
+  - Battle integrates shared audio manager only.
+  - Basic attacks trigger hit SFX plus visible impact feedback.
+  - Ability path (`stabilize`) triggers separate ability SFX and VFX.
+  - Damage applies clear per-unit visual feedback separate from HP text updates.
+  - Turn changes trigger concise audio cue + visible banner/camera cue.
+  - Battle music and transition handoff are cleanly managed.
+  - `STATUS.md` documents battle feedback hooks and extension guidance.
+- Task #415: PASS
+  - Overworld->battle and battle->overworld transitions use fade-based transition helper paths.
+  - Transition events use stinger SFX via shared audio manager.
+  - Key overlays use tweened transitions (`DialogueOverlay`, `BattleResultOverlay`).
+  - Transitions auto-complete with guarded fallback logic; no state trap observed.
+  - `STATUS.md` documents transition effects and implementation locations.
+
+### Integration / Regression Check
+- Features operate cohesively across menu, overworld, battle, and return transitions.
+- Audio manager is consistently used as the single audio path.
+- No new runtime errors were observed in automated test runs (`qa_results_workflow41.json` page_errors: empty).
+
+### Bugs Filed
+- None.
+
+### Overall Verdict
+- CLEAN
