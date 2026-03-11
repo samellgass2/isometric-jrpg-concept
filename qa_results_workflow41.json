@@ -5,56 +5,56 @@
       "description": "Main menu loads with playable UI",
       "status": "PASS",
       "screenshot": "screenshots/wf41-01-main-menu.png",
-      "notes": "Completed in 482ms"
+      "notes": "Completed in 387ms"
     },
     {
       "id": 2,
       "description": "Start Game transitions from menu to Overworld",
       "status": "PASS",
       "screenshot": "screenshots/wf41-02-overworld-entry.png",
-      "notes": "Completed in 1470ms"
+      "notes": "Completed in 1447ms"
     },
     {
       "id": 3,
       "description": "Dialogue overlay opens/closes with UI transition polish",
       "status": "PASS",
       "screenshot": "screenshots/wf41-04-dialogue-closed.png",
-      "notes": "Completed in 4863ms"
+      "notes": "Completed in 4950ms"
     },
     {
       "id": 4,
       "description": "Overworld encounter transitions into Battle scene",
       "status": "PASS",
       "screenshot": "screenshots/wf41-05-battle-entry.png",
-      "notes": "Completed in 3254ms"
+      "notes": "Completed in 3152ms"
     },
     {
       "id": 5,
       "description": "Battle scene provides active turn feedback and debug snapshot",
       "status": "PASS",
       "screenshot": "screenshots/wf41-06-battle-debug.png",
-      "notes": "Completed in 501ms"
+      "notes": "Completed in 493ms"
     },
     {
       "id": 6,
       "description": "Battle hit feedback path executes during enemy attacks",
       "status": "PASS",
       "screenshot": "screenshots/wf41-07-post-enemy-phase.png",
-      "notes": "Completed in 6222ms"
+      "notes": "Completed in 6137ms"
     },
     {
       "id": 7,
       "description": "Stabilize ability path executes and updates HP state",
       "status": "PASS",
       "screenshot": "screenshots/wf41-08-stabilize.png",
-      "notes": "Completed in 2441ms"
+      "notes": "Completed in 2228ms"
     },
     {
       "id": 8,
       "description": "Battle completion returns to Overworld with transition feedback",
       "status": "PASS",
       "screenshot": "screenshots/wf41-09-return-overworld.png",
-      "notes": "Completed in 13759ms"
+      "notes": "Completed in 13730ms"
     }
   ],
   "console_events": [
@@ -73,22 +73,22 @@
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x182c00135400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "text": "[.WebGL-0x14e400146600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
       "args": []
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x182c00135400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "text": "[.WebGL-0x14e400146600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
       "args": []
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x182c00135400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "text": "[.WebGL-0x14e400146600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
       "args": []
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x182c00135400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+      "text": "[.WebGL-0x14e400146600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
       "args": []
     },
     {
