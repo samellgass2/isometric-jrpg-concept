@@ -2282,3 +2282,23 @@ Skipped:
 
 ### Overall Verdict
 PASS
+
+## Task 425 - Character Data Models, Leveling, and Progression System
+Date: 2026-03-11
+
+Summary:
+- Added a shared character/unit schema with progression fields in `src/models/characterModels.js`.
+- The unified model includes: `id`, `name`, `level`, `currentXP`, `xpToNextLevel`, `baseStats`, `currentStats`, `abilities`, and role flags (`isDrone`, `isProtagonist`, `isPartyMember`).
+- Added model factories for core roster types: protagonist, elephant, cheetah, guardian/scout dog, and zookeeper drones (scout/defender/controller).
+- Updated `src/state/gameState.js` to normalize party and battle enemy collections using shared character models, and exposed enemy store APIs (`setBattleEnemies`, `getBattleEnemies`).
+- Updated `src/state/playerProgress.js` and `src/state/partyPersistence.js` to serialize/normalize party members through the shared character model.
+- Updated battle-facing modules to consume factories/model helpers:
+  - `src/battle/units/animalUnits.js` now builds character definitions from shared factories.
+  - `src/battle/encounters.js` now uses shared protagonist factory for encounter templates.
+  - `src/scenes/BattleScene.js` now uses model normalization when resolving friendly units and synchronizes central battle enemy collection.
+
+Primary model files:
+- `src/models/characterModels.js`
+- `src/state/gameState.js`
+- `src/state/playerProgress.js`
+- `src/state/partyPersistence.js`

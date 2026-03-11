@@ -5,6 +5,11 @@
  * This module is intentionally JSON-friendly so save data can be persisted
  * directly to local storage, backend storage, or files without custom encoders.
  */
+import {
+  createProtagonistCharacter,
+  normalizeCharacterModel,
+  serializeCharacterForPartyState,
+} from "../models/characterModels.js";
 
 const PLAYER_PROGRESS_SCHEMA_VERSION = 1;
 const KEY_BATTLE_OUTCOME_FLAGS = Object.freeze({
@@ -25,14 +30,7 @@ const ENCOUNTER_ID_TO_KEY_BATTLE_FLAG = Object.freeze({
 
 const DEFAULT_OVERWORLD_POSITION = Object.freeze({ x: 2, y: 2 });
 const DEFAULT_PARTY_MEMBERS = Object.freeze([
-  Object.freeze({
-    id: "protagonist",
-    name: "Protagonist",
-    archetype: "hero",
-    level: 1,
-    currentHp: 100,
-    maxHp: 100,
-  }),
+  Object.freeze(serializeCharacterForPartyState(createProtagonistCharacter())),
 ]);
 
 const cloneJsonValue = (value) => JSON.parse(JSON.stringify(value));
@@ -57,26 +55,18 @@ function normalizePosition(position, fallbackPosition = DEFAULT_OVERWORLD_POSITI
 }
 
 function normalizePartyMember(member) {
-  if (!isPlainObject(member)) {
+  const normalized = normalizeCharacterModel({
+    ...(isPlainObject(member) ? member : {}),
+    flags: {
+      ...(member?.flags ?? {}),
+      isPartyMember: true,
+    },
+  });
+  if (!normalized) {
     return null;
   }
 
-  const id = typeof member.id === "string" ? member.id.trim() : "";
-  if (!id) {
-    return null;
-  }
-
-  const maxHp = Math.max(1, Math.floor(toFiniteNumber(member.maxHp, 100)));
-  const currentHp = Math.max(0, Math.min(maxHp, Math.floor(toFiniteNumber(member.currentHp, maxHp))));
-
-  return {
-    id,
-    name: typeof member.name === "string" && member.name.trim() ? member.name.trim() : id,
-    archetype: typeof member.archetype === "string" ? member.archetype : null,
-    level: Math.max(1, Math.floor(toFiniteNumber(member.level, 1))),
-    currentHp,
-    maxHp,
-  };
+  return serializeCharacterForPartyState(normalized);
 }
 
 function normalizePartyMembers(members) {

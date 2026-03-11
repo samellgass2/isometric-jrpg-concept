@@ -7,6 +7,7 @@ import {
   zookeeperDefenderDroneUnit,
   zookeeperScoutDroneUnit,
 } from "../battle/units/animalUnits.js";
+import { createProtagonistCharacter, normalizeCharacterModel } from "../models/characterModels.js";
 import { getEffectiveCombatStats, isDogDangerBuffActive, resolveAttack } from "../battle/combatResolver.js";
 import { getEncounterDefinition } from "../battle/encounters.js";
 import {
@@ -33,7 +34,9 @@ import {
 import {
   addInventoryItem,
   exportGameStateToPlayerProgress,
+  getBattleEnemies,
   getGameState,
+  setBattleEnemies,
   setPartyMemberHealth,
   setStoryFlag,
   setStoryFlags,
@@ -189,7 +192,9 @@ class BattleScene extends Phaser.Scene {
       }
     });
 
+    const spawnedEnemies = [];
     encounterData.enemyUnits.forEach((unitConfig) => {
+      spawnedEnemies.push(unitConfig);
       this.spawnUnit(
         unitConfig,
         "enemy",
@@ -198,6 +203,7 @@ class BattleScene extends Phaser.Scene {
         unitConfig.color ?? 0xc45656
       );
     });
+    setBattleEnemies(spawnedEnemies);
 
     if (!this.protagonist) {
       this.protagonist = this.getFriendlyUnits()[0] ?? null;
@@ -259,7 +265,8 @@ class BattleScene extends Phaser.Scene {
         const template = templateById.get(id);
         const member = memberById.get(id);
         if (!member) {
-          return {
+          const normalizedTemplate = normalizeCharacterModel(template);
+          return normalizedTemplate ?? {
             ...template,
             movement: { ...(template.movement ?? {}) },
             attack: { ...(template.attack ?? {}) },
@@ -268,7 +275,22 @@ class BattleScene extends Phaser.Scene {
           };
         }
 
-        return {
+        const normalizedMerged = normalizeCharacterModel({
+          ...template,
+          movement: { ...(template.movement ?? {}) },
+          attack: { ...(template.attack ?? {}) },
+          stats: {
+            ...(template.stats ?? {}),
+            maxHp: member.maxHp,
+          },
+          abilities: Array.isArray(template.abilities) ? [...template.abilities] : [],
+          name: member.name || template.name,
+          archetype: member.archetype ?? template.archetype,
+          level: member.level ?? template.level,
+          currentHp: member.currentHp,
+        });
+
+        return normalizedMerged ?? {
           ...template,
           movement: { ...(template.movement ?? {}) },
           attack: { ...(template.attack ?? {}) },
@@ -289,8 +311,13 @@ class BattleScene extends Phaser.Scene {
     const encounterId = typeof data.encounterId === "string" ? data.encounterId : null;
     const definition = encounterId ? getEncounterDefinition(encounterId) : null;
     const fallback = this.getDefaultEncounter();
+    const persistedEnemies = getBattleEnemies();
+    const enemyFallback = persistedEnemies.length > 0 ? persistedEnemies : fallback.enemyUnits;
     if (!definition) {
-      return fallback;
+      return {
+        ...fallback,
+        enemyUnits: enemyFallback,
+      };
     }
 
     return {
@@ -299,7 +326,7 @@ class BattleScene extends Phaser.Scene {
       triggerDescription: definition.triggerDescription ?? "",
       obstacles: Array.isArray(definition.obstacles) ? definition.obstacles : fallback.obstacles,
       friendlyUnits: Array.isArray(definition.friendlyUnits) ? definition.friendlyUnits : fallback.friendlyUnits,
-      enemyUnits: Array.isArray(definition.enemyUnits) ? definition.enemyUnits : fallback.enemyUnits,
+      enemyUnits: Array.isArray(definition.enemyUnits) ? definition.enemyUnits : enemyFallback,
       rewards: definition.rewards ?? { inventory: [], storyFlags: {} },
     };
   }
@@ -312,16 +339,9 @@ class BattleScene extends Phaser.Scene {
       obstacles: [...OBSTACLES],
       friendlyUnits: [
         {
-          id: "protagonist",
-          name: "Protagonist",
-          archetype: "hero",
-          movement: { tilesPerTurn: 4 },
-          attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
-          stats: { maxHp: 120, defense: 14 },
-          abilities: [],
+          ...createProtagonistCharacter({ currentHp: 32 }),
           spawn: { x: 2, y: 4 },
           color: 0x6aa9ff,
-          currentHp: 32,
         },
         { ...elephantUnit, spawn: { x: 5, y: 3 }, color: 0xb5b5b5 },
         { ...cheetahUnit, spawn: { x: 1, y: 2 }, color: 0xe8c26e },
@@ -1177,6 +1197,7 @@ class BattleScene extends Phaser.Scene {
     if (this.battleResolved) {
       return;
     }
+    setBattleEnemies([]);
 
     this.battleResolved = true;
     this.playerTurn = false;

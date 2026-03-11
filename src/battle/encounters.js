@@ -6,6 +6,7 @@ import {
   zookeeperDefenderDroneUnit,
   zookeeperScoutDroneUnit,
 } from "./units/animalUnits.js";
+import { createProtagonistCharacter } from "../models/characterModels.js";
 
 function cloneUnitConfig(config) {
   return {
@@ -15,6 +16,13 @@ function cloneUnitConfig(config) {
     stats: { ...(config.stats ?? {}) },
     abilities: Array.isArray(config.abilities) ? [...config.abilities] : [],
     tags: Array.isArray(config.tags) ? [...config.tags] : [],
+  };
+}
+
+function createProtagonistEncounterUnit(overrides = {}) {
+  return {
+    ...cloneUnitConfig(createProtagonistCharacter()),
+    ...overrides,
   };
 }
 
@@ -31,18 +39,11 @@ export const encounterDefinitions = {
       { x: 7, y: 4 },
     ],
     friendlyUnits: [
-      {
-        id: "protagonist",
-        name: "Protagonist",
-        archetype: "hero",
-        movement: { tilesPerTurn: 4 },
-        attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
-        stats: { maxHp: 120, defense: 14 },
-        abilities: [],
+      createProtagonistEncounterUnit({
         spawn: { x: 2, y: 4 },
         color: 0x6aa9ff,
         currentHp: 100,
-      },
+      }),
       {
         ...cloneUnitConfig(guardianDogUnit),
         id: "guardian-dog",
@@ -83,18 +84,11 @@ export const encounterDefinitions = {
       { x: 7, y: 5 },
     ],
     friendlyUnits: [
-      {
-        id: "protagonist",
-        name: "Protagonist",
-        archetype: "hero",
-        movement: { tilesPerTurn: 4 },
-        attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
-        stats: { maxHp: 120, defense: 14 },
-        abilities: [],
+      createProtagonistEncounterUnit({
         spawn: { x: 2, y: 4 },
         color: 0x6aa9ff,
         currentHp: 120,
-      },
+      }),
       {
         ...cloneUnitConfig(guardianDogUnit),
         id: "drone-test-guardian-dog",
@@ -129,18 +123,11 @@ export const encounterDefinitions = {
     triggerDescription: "Step on the glowing ambush tile in Level 1.",
     victoryCondition: "defeat_all_enemies",
     friendlyUnits: [
-      {
-        id: "protagonist",
-        name: "Protagonist",
-        archetype: "hero",
-        movement: { tilesPerTurn: 4 },
-        attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
-        stats: { maxHp: 120, defense: 14 },
-        abilities: [],
+      createProtagonistEncounterUnit({
         spawn: { x: 2, y: 4 },
         color: 0x6aa9ff,
         currentHp: 64,
-      },
+      }),
       {
         ...cloneUnitConfig(guardianDogUnit),
         id: "guardian-dog",
@@ -168,18 +155,11 @@ export const encounterDefinitions = {
     triggerDescription: "Interact with the cracked totem in Level 2.",
     victoryCondition: "defeat_all_enemies",
     friendlyUnits: [
-      {
-        id: "protagonist",
-        name: "Protagonist",
-        archetype: "hero",
-        movement: { tilesPerTurn: 4 },
-        attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
-        stats: { maxHp: 120, defense: 14 },
-        abilities: [],
+      createProtagonistEncounterUnit({
         spawn: { x: 2, y: 4 },
         color: 0x6aa9ff,
         currentHp: 84,
-      },
+      }),
       {
         ...cloneUnitConfig(elephantUnit),
         id: "elephant-bulwark",

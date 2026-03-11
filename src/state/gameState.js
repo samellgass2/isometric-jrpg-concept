@@ -1,13 +1,12 @@
 import { normalizePlayerProgressState } from "./playerProgress.js";
+import {
+  createProtagonistCharacter,
+  normalizeCharacterCollection,
+  normalizeCharacterModel,
+  serializeCharacterForPartyState,
+} from "../models/characterModels.js";
 
-const DEFAULT_PARTY_MEMBER = Object.freeze({
-  id: "protagonist",
-  name: "Protagonist",
-  archetype: "hero",
-  level: 1,
-  currentHp: 100,
-  maxHp: 100,
-});
+const DEFAULT_PARTY_MEMBER = Object.freeze(createProtagonistCharacter());
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -32,26 +31,19 @@ function toInteger(value, fallback = 0) {
 }
 
 function normalizePartyMember(member) {
-  if (!isPlainObject(member)) {
+  const normalized = normalizeCharacterModel({
+    ...(isPlainObject(member) ? member : {}),
+    flags: {
+      ...(member?.flags ?? {}),
+      isPartyMember: true,
+    },
+  });
+
+  if (!normalized) {
     return null;
   }
 
-  const id = normalizeId(member.id);
-  if (!id) {
-    return null;
-  }
-
-  const maxHp = Math.max(1, toInteger(member.maxHp, 100));
-  const currentHp = Math.max(0, Math.min(maxHp, toInteger(member.currentHp, maxHp)));
-
-  return {
-    id,
-    name: normalizeId(member.name) || id,
-    archetype: typeof member.archetype === "string" ? member.archetype : null,
-    level: Math.max(1, toInteger(member.level, 1)),
-    currentHp,
-    maxHp,
-  };
+  return normalized;
 }
 
 function normalizePartyMembers(members) {
@@ -59,22 +51,33 @@ function normalizePartyMembers(members) {
     return [cloneJson(DEFAULT_PARTY_MEMBER)];
   }
 
-  const seen = new Set();
-  const normalized = [];
-  members.forEach((member) => {
-    const next = normalizePartyMember(member);
-    if (!next || seen.has(next.id)) {
-      return;
-    }
-    seen.add(next.id);
-    normalized.push(next);
-  });
+  const normalized = normalizeCharacterCollection(
+    members.map((member) => ({
+      ...(isPlainObject(member) ? member : {}),
+      flags: {
+        ...(member?.flags ?? {}),
+        isPartyMember: true,
+      },
+    }))
+  );
 
   if (normalized.length === 0) {
     return [cloneJson(DEFAULT_PARTY_MEMBER)];
   }
 
   return normalized;
+}
+
+function normalizeEnemies(enemies) {
+  return normalizeCharacterCollection(
+    (Array.isArray(enemies) ? enemies : []).map((enemy) => ({
+      ...(isPlainObject(enemy) ? enemy : {}),
+      flags: {
+        ...(enemy?.flags ?? {}),
+        isPartyMember: false,
+      },
+    }))
+  );
 }
 
 function normalizePartyOrder(order, members) {
@@ -146,6 +149,9 @@ function createDefaultState() {
     inventory: {
       items: {},
     },
+    battle: {
+      enemies: [],
+    },
     storyFlags: {},
   };
 }
@@ -162,6 +168,9 @@ function normalizeGameState(state = {}) {
     },
     inventory: {
       items: normalizeInventoryItems(source.inventory?.items),
+    },
+    battle: {
+      enemies: normalizeEnemies(source.battle?.enemies),
     },
     storyFlags: normalizeStoryFlags(source.storyFlags),
   };
@@ -247,6 +256,21 @@ class GameStateStore {
     });
   }
 
+  setBattleEnemies(enemies = []) {
+    const normalized = normalizeEnemies(enemies);
+    return this.update((current) => ({
+      ...current,
+      battle: {
+        ...current.battle,
+        enemies: normalized,
+      },
+    }));
+  }
+
+  getBattleEnemies() {
+    return cloneJson(this.state.battle.enemies);
+  }
+
   removePartyMember(memberId) {
     const id = normalizeId(memberId);
     if (!id) {
@@ -276,9 +300,20 @@ class GameStateStore {
         }
 
         const currentHp = Math.max(0, Math.min(member.maxHp, member.currentHp + normalizedDelta));
+        const nextCurrentStats = {
+          ...(member.currentStats ?? {}),
+          hp: currentHp,
+          maxHp: member.maxHp,
+        };
         return {
           ...member,
           currentHp,
+          currentStats: nextCurrentStats,
+          stats: {
+            ...(member.stats ?? {}),
+            hp: currentHp,
+            maxHp: member.maxHp,
+          },
         };
       });
 
@@ -310,6 +345,16 @@ class GameStateStore {
           ...member,
           maxHp,
           currentHp,
+          currentStats: {
+            ...(member.currentStats ?? {}),
+            maxHp,
+            hp: currentHp,
+          },
+          stats: {
+            ...(member.stats ?? {}),
+            maxHp,
+            hp: currentHp,
+          },
         };
       });
 
@@ -443,6 +488,9 @@ function createGameStateFromPlayerProgress(progressState, options = {}) {
         ...(isPlainObject(options.inventoryItems) ? options.inventoryItems : {}),
       },
     },
+    battle: {
+      enemies: options.enemies,
+    },
     storyFlags,
   });
 }
@@ -454,7 +502,9 @@ function applyGameStateToPlayerProgress(gameState, previousProgressState) {
   return normalizePlayerProgressState({
     ...base,
     party: {
-      members: normalizedGameState.party.members,
+      members: normalizedGameState.party.members
+        .map((member) => serializeCharacterForPartyState(member))
+        .filter(Boolean),
       memberOrder: normalizedGameState.party.memberOrder,
     },
     inventory: {
@@ -533,6 +583,14 @@ export function adjustPartyMemberHealth(memberId, delta = 0) {
  */
 export function setPartyMemberHealth(memberId, health) {
   return gameStateStore.setPartyMemberHealth(memberId, health);
+}
+
+export function setBattleEnemies(enemies = []) {
+  return gameStateStore.setBattleEnemies(enemies);
+}
+
+export function getBattleEnemies() {
+  return gameStateStore.getBattleEnemies();
 }
 
 export function addInventoryItem(itemId, amount = 1) {
