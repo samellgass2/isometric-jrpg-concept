@@ -54,7 +54,7 @@ export const encounterDefinitions = {
       {
         ...cloneUnitConfig(zookeeperScoutDroneUnit),
         id: "enemy-overworld-scout-1",
-        spawn: { x: 9, y: 4 },
+        spawn: { x: 6, y: 4 },
         color: 0xe08989,
       },
       {
