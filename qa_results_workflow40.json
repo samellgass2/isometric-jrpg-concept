@@ -5,65 +5,63 @@
       "description": "Main menu initial state loads",
       "status": "PASS",
       "screenshot": "screenshots/01-main-menu.png",
-      "notes": "Completed in 449ms"
+      "notes": "Completed in 389ms"
     },
     {
       "id": 2,
       "description": "Start Game enters Overworld scene",
       "status": "PASS",
       "screenshot": "screenshots/02-overworld-entry.png",
-      "notes": "Completed in 1697ms"
+      "notes": "Completed in 1609ms"
     },
     {
       "id": 3,
       "description": "Ranger dialogue progression sets tutorial completion flag",
       "status": "PASS",
       "screenshot": "screenshots/05-ranger-dialogue-complete.png",
-      "notes": "Completed in 7127ms"
+      "notes": "Completed in 8497ms"
     },
     {
       "id": 4,
       "description": "Mechanic interaction unlocks workshop gate progression",
       "status": "PASS",
       "screenshot": "screenshots/08-mechanic-dialogue-complete.png",
-      "notes": "Completed in 5381ms"
+      "notes": "Completed in 5442ms"
     },
     {
       "id": 5,
       "description": "Workshop gate interaction prompt is available after unlock",
       "status": "PASS",
       "screenshot": "screenshots/09-workshop-gate-prompt.png",
-      "notes": "Completed in 1837ms"
+      "notes": "Completed in 2037ms"
     },
     {
       "id": 6,
       "description": "Supply cache pickup grants workshop pass and checkpoint unlock flag",
-      "status": "FAIL",
+      "status": "PASS",
       "screenshot": "screenshots/10-supply-cache-pickup.png",
-      "notes": "Timeout after 9744ms: Page.wait_for_function: Timeout 9000ms exceeded.",
-      "bug_title": "Supply cache pickup grants workshop pass and checkpoint unlock flag does not complete (timeout)"
+      "notes": "Completed in 4258ms"
     },
     {
       "id": 7,
       "description": "Canyon checkpoint interaction works after pass unlock",
-      "status": "FAIL",
+      "status": "PASS",
       "screenshot": "screenshots/11-canyon-checkpoint-prompt.png",
-      "notes": "Checkpoint flag unexpectedly false",
-      "bug_title": "Canyon checkpoint interaction works after pass unlock failed"
+      "notes": "Completed in 2048ms"
     },
     {
       "id": 8,
       "description": "Drone patrol triggers battle transition and battle debug snapshot hotkey works",
       "status": "PASS",
       "screenshot": "screenshots/12-battle-entry.png",
-      "notes": "Completed in 3356ms"
+      "notes": "Completed in 3330ms"
     },
     {
       "id": 9,
       "description": "Load/Continue flow uses persisted save state",
       "status": "PASS",
       "screenshot": "screenshots/14-continue-after-load.png",
-      "notes": "Completed in 2795ms"
+      "notes": "Completed in 2707ms"
     }
   ],
   "console_events": [
@@ -73,23 +71,27 @@
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x38b40012c200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x16b400118200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x38b40012c200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x16b400118200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x38b40012c200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x16b400118200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x38b40012c200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      "text": "[.WebGL-0x16b400118200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
     },
     {
       "type": "log",
       "text": "%c %c %c %c %c Phaser v3.90.0 (WebGL | Web Audio) %c https://phaser.io/v390 background: #ff0000 background: #ffff00 background: #00ff00 background: #00ffff color: #ffffff; background: #000000 background: transparent"
+    },
+    {
+      "type": "log",
+      "text": "[OverworldScene] Pickup collected: obj-workshop-pass-cache; item=workshop-pass; total=1; flags={\"quest.workshopPassCollected\":true,\"quest.canyonCheckpointUnlocked\":true}"
     },
     {
       "type": "log",
