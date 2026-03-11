@@ -1,6 +1,7 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
+import DialogueOverlay from "../ui/DialogueOverlay.js";
 import {
   getBattleOutcomeFlag,
   KEY_BATTLE_OUTCOME_FLAGS,
@@ -273,10 +274,7 @@ class OverworldScene extends Phaser.Scene {
     this.signGroup = null;
     this.npcEntities = [];
     this.levelSigns = [];
-    this.dialogueBox = null;
-    this.dialogueText = null;
-    this.dialogueHintText = null;
-    this.dialogueChoiceText = null;
+    this.dialogueOverlay = null;
     this.activeDialogueNpcId = null;
     this.activeDialogueSignId = null;
     this.awaitingSignEnterChoice = false;
@@ -324,7 +322,7 @@ class OverworldScene extends Phaser.Scene {
     this.createNpcPlaceholders();
     this.createLevelSigns();
     this.setupInputManager();
-    this.createDialogueUi();
+    this.createDialogueOverlay();
     this.createHudOverlay(data);
 
     this.add
@@ -794,7 +792,7 @@ class OverworldScene extends Phaser.Scene {
     }
 
     if (event.action === InputActions.CANCEL) {
-      if (this.dialogueBox?.visible) {
+      if (this.isDialogueVisible()) {
         this.handleCancelAction();
       }
       this.clearPointerPath();
@@ -811,11 +809,14 @@ class OverworldScene extends Phaser.Scene {
     }
 
     const targetTile = { x: event.tileX, y: event.tileY };
-    if (this.handleTileInteractionSelection(targetTile)) {
+    if (this.isDialogueVisible()) {
+      if (this.handleDialoguePointerSelection(targetTile)) {
+        return;
+      }
       return;
     }
 
-    if (this.dialogueBox?.visible) {
+    if (this.handleTileInteractionSelection(targetTile)) {
       return;
     }
 
@@ -854,7 +855,7 @@ class OverworldScene extends Phaser.Scene {
   }
 
   handleConfirmAction() {
-    if (this.dialogueBox?.visible) {
+    if (this.isDialogueVisible()) {
       if (this.activeDialogueSignId && this.awaitingSignEnterChoice) {
         this.confirmLevelSignSelection();
         return;
@@ -903,7 +904,7 @@ class OverworldScene extends Phaser.Scene {
   }
 
   handleDialogueChoiceNavigation(direction) {
-    if (!this.dialogueBox?.visible || !this.activeDialogueNpcId) {
+    if (!this.isDialogueVisible() || !this.activeDialogueNpcId) {
       return;
     }
 
@@ -930,6 +931,22 @@ class OverworldScene extends Phaser.Scene {
   clearPointerPath() {
     this.pointerPath = [];
     this.pointerPathTiles = [];
+  }
+
+  isDialogueVisible() {
+    return this.dialogueOverlay?.isVisible() === true;
+  }
+
+  handleDialoguePointerSelection(targetTile) {
+    if (this.activeDialogueSignId && this.awaitingSignEnterChoice) {
+      const sign = this.findSignAtTile(targetTile.x, targetTile.y);
+      if (sign && sign.getData("signId") === this.activeDialogueSignId) {
+        this.transitionToLevel(sign);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   getPlayerTile() {
@@ -1017,45 +1034,41 @@ class OverworldScene extends Phaser.Scene {
     return path;
   }
 
-  createDialogueUi() {
-    this.dialogueBox = this.add
-      .rectangle(400, 532, 760, 116, 0x111827, 0.9)
-      .setStrokeStyle(2, 0x7ea8ff, 1)
-      .setScrollFactor(0)
-      .setDepth(UI_DEPTH)
-      .setVisible(false);
+  createDialogueOverlay() {
+    this.dialogueOverlay = new DialogueOverlay(this, {
+      depth: UI_DEPTH + 2,
+      width: 760,
+      height: 148,
+      x: 400,
+      y: 594,
+    })
+      .create()
+      .onChoiceSelected((payload) => this.handleDialogueChoiceClick(payload));
 
-    this.dialogueText = this.add
-      .text(32, 508, "", {
-        color: "#ffffff",
-        fontFamily: "monospace",
-        fontSize: "15px",
-        wordWrap: { width: 730, useAdvancedWrap: true },
-      })
-      .setScrollFactor(0)
-      .setDepth(UI_DEPTH)
-      .setVisible(false);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyDialogueOverlay());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyDialogueOverlay());
+  }
 
-    this.dialogueChoiceText = this.add
-      .text(32, 550, "", {
-        color: "#e8f2ff",
-        fontFamily: "monospace",
-        fontSize: "13px",
-        wordWrap: { width: 730, useAdvancedWrap: true },
-      })
-      .setScrollFactor(0)
-      .setDepth(UI_DEPTH)
-      .setVisible(false);
+  destroyDialogueOverlay() {
+    this.dialogueOverlay?.destroy();
+    this.dialogueOverlay = null;
+  }
 
-    this.dialogueHintText = this.add
-      .text(32, 580, "Press Space or Enter to close", {
-        color: "#c5d9ff",
-        fontFamily: "monospace",
-        fontSize: "12px",
-      })
-      .setScrollFactor(0)
-      .setDepth(UI_DEPTH)
-      .setVisible(false);
+  handleDialogueChoiceClick(payload) {
+    if (!this.activeDialogueNpcId || !this.dialogueController?.isActive()) {
+      return;
+    }
+
+    const choiceId = payload?.choice?.id;
+    const index = Number.isInteger(payload?.index) ? payload.index : -1;
+    if (index >= 0) {
+      this.activeDialogueChoiceIndex = index;
+    }
+    if (!choiceId) {
+      return;
+    }
+
+    this.dialogueController.selectChoice(choiceId);
   }
 
   findNearbyNpc() {
@@ -1132,11 +1145,7 @@ class OverworldScene extends Phaser.Scene {
       return false;
     }
 
-    if (
-      this.dialogueBox?.visible &&
-      this.awaitingSignEnterChoice &&
-      this.activeDialogueSignId === sign.getData("signId")
-    ) {
+    if (this.isDialogueVisible() && this.awaitingSignEnterChoice && this.activeDialogueSignId === sign.getData("signId")) {
       this.transitionToLevel(sign);
       return true;
     }
@@ -1169,12 +1178,9 @@ class OverworldScene extends Phaser.Scene {
     const npcId = npc.getData("npcId") || null;
     const dialogueTree = npc.getData("dialogueTree");
     if (!npcId || !dialogueTree) {
-      this.dialogueText.setText("This NPC does not have a dialogue tree yet.");
-      this.dialogueHintText.setText("Press Space or Enter to close");
-      this.dialogueBox.setVisible(true);
-      this.dialogueText.setVisible(true);
-      this.dialogueChoiceText.setVisible(false);
-      this.dialogueHintText.setVisible(true);
+      this.dialogueOverlay?.renderSystemMessage("This NPC does not have a dialogue tree yet.", {
+        speakerName: "System",
+      });
       return;
     }
 
@@ -1198,7 +1204,6 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    const speakerName = snapshot.speaker?.name || snapshot.node.speakerId || "NPC";
     this.activeDialogueChoices = Array.isArray(snapshot.choices) ? [...snapshot.choices] : [];
     if (this.activeDialogueChoiceIndex >= this.activeDialogueChoices.length) {
       this.activeDialogueChoiceIndex = 0;
@@ -1206,33 +1211,10 @@ class OverworldScene extends Phaser.Scene {
 
     this.activeDialogueSignId = null;
     this.awaitingSignEnterChoice = false;
-    this.dialogueText.setText(`${speakerName}: ${snapshot.node.text ?? ""}`);
-    this.dialogueChoiceText.setText(this.buildDialogueChoiceText());
-    this.dialogueHintText.setText(this.buildDialogueHintText());
-    this.dialogueBox.setVisible(true);
-    this.dialogueText.setVisible(true);
-    this.dialogueChoiceText.setVisible(this.activeDialogueChoices.length > 0);
-    this.dialogueHintText.setVisible(true);
-  }
-
-  buildDialogueChoiceText() {
-    if (!this.activeDialogueChoices || this.activeDialogueChoices.length === 0) {
-      return "";
-    }
-
-    return this.activeDialogueChoices
-      .map((choice, index) => {
-        const prefix = index === this.activeDialogueChoiceIndex ? ">" : " ";
-        return `${prefix} ${index + 1}. ${choice.text ?? choice.id ?? "Choice"}`;
-      })
-      .join("   ");
-  }
-
-  buildDialogueHintText() {
-    if (this.activeDialogueChoices.length > 0) {
-      return "Up/Down: choose  Enter/Space: confirm  Esc: go back/close";
-    }
-    return "Enter/Space: next  Esc: go back/close";
+    this.dialogueOverlay?.renderNpcSnapshot(snapshot, {
+      selectedChoiceIndex: this.activeDialogueChoiceIndex,
+      npcId: this.activeDialogueNpcId,
+    });
   }
 
   moveDialogueChoice(direction) {
@@ -1240,10 +1222,10 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    const count = this.activeDialogueChoices.length;
-    const nextIndex = Phaser.Math.Wrap(this.activeDialogueChoiceIndex + direction, 0, count);
-    this.activeDialogueChoiceIndex = nextIndex;
-    this.dialogueChoiceText.setText(this.buildDialogueChoiceText());
+    const nextIndex = this.dialogueOverlay?.moveChoiceSelection(direction);
+    if (Number.isInteger(nextIndex)) {
+      this.activeDialogueChoiceIndex = nextIndex;
+    }
   }
 
   showLevelSignPrompt(sign) {
@@ -1254,15 +1236,11 @@ class OverworldScene extends Phaser.Scene {
     this.awaitingSignEnterChoice = true;
     this.activeDialogueChoices = [];
     this.activeDialogueChoiceIndex = 0;
-    this.dialogueText.setText(
-      `${signPrompt}\nPress Enter to travel to ${signLabel}. Tap/click the sign tile again to confirm. Space closes.`
-    );
-    this.dialogueChoiceText.setText("");
-    this.dialogueHintText.setText("Enter or sign-tile tap: travel  Space: close");
-    this.dialogueBox.setVisible(true);
-    this.dialogueText.setVisible(true);
-    this.dialogueChoiceText.setVisible(false);
-    this.dialogueHintText.setVisible(true);
+    this.dialogueOverlay?.renderSignPrompt({
+      signId: this.activeDialogueSignId,
+      signLabel,
+      signPrompt,
+    });
   }
 
   transitionToLevel(sign) {
@@ -1273,8 +1251,9 @@ class OverworldScene extends Phaser.Scene {
     const signId = sign.getData("signId");
     const sceneKey = LEVEL_SCENE_BY_SIGN_ID[signId];
     if (!sceneKey) {
-      this.dialogueText.setText("This sign is not mapped to a playable level yet.");
-      this.dialogueHintText.setText("Press Space or Enter to close");
+      this.dialogueOverlay?.renderSystemMessage("This sign is not mapped to a playable level yet.", {
+        speakerName: "System",
+      });
       this.awaitingSignEnterChoice = false;
       return;
     }
@@ -1312,10 +1291,7 @@ class OverworldScene extends Phaser.Scene {
     this.awaitingSignEnterChoice = keepSignPrompt && this.awaitingSignEnterChoice;
     this.activeDialogueChoices = [];
     this.activeDialogueChoiceIndex = 0;
-    this.dialogueBox.setVisible(false);
-    this.dialogueText.setVisible(false);
-    this.dialogueChoiceText.setVisible(false);
-    this.dialogueHintText.setVisible(false);
+    this.dialogueOverlay?.hide();
   }
 
   getMovementVector() {
@@ -1397,7 +1373,7 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    if (this.dialogueBox.visible) {
+    if (this.isDialogueVisible()) {
       this.clearPointerPath();
       this.player.body.setVelocity(0, 0);
       this.player.anims.play("player-idle", true);

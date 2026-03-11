@@ -1,5 +1,47 @@
 # Status
 
+- Task: Integrate dialogue UI into overworld scene (TASK_ID=392, RUN_ID=693)
+- State: Completed
+- Notes: Added a reusable dialogue overlay UI and connected it to overworld dialogue controller events so NPC conversations now render through a dedicated UI layer while movement/interactions are gated during active dialogue.
+
+  What changed:
+  - Added `src/ui/DialogueOverlay.js`.
+    - Reusable UI component for dialogue presentation with:
+      - speaker nameplate
+      - dialogue body text
+      - optional portrait rendering from dialogue speaker metadata (`portraitKey`)
+      - interactive branching choice rows
+      - contextual input hints
+    - API methods include:
+      - `renderNpcSnapshot(snapshot, { selectedChoiceIndex })`
+      - `renderSignPrompt(...)`
+      - `renderSystemMessage(...)`
+      - `moveChoiceSelection(direction)`
+      - `hide()` / `destroy()` / `isVisible()`
+  - Updated `src/scenes/OverworldScene.js` to use `DialogueOverlay` instead of scene-local ad hoc dialogue text objects.
+    - Replaced inline dialogue box/text creation with `createDialogueOverlay()` and lifecycle cleanup.
+    - Wired `DialogueController` node updates to `dialogueOverlay.renderNpcSnapshot(...)`.
+    - Wired pointer choice selection to `dialogueController.selectChoice(...)` for mouse/touch branch selection.
+    - Preserved keyboard flow:
+      - `Enter/Space`: advance or confirm selected choice
+      - `Up/Down`: move choice cursor
+      - `Esc`: go back or close/end dialogue
+  - Input/movement gating improvements while dialogue is active:
+    - Pointer tile selection no longer starts movement or non-dialogue interactions during active dialogue.
+    - Only sign-confirm pointer behavior remains active when sign confirmation is intentionally open.
+    - Overworld movement/pathing remains paused while overlay is visible, then resumes once dialogue closes.
+  - Dialogue close/cleanup stability:
+    - `hideDialogue(...)` now clears dialogue state and hides overlay cleanly.
+    - Overlay is destroyed on scene shutdown/destroy to avoid lingering UI/input handlers.
+
+  Acceptance coverage:
+  1. NPC interaction starts dialogue tree from the core dialogue system and displays speaker + text in overworld.
+  2. Linear multi-node dialogue advances via confirm input without soft locks.
+  3. Branching choices render, can be navigated (keyboard) or clicked (mouse/touch), and route to selected nodes.
+  4. Movement and other overworld interactions are gated while dialogue is active.
+  5. Ending dialogue restores normal overworld control and removes dialogue UI artifacts.
+  6. New UI/integration code lives under existing scene/UI structure and is documented here.
+
 - Task: Implement core dialogue system primitives (TASK_ID=391, RUN_ID=692)
 - State: Completed
 - Notes: Added a reusable, scene-agnostic dialogue framework and integrated it into overworld NPC interactions.
