@@ -2333,3 +2333,42 @@ Date: 2026-03-11 (UTC)
 - Do not call `scene.sound.add(...)` directly in scenes.
 - Always retrieve the shared `audioManager` from registry and call manager methods.
 - Add audio assets/keys in scene preload or boot pipelines as needed; manager gracefully handles missing keys.
+
+## Task 413 - Wire Overworld Movement and Interaction Audio (RUN_ID=729)
+Date: 2026-03-11 (UTC)
+
+### Summary
+- Wired overworld movement and interaction audio through the shared `AudioManager` in `src/scenes/OverworldScene.js`.
+- Added tile-change-driven footstep playback with throttle protection to avoid audio spam while moving or colliding.
+- Added SFX hooks for NPC dialogue start, sign/object interaction prompts, and item pickup rewards.
+- Clarified overworld music transition behavior by stopping overworld music before level or battle scene handoffs.
+
+### Overworld Events Now Wired To Audio
+- Player movement between tiles:
+  - `syncMovementAudioFromTileChange()` compares current tile key to previous tile key and only triggers on real tile transitions.
+  - Plays `sfx-overworld-step` via `audioManager.playSfx(...)`.
+  - Applies cooldown (`FOOTSTEP_MIN_INTERVAL_MS = 140`) so rapid movement cannot flood overlapping steps.
+  - No step SFX when standing still or when movement input is blocked and tile does not change.
+- NPC dialogue start:
+  - `startNpcDialogueConversation(...)` now plays `sfx-overworld-dialogue-open` before starting the dialogue controller.
+- Basic overworld interactions:
+  - `showLevelSignPrompt(...)` and non-pickup interactables in `tryInteractWithInteractable(...)` now play `sfx-overworld-interact`.
+- Item pickup rewards:
+  - Pickup success path in `tryInteractWithInteractable(...)` now plays distinct `sfx-overworld-item-pickup`.
+
+### Music Behavior
+- Overworld entry:
+  - `create(...)` starts `music-overworld` through shared manager (`playMusic(..., { loop: true })`).
+- Overworld exit/transition:
+  - `transitionToLevel(...)` and `startOverworldBattleEncounter(...)` call `audioManager.stopMusic()` before scene switch.
+  - Prevents lingering overworld music and ensures clean handoff to destination scene track.
+
+### Extension Pattern For New Interactions
+- Reuse `playOverworldSfx(key, options)` helper in `OverworldScene` for any new overworld feedback cues.
+- Hook audio at confirmed gameplay events (state change, successful action) instead of raw input presses.
+- For repeated actions, follow the same anti-spam approach used by `syncMovementAudioFromTileChange()`:
+  - gate by meaningful state change first, then optionally apply a small cooldown.
+
+### Known Limitations
+- Audio keys (`sfx-overworld-step`, `sfx-overworld-dialogue-open`, `sfx-overworld-interact`, `sfx-overworld-item-pickup`) must exist in the loaded Phaser audio cache to produce audible output.
+- The current manager intentionally no-ops on missing keys, so wiring is safe even before final audio assets are imported.

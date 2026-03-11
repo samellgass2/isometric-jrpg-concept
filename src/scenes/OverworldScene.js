@@ -38,6 +38,15 @@ const INTERACTION_DISTANCE = TILE_SIZE * 1.5;
 const UI_DEPTH = 40;
 const ARRIVAL_THRESHOLD = 4;
 const SIGN_INTERACTION_DISTANCE = TILE_SIZE;
+const FOOTSTEP_MIN_INTERVAL_MS = 140;
+
+const OVERWORLD_AUDIO_KEYS = Object.freeze({
+  music: "music-overworld",
+  step: "sfx-overworld-step",
+  interact: "sfx-overworld-interact",
+  dialogueOpen: "sfx-overworld-dialogue-open",
+  itemPickup: "sfx-overworld-item-pickup",
+});
 
 const PLAYER_TEXTURES = {
   idle: "player-idle",
@@ -158,11 +167,13 @@ class OverworldScene extends Phaser.Scene {
     this.devShortcutListeners = [];
     this.stateDebugVisible = true;
     this.audioManager = null;
+    this.lastMovementTileKey = "";
+    this.lastFootstepAtMs = Number.NEGATIVE_INFINITY;
   }
 
   create(data) {
     this.audioManager = this.game.registry.get("audioManager") ?? null;
-    this.audioManager?.playMusic("music-overworld", { loop: true });
+    this.audioManager?.playMusic(OVERWORLD_AUDIO_KEYS.music, { loop: true });
 
     const progress = this.getProgressState();
     this.progressSnapshot = progress;
@@ -220,6 +231,7 @@ class OverworldScene extends Phaser.Scene {
       spawnPointId: requestedSpawnPointId,
       currentSceneKey: this.scene.key,
     });
+    this.resetMovementAudioState();
     if (
       data?.lastEncounterId === OVERWORLD_BATTLE_ENCOUNTER_ID &&
       (data?.battleResult === "victory" || data?.battleResult === "defeat")
@@ -237,6 +249,41 @@ class OverworldScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyDialogueSystem());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyDialogueSystem());
+  }
+
+  playOverworldSfx(key, options = {}) {
+    if (!key) {
+      return null;
+    }
+    return this.audioManager?.playSfx(key, options) ?? null;
+  }
+
+  resetMovementAudioState() {
+    const tile = this.getPlayerTile();
+    this.lastMovementTileKey = tile ? keyForTile(tile.x, tile.y) : "";
+    this.lastFootstepAtMs = Number.NEGATIVE_INFINITY;
+  }
+
+  syncMovementAudioFromTileChange() {
+    const tile = this.getPlayerTile();
+    if (!tile) {
+      return false;
+    }
+
+    const nextTileKey = keyForTile(tile.x, tile.y);
+    if (nextTileKey === this.lastMovementTileKey) {
+      return false;
+    }
+
+    this.lastMovementTileKey = nextTileKey;
+    const now = this.time?.now ?? 0;
+    if (now - this.lastFootstepAtMs < FOOTSTEP_MIN_INTERVAL_MS) {
+      return true;
+    }
+
+    this.playOverworldSfx(OVERWORLD_AUDIO_KEYS.step, { volume: 0.72 });
+    this.lastFootstepAtMs = now;
+    return true;
   }
 
   createHudOverlay(data = {}) {
@@ -1443,6 +1490,7 @@ class OverworldScene extends Phaser.Scene {
         speakerName: entity.getData("label") ?? "Pickup",
         hintText: "Press Space, Enter, or Esc to close",
       });
+      this.playOverworldSfx(OVERWORLD_AUDIO_KEYS.itemPickup, { volume: 0.9 });
       console.log(
         `[OverworldScene] Pickup collected: ${objectId}; item=${rewardItemId ?? "none"}; total=${nextCount}; flags=${JSON.stringify(nextStoryFlags)}`
       );
@@ -1462,6 +1510,7 @@ class OverworldScene extends Phaser.Scene {
       speakerName,
       hintText: "Press Space, Enter, or Esc to close",
     });
+    this.playOverworldSfx(OVERWORLD_AUDIO_KEYS.interact, { volume: 0.82 });
     this.activeDialogueNpcId = null;
     this.activeDialogueSignId = null;
     this.awaitingSignEnterChoice = false;
@@ -1490,6 +1539,7 @@ class OverworldScene extends Phaser.Scene {
     this.awaitingSignEnterChoice = false;
     this.activeDialogueChoices = [];
     this.activeDialogueChoiceIndex = 0;
+    this.playOverworldSfx(OVERWORLD_AUDIO_KEYS.dialogueOpen, { volume: 0.85 });
     this.dialogueController.startConversation({
       npcId,
       tree: dialogueTree,
@@ -1545,6 +1595,7 @@ class OverworldScene extends Phaser.Scene {
       signLabel,
       signPrompt,
     });
+    this.playOverworldSfx(OVERWORLD_AUDIO_KEYS.interact);
   }
 
   transitionToLevel(sign) {
@@ -1577,6 +1628,7 @@ class OverworldScene extends Phaser.Scene {
     this.isTransitioning = true;
     this.clearPointerPath();
     this.hideDialogue();
+    this.audioManager?.stopMusic();
     this.persistOverworldProgress({
       force: true,
       currentSceneKey: sceneKey,
@@ -1714,6 +1766,7 @@ class OverworldScene extends Phaser.Scene {
       this.syncHudOverlay();
       this.syncStateDebugOverlay();
       this.persistOverworldProgress();
+      this.syncMovementAudioFromTileChange();
       this.checkOverworldBattleTrigger();
       return;
     }
@@ -1722,6 +1775,7 @@ class OverworldScene extends Phaser.Scene {
       this.syncHudOverlay();
       this.syncStateDebugOverlay();
       this.persistOverworldProgress();
+      this.syncMovementAudioFromTileChange();
       this.checkOverworldBattleTrigger();
       return;
     }
@@ -1731,6 +1785,7 @@ class OverworldScene extends Phaser.Scene {
     this.syncHudOverlay();
     this.syncStateDebugOverlay();
     this.persistOverworldProgress();
+    this.syncMovementAudioFromTileChange();
     this.checkOverworldBattleTrigger();
   }
 
@@ -1800,6 +1855,7 @@ class OverworldScene extends Phaser.Scene {
     this.isTransitioning = true;
     this.clearPointerPath();
     this.hideDialogue();
+    this.audioManager?.stopMusic();
     this.persistOverworldProgress({
       force: true,
       currentSceneKey: "BattleScene",
