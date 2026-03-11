@@ -2324,3 +2324,32 @@ Summary:
 
 Trigger path:
 - Battle completes -> `BattleScene.finishBattle("victory")` -> `BattleScene.persistBattleProgress(...)` -> `awardPartyXP(...)` -> `awardCharacterXP(...)`.
+
+## Task 427 - Integrate progression across overworld and battles
+Date: 2026-03-11
+
+Summary:
+- Unified battle entry party resolution through shared state with new `buildBattlePartyFromEncounterTemplates(...)` in `src/state/gameState.js`.
+  - Battle scenes now resolve encounter friendlies from central party models first, then seed missing non-drone party members from encounter templates.
+  - This keeps protagonist, elephant, cheetah, and dog party members synchronized in one authoritative state path.
+- Updated `src/scenes/BattleScene.js` to stop local stat-merging logic and use the centralized resolver.
+  - Battle units now carry level/XP fields in-scene for display consistency.
+  - Added progression snapshots at battle entry and battle resolution (`battle-entry`, `pre-battle-result`, `post-xp-award` / `post-battle-result`) to both battle log text and structured console output.
+  - Selection panel and HUD now show `Lv` and `XP` with HP, so QA can confirm progression without debugger inspection.
+- Updated `src/scenes/OverworldScene.js` HUD/debug overlays to read protagonist data directly from game state each sync, and show `Lv`, `XP`, and HP in on-screen text.
+- Updated `src/persistence/runtimeStateTools.js` debug snapshots to include `currentXP`, `xpToNextLevel`, and `isDrone`.
+- Updated `src/state/gameState.js` XP awarding so drone-flagged members are skipped for XP progression (non-persistent progression behavior for drones).
+
+Touched files:
+- `src/state/gameState.js`
+- `src/scenes/BattleScene.js`
+- `src/scenes/OverworldScene.js`
+- `src/persistence/runtimeStateTools.js`
+- `scripts/game-state-model.test.mjs`
+
+How testers can verify:
+1. Start in Overworld and trigger a battle encounter; confirm Battle HUD/selection panel shows same party member HP/Lv/XP that Overworld debug panel showed before transition.
+2. Win the battle and watch battle log lines prefixed with `[Progression ...]` plus console object logs (`[BattleScene] Progression snapshot`) for before/after XP and level changes.
+3. Return to Overworld and confirm HUD/debug overlay now shows updated `Lv/XP/HP`.
+4. Trigger a second encounter from overworld/levels and confirm the same updated values are used at battle entry for protagonist and participating party animals (elephant, cheetah, dog).
+5. Confirm drone units appear in progression logs with `DRONE(non-persistent-xp)` and are not promoted through persistent party XP awards.

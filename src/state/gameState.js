@@ -47,6 +47,43 @@ function normalizePartyMember(member) {
   return normalized;
 }
 
+function shouldPersistPartyTemplateMember(member) {
+  const normalized = normalizeCharacterModel(member);
+  if (!normalized) {
+    return false;
+  }
+
+  return normalized.flags?.isPartyMember === true && normalized.flags?.isDrone !== true;
+}
+
+function cloneEncounterUnitExtras(unit) {
+  return {
+    spawn: unit?.spawn ? { ...unit.spawn } : undefined,
+    color: unit?.color,
+  };
+}
+
+function mergeBattleTemplateWithPartyMember(template, partyMember) {
+  const normalizedMerged = normalizeCharacterModel({
+    ...(isPlainObject(template) ? template : {}),
+    ...(isPlainObject(partyMember) ? partyMember : {}),
+    flags: {
+      ...(template?.flags ?? {}),
+      ...(partyMember?.flags ?? {}),
+      isPartyMember: true,
+    },
+  });
+  if (!normalizedMerged) {
+    return null;
+  }
+
+  const extras = cloneEncounterUnitExtras(template);
+  return {
+    ...normalizedMerged,
+    ...extras,
+  };
+}
+
 function normalizePartyMembers(members) {
   if (!Array.isArray(members)) {
     return [cloneJson(DEFAULT_PARTY_MEMBER)];
@@ -257,6 +294,76 @@ class GameStateStore {
     });
   }
 
+  buildBattlePartyFromEncounterTemplates(friendlyUnits = []) {
+    if (!Array.isArray(friendlyUnits) || friendlyUnits.length === 0) {
+      return [];
+    }
+
+    const ensuredMembers = [];
+    this.update((current) => {
+      const existingById = new Map(current.party.members.map((member) => [member.id, member]));
+      const membersToAppend = [];
+
+      friendlyUnits.forEach((unitTemplate) => {
+        const normalizedTemplate = normalizeCharacterModel({
+          ...(isPlainObject(unitTemplate) ? unitTemplate : {}),
+          flags: {
+            ...(unitTemplate?.flags ?? {}),
+            isPartyMember: true,
+          },
+        });
+        if (!normalizedTemplate) {
+          return;
+        }
+
+        const persisted = existingById.get(normalizedTemplate.id);
+        if (persisted) {
+          const merged = mergeBattleTemplateWithPartyMember(unitTemplate, persisted);
+          if (merged) {
+            ensuredMembers.push(merged);
+          }
+          return;
+        }
+
+        if (shouldPersistPartyTemplateMember(normalizedTemplate)) {
+          membersToAppend.push(normalizedTemplate);
+          const merged = mergeBattleTemplateWithPartyMember(unitTemplate, normalizedTemplate);
+          if (merged) {
+            ensuredMembers.push(merged);
+          }
+          return;
+        }
+
+        const merged = mergeBattleTemplateWithPartyMember(unitTemplate, normalizedTemplate);
+        if (merged) {
+          ensuredMembers.push(merged);
+        }
+      });
+
+      if (membersToAppend.length === 0) {
+        return current;
+      }
+
+      const members = [...current.party.members, ...membersToAppend];
+      const memberOrder = [...current.party.memberOrder];
+      membersToAppend.forEach((member) => {
+        if (!memberOrder.includes(member.id)) {
+          memberOrder.push(member.id);
+        }
+      });
+
+      return {
+        ...current,
+        party: {
+          members,
+          memberOrder,
+        },
+      };
+    });
+
+    return ensuredMembers;
+  }
+
   setBattleEnemies(enemies = []) {
     const normalized = normalizeEnemies(enemies);
     return this.update((current) => ({
@@ -386,6 +493,10 @@ class GameStateStore {
           return member;
         }
 
+        if (member.flags?.isDrone === true) {
+          return member;
+        }
+
         const result = awardCharacterXP(member, normalizedXP);
         if (!result?.character) {
           return member;
@@ -438,6 +549,10 @@ class GameStateStore {
     const state = this.update((current) => {
       const members = current.party.members.map((member) => {
         if (!idSet.has(member.id)) {
+          return member;
+        }
+
+        if (member.flags?.isDrone === true) {
           return member;
         }
 
@@ -665,6 +780,10 @@ export function getPartyMember(memberId) {
 
 export function addPartyMember(member) {
   return gameStateStore.addPartyMember(member);
+}
+
+export function buildBattlePartyFromEncounterTemplates(friendlyUnits = []) {
+  return gameStateStore.buildBattlePartyFromEncounterTemplates(friendlyUnits);
 }
 
 export function removePartyMember(memberId) {

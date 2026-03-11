@@ -4,6 +4,8 @@ import {
   addPartyMember,
   adjustPartyMemberHealth,
   applyGameStateToPlayerProgress,
+  awardPartyMemberXP,
+  buildBattlePartyFromEncounterTemplates,
   createGameStateFromPlayerProgress,
   getGameState,
   getInventoryCount,
@@ -96,6 +98,70 @@ assert.equal(getPartyMember("guardian-dog"), null);
 
 unsubscribe();
 assert.ok(publishCount >= 6);
+
+const encounterRoster = buildBattlePartyFromEncounterTemplates([
+  {
+    id: "protagonist",
+    name: "Pathfinder",
+    archetype: "hero",
+    level: 4,
+    currentHP: 60,
+    currentHp: 60,
+    maxHp: 100,
+    stats: { maxHp: 100, defense: 12 },
+    movement: { tilesPerTurn: 5 },
+    attack: { range: 1, baseDamage: 28 },
+    spawn: { x: 2, y: 4 },
+  },
+  {
+    id: "elephant-bulwark",
+    name: "Elephant Bulwark",
+    archetype: "elephant",
+    level: 1,
+    currentHp: 220,
+    maxHp: 220,
+    stats: { maxHp: 220, defense: 24 },
+    movement: { tilesPerTurn: 2 },
+    attack: { range: 2, baseDamage: 38 },
+    spawn: { x: 4, y: 3 },
+  },
+  {
+    id: "battle-helper-drone",
+    name: "Battle Helper Drone",
+    archetype: "zookeeper-drone",
+    level: 1,
+    currentHp: 70,
+    maxHp: 70,
+    stats: { maxHp: 70, defense: 4 },
+    movement: { tilesPerTurn: 5 },
+    attack: { range: 2, baseDamage: 16 },
+    flags: { isDrone: true, isPartyMember: true },
+    spawn: { x: 5, y: 3 },
+  },
+]);
+assert.deepEqual(
+  encounterRoster.map((unit) => unit.id),
+  ["protagonist", "elephant-bulwark", "battle-helper-drone"]
+);
+assert.equal(getPartyMember("elephant-bulwark")?.flags?.isDrone, false);
+assert.equal(getPartyMember("battle-helper-drone"), null);
+
+addPartyMember({
+  id: "test-drone-party-member",
+  name: "Test Drone",
+  archetype: "zookeeper-drone",
+  level: 1,
+  currentXP: 0,
+  xpToNextLevel: 100,
+  currentHp: 40,
+  maxHp: 40,
+  flags: { isDrone: true, isPartyMember: true },
+});
+const droneBeforeXP = getPartyMember("test-drone-party-member");
+awardPartyMemberXP("test-drone-party-member", 200);
+const droneAfterXP = getPartyMember("test-drone-party-member");
+assert.equal(droneAfterXP?.level, droneBeforeXP?.level);
+assert.equal(droneAfterXP?.currentXP, droneBeforeXP?.currentXP);
 
 const exportedProgress = applyGameStateToPlayerProgress(getGameState(), createInitialPlayerProgressState());
 assert.equal(exportedProgress.party.members.some((member) => member.id === "protagonist"), true);
