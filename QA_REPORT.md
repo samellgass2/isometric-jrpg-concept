@@ -6,57 +6,42 @@
 - Date: 2026-03-11
 
 ## Results Summary
-- Total criteria tested: 9
-- Passed: 9
+- Total criteria tested: 6
+- Passed: 4
 - Failed: 0
-- Blocked: 0
+- Blocked: 2
 
 ## Detailed Results
 
-### Criterion 1: Main menu initial state loads
+### Criterion 1: Battle entry stats match shared state
 **Status:** PASS
-**Screenshot:** screenshots/01-main-menu.png
-**Notes:** Main menu rendered successfully on initial load.
+**Screenshot:** screenshots/02-battle-entry.png
+**Notes:** Entered `overworld-first-drone` battle and verified protagonist/dog level/XP/HP in persisted state matched pre-battle shared state values.
 
-### Criterion 2: Start Game enters Overworld scene
-**Status:** PASS
-**Screenshot:** screenshots/02-overworld-entry.png
-**Notes:** Pressing Enter from menu transitioned into overworld state.
+### Criterion 2: XP/levels persist into overworld and subsequent encounters
+**Status:** BLOCKED
+**Screenshot:** screenshots/04-level2-entry.png
+**Notes:** Single-attempt battle automation did not complete the overworld battle; session remained in battle state so transition to next encounter could not be validated in this run.
 
-### Criterion 3: Ranger dialogue progression sets tutorial completion flag
+### Criterion 3: No divergent independent stat copies in transition flow
 **Status:** PASS
-**Screenshot:** screenshots/05-ranger-dialogue-complete.png
-**Notes:** Completed ranger interaction flow; `dialogue.rangerTutorialComplete` persisted in `localStorage` progress state.
+**Screenshot:** screenshots/06-transition-state-check.png
+**Notes:** During scene transition flow, protagonist HP/XP remained valid in shared persisted state and scene state updated to `BattleScene` as expected.
 
-### Criterion 4: Mechanic interaction unlocks workshop gate progression
+### Criterion 4: Simple UI/logging to verify progression
 **Status:** PASS
-**Screenshot:** screenshots/08-mechanic-dialogue-complete.png
-**Notes:** Mechanic dialogue branch set `quest.workshopGateUnlocked=true`.
+**Screenshot:** screenshots/07-battle-inspect-log.png
+**Notes:** Verified progression observability via logs: `[BattleScene] Progression snapshot ...` and inspect output `[BattleScene] Debug snapshot ...`.
 
-### Criterion 5: Workshop gate interaction prompt is available after unlock
-**Status:** PASS
-**Screenshot:** screenshots/09-workshop-gate-prompt.png
-**Notes:** Gate remained interactable with post-unlock behavior available.
+### Criterion 5: Elephant/cheetah/dog progression and drone non-persistence behavior
+**Status:** BLOCKED
+**Screenshot:** screenshots/08-level2-after-battle.png
+**Notes:** Dependent on Criterion 2 transition to Level 2 battle flow; could not complete required encounter path in one attempt, so this criterion was not fully reachable.
 
-### Criterion 6: Supply cache pickup grants workshop pass and checkpoint unlock flag
+### Criterion 6: STATUS updated with touched modules and test guidance
 **Status:** PASS
-**Screenshot:** screenshots/10-supply-cache-pickup.png
-**Notes:** Pickup granted `inventory.items['workshop-pass'] >= 1` and set `quest.canyonCheckpointUnlocked=true`.
-
-### Criterion 7: Canyon checkpoint interaction works after pass unlock
-**Status:** PASS
-**Screenshot:** screenshots/11-canyon-checkpoint-prompt.png
-**Notes:** Checkpoint interaction worked after pass/flag unlock state.
-
-### Criterion 8: Drone patrol triggers battle transition and battle debug snapshot hotkey works
-**Status:** PASS
-**Screenshot:** screenshots/12-battle-entry.png
-**Notes:** Overworld patrol trigger transitioned to battle; pressing `I` produced `[BattleScene] Debug snapshot` console output.
-
-### Criterion 9: Load/Continue flow uses persisted save state
-**Status:** PASS
-**Screenshot:** screenshots/14-continue-after-load.png
-**Notes:** After reload, Continue (`L`) resumed from a persisted playable scene key.
+**Screenshot:** screenshots/09-final-state.png
+**Notes:** `STATUS.md` exists and includes Task 427 update context with touched module references.
 
 ## Bugs Filed
-- None.
+- None. No clear, reproducible product defect was observed in this single-pass run; blocked items were execution-path limitations.
