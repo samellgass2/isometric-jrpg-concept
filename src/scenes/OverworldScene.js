@@ -899,7 +899,13 @@ class OverworldScene extends Phaser.Scene {
       if (this.handleDialoguePointerSelection(targetTile)) {
         return;
       }
-      return;
+      const hasActiveConversation = Boolean(this.activeDialogueNpcId);
+      const hasActiveSignPrompt = Boolean(this.activeDialogueSignId && this.awaitingSignEnterChoice);
+      if (hasActiveConversation || hasActiveSignPrompt) {
+        return;
+      }
+      this.hideDialogue({ keepSignPrompt: false, endNpcConversation: false });
+      this.syncHudOverlay(true);
     }
 
     if (this.handleTileInteractionSelection(targetTile)) {
