@@ -19,6 +19,58 @@ function cloneUnitConfig(config) {
 }
 
 export const encounterDefinitions = {
+  "overworld-first-drone": {
+    id: "overworld-first-drone",
+    name: "Perimeter Drone Sweep",
+    triggerDescription: "Step into the shimmering patrol zone near Ranger Sol.",
+    victoryCondition: "defeat_all_enemies",
+    obstacles: [
+      { x: 5, y: 3 },
+      { x: 6, y: 3 },
+      { x: 7, y: 3 },
+      { x: 7, y: 4 },
+    ],
+    friendlyUnits: [
+      {
+        id: "protagonist",
+        name: "Protagonist",
+        archetype: "hero",
+        movement: { tilesPerTurn: 4 },
+        attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
+        stats: { maxHp: 120, defense: 14 },
+        abilities: [],
+        spawn: { x: 2, y: 4 },
+        color: 0x6aa9ff,
+        currentHp: 100,
+      },
+      {
+        ...cloneUnitConfig(guardianDogUnit),
+        id: "guardian-dog",
+        spawn: { x: 3, y: 5 },
+        color: 0xc48e5a,
+      },
+    ],
+    enemyUnits: [
+      {
+        ...cloneUnitConfig(zookeeperScoutDroneUnit),
+        id: "enemy-overworld-scout-1",
+        spawn: { x: 9, y: 4 },
+        color: 0xe08989,
+      },
+      {
+        ...cloneUnitConfig(zookeeperDefenderDroneUnit),
+        id: "enemy-overworld-defender-1",
+        spawn: { x: 10, y: 5 },
+        color: 0xc06a6a,
+      },
+    ],
+    rewards: {
+      inventory: [{ itemId: "drone-scrap", amount: 1 }],
+      storyFlags: {
+        "quest.dronePerimeterSecured": true,
+      },
+    },
+  },
   "drone-test-battle": {
     id: "drone-test-battle",
     name: "Drone Test Battle",

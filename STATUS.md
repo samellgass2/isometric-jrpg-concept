@@ -1942,3 +1942,67 @@ Workflow: Core Game Loop, Progression, and State Management
 ### Validation
 - `npm test` PASS
   - rollback, dog behavior, grid stats, drone AI/scenario, player progress, game state model, save system, battle party persistence, dialogue system all passing.
+
+## Task #400 - Implement battle transition and state sync
+Date: 2026-03-11
+Workflow: Core Game Loop, Progression, and State Management
+
+### Summary
+- Implemented a complete `OverworldScene -> BattleScene -> OverworldScene` loop using a real encounter zone trigger in overworld exploration.
+- Refactored battle initialization to hydrate friendly battle units from centralized runtime game state (`src/state/gameState.js`) instead of hard-coded/local progress-only snapshots.
+- Wired battle damage/healing/rewards to sync through centralized game state and then serialize back into persisted `playerProgress` on battle completion.
+
+### Transition Loop Implemented
+1. Overworld trigger:
+- `src/scenes/OverworldScene.js` now creates a visible patrol tile marker at `(9,4)`.
+- Stepping on the marker starts battle encounter `overworld-first-drone` via `this.scene.start("BattleScene", ...)`.
+
+2. Battle initialization:
+- `src/scenes/BattleScene.js` now resolves initial friendly units by reading current party members/order/HP from `getGameState()` and merging that into encounter-friendly templates.
+- Enemy setup still comes from `src/battle/encounters.js` definitions.
+
+3. In-battle state sync:
+- Friendly damage writes through immediately with `setPartyMemberHealth(...)`.
+- Friendly healing (`stabilize` command) also writes through with `setPartyMemberHealth(...)`.
+- Victory rewards (`inventory` and `storyFlags` from encounter definition) are applied with `addInventoryItem(...)` and `setStoryFlags(...)`.
+
+4. Battle completion and return:
+- On `finishBattle`, battle reconciles final friendly HP to game state, applies outcome flags (`resolveKeyBattleOutcomeFlagForEncounter` -> `setStoryFlag`), then exports central game state back to persisted progress via `exportGameStateToPlayerProgress(...)`.
+- Encounter result history is still recorded in progress via `recordBattleOutcome(...)`.
+- Scene returns to `OverworldScene` with result metadata.
+
+### Progression Flag + Overworld Behavior
+- Added new key battle progression flag: `defeatedFirstDrone` (`KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED`).
+- Added encounter mapping `overworld-first-drone -> defeatedFirstDrone` in `src/state/playerProgress.js`.
+- Overworld behavior now depends on this outcome:
+  - Level 2 sign is locked until `defeatedFirstDrone` is true.
+  - Ranger dialogue has a post-clear branch when this flag is set.
+  - Overworld battle zone marker text/color reflects locked vs cleared state.
+
+### Files Updated
+- `src/scenes/OverworldScene.js`
+- `src/scenes/BattleScene.js`
+- `src/battle/encounters.js`
+- `src/state/playerProgress.js`
+- `src/data/overworldInteractionConfig.js`
+- `scripts/player-progress.test.mjs`
+
+### Manual QA Path (Overworld -> Battle -> Overworld)
+1. Start game and enter `OverworldScene`.
+2. Move to tile `(9,4)` (marked `Drone Patrol`) and step onto it.
+3. Confirm battle scene starts with encounter `Perimeter Drone Sweep`.
+4. During battle:
+- Take damage on protagonist or ally and confirm HP changes.
+- Use `stabilize` command on an injured friendly and confirm HP is restored.
+5. Win battle and return to overworld.
+6. Verify state consistency:
+- Overworld debug overlay reflects updated party HP.
+- Inventory includes reward item (`drone-scrap`).
+- Story flag `defeatedFirstDrone` is now true (observable via unlocked Level 2 sign behavior and ranger dialogue branch).
+7. Re-approach Level 2 sign:
+- Before victory: locked prompt.
+- After victory: transition allowed.
+
+### Validation
+- `npm test` PASS
+  - rollback, dog behavior, grid stats, drone AI/scenario, player progress, game state model, save system, battle party persistence, dialogue system.

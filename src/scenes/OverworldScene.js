@@ -73,6 +73,13 @@ const OVERWORLD_SPAWN_BY_ID = {
   "level-1-return": { x: 3, y: 9 },
   "level-2-return": { x: 12, y: 3 },
 };
+const OVERWORLD_BATTLE_ENCOUNTER_ID = "overworld-first-drone";
+const OVERWORLD_BATTLE_ZONE = Object.freeze({
+  id: "first-drone-zone",
+  tileX: 9,
+  tileY: 4,
+  label: "Drone Patrol Zone",
+});
 
 const TILE_LAYOUT = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -144,6 +151,9 @@ class OverworldScene extends Phaser.Scene {
     this.progressSnapshot = normalizePlayerProgressState();
     this.stateDebugText = null;
     this.stateDebugLastKey = "";
+    this.overworldBattleZoneMarker = null;
+    this.overworldBattleZoneLabel = null;
+    this.overworldBattleZoneTriggered = false;
   }
 
   create(data) {
@@ -172,6 +182,7 @@ class OverworldScene extends Phaser.Scene {
     this.createPlayerCharacter(spawnTile);
     this.createNpcPlaceholders();
     this.createQuestInteractables();
+    this.createOverworldBattleZone();
     this.createLevelSigns();
     this.setupInputManager();
     this.createDialogueOverlay();
@@ -201,6 +212,19 @@ class OverworldScene extends Phaser.Scene {
       spawnPointId: requestedSpawnPointId,
       currentSceneKey: this.scene.key,
     });
+    if (
+      data?.lastEncounterId === OVERWORLD_BATTLE_ENCOUNTER_ID &&
+      (data?.battleResult === "victory" || data?.battleResult === "defeat")
+    ) {
+      const line =
+        data.battleResult === "victory"
+          ? "Perimeter cleared. The canyon route is now authorized."
+          : "Drone patrol held the line. Recover and retry the patrol zone.";
+      this.dialogueOverlay?.renderSystemMessage(line, {
+        speakerName: "Battle Report",
+        hintText: "Press Space, Enter, or Esc to close",
+      });
+    }
     this.syncStateDebugOverlay(true);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyDialogueSystem());
@@ -284,10 +308,12 @@ class OverworldScene extends Phaser.Scene {
     const itemCount = getInventoryCount("workshop-pass");
     const gateUnlocked = hasStoryFlag(OVERWORLD_DIALOGUE_FLAGS.WORKSHOP_GATE_UNLOCKED);
     const checkpointUnlocked = hasStoryFlag(OVERWORLD_DIALOGUE_FLAGS.CANYON_CHECKPOINT_UNLOCKED);
+    const firstDroneDefeated = hasStoryFlag(KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED);
     const debugValue = [
       `Party:${snapshot.party.members.length}`,
       `HP:${protagonist?.currentHp ?? "?"}/${protagonist?.maxHp ?? "?"}`,
       `Pass:${itemCount}`,
+      `Drone:${firstDroneDefeated ? "ON" : "OFF"}`,
       `Gate:${gateUnlocked ? "ON" : "OFF"}`,
       `Checkpoint:${checkpointUnlocked ? "ON" : "OFF"}`,
     ].join(" | ");
@@ -312,6 +338,9 @@ class OverworldScene extends Phaser.Scene {
     }
 
     const mergedFlags = {
+      [KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED]: hasStoryFlag(
+        KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED
+      ),
       [KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED]: hasStoryFlag(
         KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED
       ),
@@ -767,9 +796,14 @@ class OverworldScene extends Phaser.Scene {
       sign.setData("signId", signConfig.id);
       sign.setData("label", signConfig.label);
       sign.setData("prompt", signConfig.prompt);
+      sign.setData("lockedPrompt", "Route locked: clear the perimeter drone patrol first.");
       sign.refreshBody();
       sign.body.setSize(32, 32);
       sign.body.setOffset(0, 0);
+      const isLockedLevel2 =
+        signConfig.id === "sign-level-2" &&
+        !hasStoryFlag(KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED);
+      sign.setTint(isLockedLevel2 ? 0x8e5f5f : 0xffffff);
       this.characterLayer.add(sign);
       this.levelSigns.push(sign);
       this.signTileSet.add(keyForTile(signConfig.tileX, signConfig.tileY));
@@ -1390,7 +1424,9 @@ class OverworldScene extends Phaser.Scene {
 
   showLevelSignPrompt(sign) {
     const signLabel = sign.getData("label") || "Unknown Level";
-    const signPrompt = sign.getData("prompt") || signLabel;
+    const signPrompt = this.isSignLocked(sign)
+      ? sign.getData("lockedPrompt") || sign.getData("prompt") || signLabel
+      : sign.getData("prompt") || signLabel;
     this.activeDialogueNpcId = null;
     this.activeDialogueSignId = sign.getData("signId") || null;
     this.awaitingSignEnterChoice = true;
@@ -1405,6 +1441,18 @@ class OverworldScene extends Phaser.Scene {
 
   transitionToLevel(sign) {
     if (!sign || this.isTransitioning) {
+      return;
+    }
+
+    if (this.isSignLocked(sign)) {
+      this.dialogueOverlay?.renderSystemMessage(
+        sign.getData("lockedPrompt") || "This route is currently locked.",
+        {
+          speakerName: "System",
+          hintText: "Clear the nearby patrol zone first.",
+        }
+      );
+      this.awaitingSignEnterChoice = false;
       return;
     }
 
@@ -1556,6 +1604,7 @@ class OverworldScene extends Phaser.Scene {
       this.syncHudOverlay();
       this.syncStateDebugOverlay();
       this.persistOverworldProgress();
+      this.checkOverworldBattleTrigger();
       return;
     }
 
@@ -1563,6 +1612,7 @@ class OverworldScene extends Phaser.Scene {
       this.syncHudOverlay();
       this.syncStateDebugOverlay();
       this.persistOverworldProgress();
+      this.checkOverworldBattleTrigger();
       return;
     }
 
@@ -1571,6 +1621,89 @@ class OverworldScene extends Phaser.Scene {
     this.syncHudOverlay();
     this.syncStateDebugOverlay();
     this.persistOverworldProgress();
+    this.checkOverworldBattleTrigger();
+  }
+
+  isSignLocked(sign) {
+    if (!sign) {
+      return false;
+    }
+
+    return (
+      sign.getData("signId") === "sign-level-2" &&
+      !hasStoryFlag(KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED)
+    );
+  }
+
+  createOverworldBattleZone() {
+    const world = tileToWorld(OVERWORLD_BATTLE_ZONE.tileX, OVERWORLD_BATTLE_ZONE.tileY);
+    const cleared = hasStoryFlag(KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED);
+    const fillColor = cleared ? 0x4a8f63 : 0x8a4a3a;
+    const strokeColor = cleared ? 0x9be6b5 : 0xffbf9c;
+
+    this.overworldBattleZoneMarker = this.add
+      .rectangle(world.x, world.y, TILE_SIZE - 10, TILE_SIZE - 10, fillColor, 0.45)
+      .setStrokeStyle(2, strokeColor, 0.9)
+      .setDepth(6);
+    this.overworldBattleZoneLabel = this.add
+      .text(world.x, world.y - 26, cleared ? "Patrol Cleared" : "Drone Patrol", {
+        color: cleared ? "#d4ffe3" : "#ffd3bf",
+        fontFamily: "monospace",
+        fontSize: "11px",
+        backgroundColor: "#111827cc",
+        padding: { x: 4, y: 2 },
+      })
+      .setOrigin(0.5)
+      .setDepth(7);
+    this.characterLayer.add(this.overworldBattleZoneMarker);
+    this.characterLayer.add(this.overworldBattleZoneLabel);
+    this.overworldBattleZoneTriggered = false;
+  }
+
+  checkOverworldBattleTrigger() {
+    if (this.isTransitioning || this.overworldBattleZoneTriggered) {
+      return;
+    }
+
+    if (hasStoryFlag(KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED)) {
+      return;
+    }
+
+    const tile = this.getPlayerTile();
+    if (!tile) {
+      return;
+    }
+
+    if (tile.x !== OVERWORLD_BATTLE_ZONE.tileX || tile.y !== OVERWORLD_BATTLE_ZONE.tileY) {
+      return;
+    }
+
+    this.startOverworldBattleEncounter();
+  }
+
+  startOverworldBattleEncounter() {
+    if (this.isTransitioning || this.overworldBattleZoneTriggered) {
+      return;
+    }
+
+    this.overworldBattleZoneTriggered = true;
+    this.isTransitioning = true;
+    this.clearPointerPath();
+    this.hideDialogue();
+    this.persistOverworldProgress({
+      force: true,
+      currentSceneKey: "BattleScene",
+    });
+    this.cameras.main.fadeOut(180, 0, 0, 0);
+    this.time.delayedCall(190, () => {
+      this.scene.start("BattleScene", {
+        encounterId: OVERWORLD_BATTLE_ENCOUNTER_ID,
+        returnSceneKey: "OverworldScene",
+        returnSceneData: {
+          spawnPointId: "default",
+        },
+      });
+    });
   }
 }
 

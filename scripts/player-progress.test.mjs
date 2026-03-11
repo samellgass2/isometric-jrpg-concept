@@ -22,6 +22,7 @@ assert.equal(initial.overworld.position.y, 2);
 assert.ok(Array.isArray(initial.party.members));
 assert.ok(initial.party.members.length >= 1);
 assert.deepEqual(initial.battleOutcomes.keyBattles, {
+  [KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED]: false,
   [KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED]: false,
   [KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED]: false,
 });
@@ -52,20 +53,30 @@ assert.ok(!withoutDog.party.memberOrder.includes("guardian-dog"));
 
 const withBattleOutcome = recordBattleOutcome(
   withDog,
+  "overworld-first-drone",
+  { result: "victory", recordedAt: "2026-03-09T20:00:00.000Z" }
+);
+assert.equal(
+  getBattleOutcomeFlag(withBattleOutcome, KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED),
+  true
+);
+
+const withLevelBattleOutcome = recordBattleOutcome(
+  withBattleOutcome,
   "level-1-training-ambush",
   { result: "victory", recordedAt: "2026-03-10T00:00:00.000Z" }
 );
-assert.deepEqual(withBattleOutcome.battleOutcomes.encounterResults["level-1-training-ambush"], {
+assert.deepEqual(withLevelBattleOutcome.battleOutcomes.encounterResults["level-1-training-ambush"], {
   result: "victory",
   recordedAt: "2026-03-10T00:00:00.000Z",
 });
 assert.equal(
-  getBattleOutcomeFlag(withBattleOutcome, KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED),
+  getBattleOutcomeFlag(withLevelBattleOutcome, KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED),
   true
 );
 
 const withManualFlag = setBattleOutcomeFlag(
-  withBattleOutcome,
+  withLevelBattleOutcome,
   KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED,
   true
 );

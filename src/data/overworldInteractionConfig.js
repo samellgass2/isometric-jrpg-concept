@@ -61,11 +61,20 @@ const OVERWORLD_NPC_DIALOGUE_TREES = Object.freeze({
         text: "Trails ahead are rough. Stay inside the marked paths.",
         next: [
           {
+            condition: { allFlags: [KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED] },
+            target: "drone-patrol-cleared",
+          },
+          {
             condition: { allFlags: [OVERWORLD_DIALOGUE_FLAGS.RANGER_TUTORIAL_COMPLETE] },
             target: "repeat-advice",
           },
           { target: "offer-guidance" },
         ],
+      },
+      "drone-patrol-cleared": {
+        id: "drone-patrol-cleared",
+        speakerId: "ranger",
+        text: "Perimeter signal is clean. Level 2 route is now authorized. Keep moving.",
       },
       "repeat-advice": {
         id: "repeat-advice",

@@ -22,18 +22,17 @@ import {
   resolveKeyBattleOutcomeFlagForEncounter,
   normalizePlayerProgressState,
   recordBattleOutcome,
-  setBattleOutcomeFlag,
   updateOverworldPosition,
 } from "../state/playerProgress.js";
 import {
-  loadProgress,
-  saveProgress,
-} from "../persistence/saveSystem.js";
-import {
-  hasPersistedProgressData,
-  reconcilePartyProgressWithBattleUnits,
-  resolveInitialFriendlyUnits,
-} from "../state/partyPersistence.js";
+  addInventoryItem,
+  exportGameStateToPlayerProgress,
+  getGameState,
+  setPartyMemberHealth,
+  setStoryFlag,
+  setStoryFlags,
+} from "../state/gameState.js";
+import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
 
 const TILE_SIZE = 52;
 const GRID_WIDTH = 12;
@@ -45,7 +44,7 @@ const OBSTACLES = [
   { x: 8, y: 2 },
 ];
 const DEFAULT_RETURN_SCENE_KEY = "OverworldScene";
-const COMMAND_OPTIONS = Object.freeze(["move", "attack", "end-turn"]);
+const COMMAND_OPTIONS = Object.freeze(["move", "attack", "stabilize", "end-turn"]);
 
 function keyFor(x, y) {
   return `${x},${y}`;
@@ -81,17 +80,23 @@ class BattleScene extends Phaser.Scene {
     this.currentActingUnitId = null;
     this.hudOverlay = null;
     this.loadedProgress = null;
-    this.hasPersistedProgressSnapshot = false;
     this.encounterFriendlyTemplateIds = [];
+    this.encounterRewards = { inventory: [], storyFlags: {} };
   }
 
   create(data = {}) {
     this.loadedProgress = this.getProgressState();
-    this.hasPersistedProgressSnapshot = this.hasPersistedProgressData();
     const encounterData = this.resolveEncounterData(data);
     this.encounterId = encounterData.id;
     this.encounterName = encounterData.name;
     this.encounterTriggerDescription = encounterData.triggerDescription;
+    this.encounterRewards = {
+      inventory: Array.isArray(encounterData.rewards?.inventory) ? encounterData.rewards.inventory : [],
+      storyFlags:
+        encounterData.rewards?.storyFlags && typeof encounterData.rewards.storyFlags === "object"
+          ? encounterData.rewards.storyFlags
+          : {},
+    };
     this.returnSceneKey = data.returnSceneKey ?? DEFAULT_RETURN_SCENE_KEY;
     this.returnSceneData = data.returnSceneData ?? {};
     this.encounterObstacles = encounterData.obstacles;
@@ -200,10 +205,6 @@ class BattleScene extends Phaser.Scene {
     return normalizePlayerProgressState(loadProgress());
   }
 
-  hasPersistedProgressData() {
-    return hasPersistedProgressData();
-  }
-
   commitProgress(updater) {
     const setPlayerProgress = this.game?.registry?.get("setPlayerProgress");
     const current = this.getProgressState();
@@ -229,17 +230,51 @@ class BattleScene extends Phaser.Scene {
   }
 
   resolveInitialFriendlyUnits(friendlyUnits) {
-    return resolveInitialFriendlyUnits(friendlyUnits, this.loadedProgress, {
-      hasPersistedData: this.hasPersistedProgressSnapshot,
-    });
-  }
+    if (!Array.isArray(friendlyUnits)) {
+      return [];
+    }
 
-  reconcilePartyProgressWithBattle(previousState) {
-    return reconcilePartyProgressWithBattleUnits(
-      previousState,
-      this.units.filter((unit) => unit.faction === "friendly"),
-      this.encounterFriendlyTemplateIds
-    );
+    const stateSnapshot = getGameState();
+    const members = Array.isArray(stateSnapshot.party?.members) ? stateSnapshot.party.members : [];
+    const memberOrder = Array.isArray(stateSnapshot.party?.memberOrder)
+      ? stateSnapshot.party.memberOrder
+      : members.map((member) => member.id);
+
+    const templateById = new Map(friendlyUnits.map((unit) => [unit.id, unit]));
+    const memberById = new Map(members.map((member) => [member.id, member]));
+    const orderedIds = memberOrder.filter((id) => templateById.has(id) && memberById.has(id));
+    const idsToUse = orderedIds.length > 0 ? orderedIds : friendlyUnits.map((unit) => unit.id);
+
+    return idsToUse
+      .filter((id) => templateById.has(id))
+      .map((id) => {
+        const template = templateById.get(id);
+        const member = memberById.get(id);
+        if (!member) {
+          return {
+            ...template,
+            movement: { ...(template.movement ?? {}) },
+            attack: { ...(template.attack ?? {}) },
+            stats: { ...(template.stats ?? {}) },
+            abilities: Array.isArray(template.abilities) ? [...template.abilities] : [],
+          };
+        }
+
+        return {
+          ...template,
+          movement: { ...(template.movement ?? {}) },
+          attack: { ...(template.attack ?? {}) },
+          stats: {
+            ...(template.stats ?? {}),
+            maxHp: member.maxHp,
+          },
+          abilities: Array.isArray(template.abilities) ? [...template.abilities] : [],
+          name: member.name || template.name,
+          archetype: member.archetype ?? template.archetype,
+          level: member.level ?? template.level,
+          currentHp: member.currentHp,
+        };
+      });
   }
 
   resolveEncounterData(data) {
@@ -257,6 +292,7 @@ class BattleScene extends Phaser.Scene {
       obstacles: Array.isArray(definition.obstacles) ? definition.obstacles : fallback.obstacles,
       friendlyUnits: Array.isArray(definition.friendlyUnits) ? definition.friendlyUnits : fallback.friendlyUnits,
       enemyUnits: Array.isArray(definition.enemyUnits) ? definition.enemyUnits : fallback.enemyUnits,
+      rewards: definition.rewards ?? { inventory: [], storyFlags: {} },
     };
   }
 
@@ -303,6 +339,10 @@ class BattleScene extends Phaser.Scene {
           color: 0xa65f9a,
         },
       ],
+      rewards: {
+        inventory: [],
+        storyFlags: {},
+      },
     };
   }
 
@@ -703,6 +743,10 @@ class BattleScene extends Phaser.Scene {
       options.push("attack");
     }
 
+    if (unit.faction === "friendly" && unit.currentHp < unit.stats.maxHp) {
+      options.push("stabilize");
+    }
+
     options.push("end-turn");
     return options.filter((option) => COMMAND_OPTIONS.includes(option));
   }
@@ -734,9 +778,36 @@ class BattleScene extends Phaser.Scene {
       this.enterAttackMode();
       return;
     }
+    if (chosen === "stabilize") {
+      this.useStabilizeAction(selected);
+      return;
+    }
     if (chosen === "end-turn") {
       this.endPlayerTurn();
     }
+  }
+
+  useStabilizeAction(unit) {
+    if (!unit || unit.hasActed || unit.currentHp >= unit.stats.maxHp) {
+      return;
+    }
+
+    const healAmount = Math.max(6, Math.floor(unit.stats.maxHp * 0.16));
+    const previousHp = unit.currentHp;
+    unit.currentHp = Math.min(unit.stats.maxHp, unit.currentHp + healAmount);
+    unit.stats.hp = unit.currentHp;
+    unit.hasActed = true;
+    this.mode = "idle";
+    this.clearHighlights();
+    this.addLog(`${unit.name} stabilized for +${unit.currentHp - previousHp} HP.`);
+    if (unit.faction === "friendly") {
+      setPartyMemberHealth(unit.id, {
+        currentHp: unit.currentHp,
+        maxHp: unit.stats.maxHp,
+      });
+    }
+    this.updateSelectionPanel();
+    this.tryAutoEndPlayerTurn();
   }
 
   enterCommandMode() {
@@ -894,6 +965,12 @@ class BattleScene extends Phaser.Scene {
 
     defender.currentHp = Math.max(0, defender.currentHp - result.damage);
     defender.stats.hp = defender.currentHp;
+    if (defender.faction === "friendly") {
+      setPartyMemberHealth(defender.id, {
+        currentHp: defender.currentHp,
+        maxHp: defender.stats.maxHp,
+      });
+    }
     attacker.hasActed = true;
     this.mode = "idle";
     this.clearHighlights();
@@ -1056,17 +1133,39 @@ class BattleScene extends Phaser.Scene {
   }
 
   persistBattleProgress(result) {
+    this.units
+      .filter((unit) => unit.faction === "friendly")
+      .forEach((unit) => {
+        setPartyMemberHealth(unit.id, {
+          currentHp: unit.currentHp,
+          maxHp: unit.stats.maxHp,
+        });
+      });
+
+    const keyBattleFlag = resolveKeyBattleOutcomeFlagForEncounter(this.encounterId);
+    if (keyBattleFlag && result === "victory") {
+      setStoryFlag(keyBattleFlag, true);
+    }
+    if (result === "victory") {
+      this.encounterRewards.inventory.forEach((reward) => {
+        if (!reward || typeof reward.itemId !== "string") {
+          return;
+        }
+        const amount = Math.max(1, Math.floor(Number(reward.amount) || 1));
+        addInventoryItem(reward.itemId, amount);
+      });
+      if (this.encounterRewards.storyFlags && typeof this.encounterRewards.storyFlags === "object") {
+        setStoryFlags(this.encounterRewards.storyFlags);
+      }
+    }
+
     this.commitProgress((current) => {
-      let next = this.reconcilePartyProgressWithBattle(current);
+      let next = exportGameStateToPlayerProgress(current);
 
       next = recordBattleOutcome(next, this.encounterId, {
         result,
         recordedAt: new Date().toISOString(),
       });
-      const keyBattleFlag = resolveKeyBattleOutcomeFlagForEncounter(this.encounterId);
-      if (keyBattleFlag && result === "victory") {
-        next = setBattleOutcomeFlag(next, keyBattleFlag, true);
-      }
 
       return updateOverworldPosition(next, next?.overworld?.position, {
         currentSceneKey: this.returnSceneKey,

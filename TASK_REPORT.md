@@ -1,29 +1,25 @@
-# Task 399 Report
+# TASK 400 Report
 
-## Objective
-Integrate centralized game state with overworld flow so NPC interactions, item collection, and scene transitions use shared state for party, health, inventory, and story flags.
+Implemented battle transition and state synchronization for `isometric-strategy-game`.
 
-## Implemented
-- Extended persistent player progress schema with `inventory.items`.
-  - File: `src/state/playerProgress.js`
-- Wired game-state <-> player-progress inventory mapping.
-  - File: `src/state/gameState.js`
-- Refactored overworld interaction flow to use shared game state APIs for unlock checks and mutations.
-  - File: `src/scenes/OverworldScene.js`
-- Added data-driven pickup + gate progression in overworld interaction config.
-  - File: `src/data/overworldInteractionConfig.js`
-- Added visual debug overlay in overworld showing shared-state values (party/HP/item/flags) and pickup console logs for verification.
-- Updated state-related tests for new inventory persistence behavior.
-  - Files: `scripts/player-progress.test.mjs`, `scripts/game-state-model.test.mjs`
-- Updated `STATUS.md` with integration details and manual QA steps.
+## What was delivered
+- Added a real overworld battle trigger zone in `OverworldScene` (tile `(9,4)`) that starts `BattleScene` encounter `overworld-first-drone`.
+- Refactored `BattleScene` party initialization to read friendly unit HP/order from centralized game state (`getGameState`) instead of local/hard-coded progress state.
+- Synced in-battle friendly HP changes to central state immediately (`setPartyMemberHealth`) for both damage and healing (`stabilize` action).
+- Added battle rewards support via encounter definitions; victory now grants `drone-scrap` and story flags through game state APIs.
+- Added progression flag `defeatedFirstDrone` and mapped encounter `overworld-first-drone` to it.
+- Made overworld behavior depend on battle outcome: Level 2 sign remains locked until first drone battle is defeated; ranger dialogue also branches on this flag.
+- Updated status documentation in `STATUS.md` with flow + QA path.
 
-## Acceptance Mapping
-1. Overworld scene now imports/uses central state for inventory and story flags (`addInventoryItem`, `getInventoryCount`, `setStoryFlags`, `hasStoryFlag`).
-2. Interactable unlock/pickup behavior moved from local ad-hoc variables to shared state checks/writes.
-3. Pickup event updates central inventory/flags and is verifiable via on-screen debug overlay + console log.
-4. Inventory persistence added to progress schema; party/HP remain persisted through existing battle reconciliation path, so returning to overworld keeps values consistent.
-5. Dialogue behavior preserved: existing dialogue hooks still trigger and now persist through shared-state export path.
-6. `STATUS.md` updated with scenes/modules changed and QA verification procedure.
+## Files changed
+- `src/scenes/OverworldScene.js`
+- `src/scenes/BattleScene.js`
+- `src/battle/encounters.js`
+- `src/state/playerProgress.js`
+- `src/data/overworldInteractionConfig.js`
+- `scripts/player-progress.test.mjs`
+- `STATUS.md`
 
-## Validation
-- `npm test` passed.
+## Verification
+- Ran `npm test` successfully.
+- All configured test scripts passed.
