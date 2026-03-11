@@ -2485,3 +2485,83 @@ Date: 2026-03-11 (UTC)
 - For future destination scenes, call `applySceneEntryTransition(this, data, defaults)` in `create(...)` to consume forwarded transition payloads.
 - If dedicated stingers are added to the asset pipeline, keep key usage centralized via `TRANSITION_STINGER_KEYS`.
 - Keep transition durations under ~250ms for state changes that happen frequently to preserve game flow.
+
+## Tester Report - Workflow #41 (Audio, Visual FX, and Feedback Polish Pass)
+Date: 2026-03-11 (UTC)
+Branch: `workflow/41/dev`
+Role: TESTER (verification only, no code changes)
+
+### 1. Full Test Suite Run
+- Pre-flight:
+  - Inspected available scripts in `package.json`.
+  - Installed dependencies with `npm install` (node_modules was initially missing).
+- Command run:
+  - `npm test`
+- Result: PASS
+- Output summary:
+  - Rollback test passed.
+  - Dog conditional behavior test passed.
+  - Battle grid stats test passed.
+  - Drone AI decision test passed.
+  - Drone test battle scenario test passed.
+  - Player progress state test passed.
+  - Game state model test passed.
+  - Save system persistence test passed.
+  - Runtime save/load state tools test passed.
+  - Battle party persistence test passed.
+  - Dialogue system test passed.
+
+### 2. Acceptance Verification By Task
+
+#### Task #412 - Add core audio management system
+Verdict: PASS
+- Dedicated module exists: `src/audio/AudioManager.js` and is initialized in `src/main.js`.
+- API includes required methods: `playSfx`, `playMusic`, `stopMusic`, `setVolume`.
+- Shared singleton instance is stored in registry and reused by scenes.
+- Music start/stop/change paths are wired through manager (`MainMenuScene`, `OverworldScene`, `BattleScene`).
+- Defensive checks are present for unavailable audio/missing keys and exception-safe calls.
+- `STATUS.md` contains location, API, and usage documentation.
+
+#### Task #413 - Wire overworld movement and interaction audio
+Verdict: PASS
+- Overworld scene uses shared manager (`this.game.registry.get("audioManager")`) and `playOverworldSfx` wrapper.
+- Footstep SFX is tile-change driven with cooldown; does not trigger while idle or blocked.
+- NPC dialogue start plays dialogue-open SFX.
+- Item pickup path plays distinct pickup SFX.
+- Overworld BGM starts on scene entry and is stopped on level/battle transitions (clean handoff, no overlap path in code).
+- No new runtime/test failures were observed in automated suite.
+- `STATUS.md` documents overworld audio hooks and extension guidance.
+
+#### Task #414 - Add battle hit, ability, and turn feedback FX
+Verdict: PASS
+- Battle scene uses shared audio manager; no direct Phaser sound-object instantiation in battle logic.
+- Basic attacks trigger hit SFX and visible impact feedback.
+- Ability (`stabilize`) triggers distinct ability SFX and clear VFX.
+- Damage path triggers dedicated visual cue on target beyond HP updates.
+- Turn changes trigger audio cue plus visible banner/camera cue while preserving turn order.
+- Battle BGM is started on battle entry; battle exit transitions stop music and return cleanly.
+- `STATUS.md` documents hooks and how to extend for additional abilities.
+
+#### Task #415 - Implement simple screen and UI transition feedback
+Verdict: PASS
+- Overworld -> battle transitions use `transitionToScene(...)` fade/stinger flow.
+- Battle -> overworld (or return scene) uses corresponding transition flow and payload restoration.
+- Key UI overlay (`DialogueOverlay`) now tween-fades/slides on show/hide.
+- Transition stinger audio is routed through shared audio manager.
+- Transition helper includes guarded start/fallback timing to auto-complete and avoid intermediate lock states.
+- No new automated test failures were introduced.
+- `STATUS.md` includes transition module locations and extension recommendations.
+
+### 3. Integration / Regression Check
+- Workflow #41 features integrate cohesively:
+  - Shared audio manager is the single runtime audio path.
+  - Overworld, battle, and transition systems use compatible handoff behavior.
+  - UI transition polish does not conflict with dialogue/input gating logic.
+- No obvious regressions were identified in available automated tests or static code-path review.
+
+### 4. Bugs Filed
+- None.
+- `devctl file-bug` was not used because no acceptance criteria failures were found.
+
+### 5. Overall Verdict
+CLEAN
