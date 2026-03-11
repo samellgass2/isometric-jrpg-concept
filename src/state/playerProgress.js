@@ -8,14 +8,17 @@
 
 const PLAYER_PROGRESS_SCHEMA_VERSION = 1;
 const KEY_BATTLE_OUTCOME_FLAGS = Object.freeze({
+  OVERWORLD_FIRST_DRONE_DEFEATED: "defeatedFirstDrone",
   LEVEL1_TRAINING_AMBUSH_CLEARED: "level1TrainingAmbushCleared",
   LEVEL2_CANYON_GAUNTLET_CLEARED: "level2CanyonGauntletCleared",
 });
 const KEY_BATTLE_OUTCOME_FLAG_DEFAULTS = Object.freeze({
+  [KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED]: false,
   [KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED]: false,
   [KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED]: false,
 });
 const ENCOUNTER_ID_TO_KEY_BATTLE_FLAG = Object.freeze({
+  "overworld-first-drone": KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED,
   "level-1-training-ambush": KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED,
   "level-2-canyon-gauntlet": KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED,
 });
@@ -141,6 +144,26 @@ function normalizeQuestFlags(flags) {
   }, {});
 }
 
+function normalizeInventoryItems(items) {
+  if (!isPlainObject(items)) {
+    return {};
+  }
+
+  return Object.entries(items).reduce((acc, [itemId, amount]) => {
+    const normalizedItemId = typeof itemId === "string" ? itemId.trim() : "";
+    if (!normalizedItemId) {
+      return acc;
+    }
+
+    const normalizedAmount = Math.max(0, Math.floor(toFiniteNumber(amount, 0)));
+    if (normalizedAmount > 0) {
+      acc[normalizedItemId] = normalizedAmount;
+    }
+
+    return acc;
+  }, {});
+}
+
 function isOutcomeVictory(outcome) {
   if (typeof outcome === "string") {
     return outcome === "victory";
@@ -204,6 +227,8 @@ function normalizeBattleOutcomes(outcomes) {
  * - party: Battle party composition used by encounter systems.
  *   - memberOrder: Party order for future UI/turn-order style systems.
  *   - members: JSON-safe member summaries keyed by `id` values used in encounters.
+ * - inventory:
+ *   - items: Item counts keyed by item IDs used by overworld progression.
  * - battleOutcomes:
  *   - keyBattles: Small, stable booleans for story/tutorial/boss progression gates.
  *   - encounterResults: Optional per-encounter history keyed by encounter ID.
@@ -219,6 +244,9 @@ export function createInitialPlayerProgressState(overrides = {}) {
     party: {
       memberOrder: DEFAULT_PARTY_MEMBERS.map((member) => member.id),
       members: cloneJsonValue(DEFAULT_PARTY_MEMBERS),
+    },
+    inventory: {
+      items: {},
     },
     battleOutcomes: {
       keyBattles: { ...KEY_BATTLE_OUTCOME_FLAG_DEFAULTS },
@@ -267,6 +295,9 @@ export function normalizePlayerProgressState(state) {
     party: {
       memberOrder: normalizedOrder,
       members: normalizedMembers,
+    },
+    inventory: {
+      items: normalizeInventoryItems(source.inventory?.items),
     },
     battleOutcomes: normalizeBattleOutcomes(source.battleOutcomes),
     questFlags: normalizeQuestFlags(source.questFlags),

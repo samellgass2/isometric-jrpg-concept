@@ -1,3 +1,86 @@
+## Status
+
+- Task: Add save, load, and debug state inspection (TASK_ID=401, RUN_ID=722)
+- State: Completed
+- Notes: Extended runtime save/load workflows and in-scene debugging so progression state can be persisted/restored and inspected during overworld and battle testing.
+
+  Save/load implementation:
+  - Save key remains stable: `playerProgress` in browser `localStorage` (`src/persistence/saveSystem.js`).
+  - Runtime save helper (`saveGame`) serializes only normalized progress/state data (party members + HP, inventory items, quest/story flags, overworld scene + position/spawn metadata) and avoids engine references (`src/persistence/runtimeStateTools.js`, `src/state/playerProgress.js`, `src/state/gameState.js`).
+  - Runtime load helper (`loadGame`) safely rehydrates from storage with fallback to default initial state on missing/corrupt data, then hydrates registry + central state store.
+  - Main entry path supports loading immediately from menu:
+    - Main menu button: `Load Save / Continue`
+    - Keyboard: `L` or `F9`
+
+  Dev controls (no code edits required):
+  - Main menu (`src/scenes/MainMenuScene.js`):
+    - `F6`: save current runtime state
+    - `F9` / `L`: load save and continue from saved scene
+    - `I`: log debug snapshot (party, inventory, subset of story flags)
+  - Overworld (`src/scenes/OverworldScene.js`):
+    - `F6`: save
+    - `F9`: load and re-enter resume target scene/spawn data
+    - `I`: log debug snapshot to console
+    - `F3`: toggle expanded on-screen debug overlay showing party HP, inventory summary, and key story flags
+  - Battle (`src/scenes/BattleScene.js`):
+    - `F6`: save
+    - `F9`: load and resume to saved scene
+    - `I`: log debug snapshot to console and add battle log confirmation
+
+  Persisted data coverage:
+  - Party: member IDs/order, names/archetypes, level, `currentHp`, `maxHp`
+  - Inventory: item counts map
+  - Story progression: `questFlags`, battle outcome flags, and normalized story flag map used by dialogue/encounter gates
+  - Overworld resume: current scene key, tile position, spawn point metadata
+
+  Manual verification flow:
+  1. Start game, move in overworld, trigger at least one state change (e.g., dialogue flag or inventory reward), then press `F6`.
+  2. Refresh browser tab (or close/reopen), choose `Load Save / Continue` (or press `F9`) from menu.
+  3. Confirm restored scene/spawn and that party HP, inventory, and story-driven gates/dialogue/battle behavior match pre-save state.
+  4. In overworld or battle, press `I` and inspect console snapshot for party/inventory/flags.
+
+- Task: Define core game state model (TASK_ID=398, RUN_ID=705)
+- State: Completed
+- Notes: Added a centralized, engine-agnostic game state store at `src/state/gameState.js` for party, health, inventory, and story flags.
+
+  API surface:
+  - Initialization/reading:
+    - `initGameState(overrides)`
+    - `hydrateGameStateFromProgress(progressState)`
+    - `getGameState()`
+    - `subscribeToGameState(listener)`
+  - Party + health:
+    - `getPartyMember(memberId)`
+    - `addPartyMember(member)`
+    - `removePartyMember(memberId)`
+    - `adjustPartyMemberHealth(memberId, delta)`
+    - `setPartyMemberHealth(memberId, { currentHp, maxHp })`
+  - Inventory:
+    - `addInventoryItem(itemId, amount)`
+    - `removeInventoryItem(itemId, amount)`
+    - `getInventoryCount(itemId)`
+  - Story flags:
+    - `setStoryFlag(flagKey, value)`
+    - `setStoryFlags(flags)`
+    - `getStoryFlag(flagKey, fallback)`
+    - `hasStoryFlag(flagKey)`
+  - Progress bridge helpers:
+    - `createGameStateFromPlayerProgress(progressState)`
+    - `applyGameStateToPlayerProgress(gameState, previousProgressState)`
+    - `exportGameStateToPlayerProgress(previousProgressState)`
+
+  Integration details:
+  - `src/main.js` now hydrates game state from persisted `playerProgress` during boot and re-hydrates whenever progress is committed through registry `setPlayerProgress`.
+  - `src/scenes/OverworldScene.js` now consumes central game state for:
+    - story flag reads (`getStoryFlag`) when building dialogue flags
+    - story flag writes (`setStoryFlags`) when persisting dialogue hook outcomes
+    - protagonist HUD stats/name seed (`getPartyMember(\"protagonist\")`) instead of relying only on scene-local defaults
+  - Overworld, battle, and dialogue systems are expected to treat this store as the runtime source of truth and use `playerProgress` as persistence serialization.
+
+  Verification:
+  - Added `scripts/game-state-model.test.mjs` covering initialization, party/health mutations, inventory add/remove, story flag set/get, and progress bridging.
+  - Added test execution to `npm test` script chain.
+
 # QA Validation Summary (Workflow #39)
 
 - Project: `isometric-strategy-game`
@@ -1838,3 +1921,364 @@ Verdict: PASS
 
 ### Overall Verdict
 CLEAN
+
+## Task #399 - Integrate game state with overworld flow
+Date: 2026-03-11
+Workflow: Core Game Loop, Progression, and State Management
+
+### Summary
+- Integrated `OverworldScene` with the shared state API (`src/state/gameState.js`) as the authoritative source for story flags, inventory, and party snapshot reads.
+- Extended persisted player progress schema to include `inventory.items`, then wired game-state import/export so inventory no longer resets when moving between overworld/levels/battles.
+- Refactored overworld interactable gating to evaluate unlock conditions from centralized state (`hasStoryFlag`, `getInventoryCount`) instead of local ad-hoc state.
+
+### Updated Files
+- `src/scenes/OverworldScene.js`
+  - Added direct shared-state integration for:
+    - Inventory updates on pickup (`addInventoryItem`).
+    - Story-flag writes for interaction outcomes (`setStoryFlags`).
+    - Story-flag/inventory reads for interactable unlock checks (`hasStoryFlag`, `getInventoryCount`).
+  - Added `persistGameStateSnapshot()` bridge to export central game state back into persisted progress after overworld state mutations.
+  - Added lightweight on-screen debug state overlay + console logs so QA can verify story flag/item updates live.
+- `src/data/overworldInteractionConfig.js`
+  - Added new progression flags and interactables:
+    - `obj-workshop-pass-cache` pickup grants `workshop-pass` item and progression flags.
+    - `obj-canyon-checkpoint` gate unlocks via shared state (`unlockFlag` and `unlockItemId`).
+- `src/state/playerProgress.js`
+  - Added normalized/persisted `inventory.items` schema support.
+- `src/state/gameState.js`
+  - `createGameStateFromPlayerProgress` now hydrates inventory from persisted progress.
+  - `applyGameStateToPlayerProgress` now writes shared-state inventory back into persisted progress.
+- Tests updated:
+  - `scripts/player-progress.test.mjs`
+  - `scripts/game-state-model.test.mjs`
+
+### Shared-State Progression Implemented
+- Pickup progression:
+  - Interact with `Supply Cache` (`obj-workshop-pass-cache`) to collect `workshop-pass`.
+  - This writes to central inventory (`inventory.items['workshop-pass']`) and sets central story flags.
+- NPC/story-gated progression preserved:
+  - Existing mechanic/ranger dialogue hooks still function, now persisted through centralized state export path.
+- Path gating:
+  - `Canyon Checkpoint` (`obj-canyon-checkpoint`) unlock checks now read centralized state (flag/item) instead of local scene variables.
+
+### Manual QA Verification
+1. Start game in `OverworldScene`.
+2. Observe state debug overlay in top-left showing party HP, pass count, and gate/checkpoint flags.
+3. Interact with `Supply Cache` at tile `(5,2)`:
+   - Expected: dialogue message confirms pickup.
+   - Expected: debug overlay `Pass` count increments to `1`.
+   - Expected: console log shows pickup + resulting flags.
+4. Interact with `Canyon Checkpoint` at tile `(6,2)`:
+   - Expected before pickup: locked message.
+   - Expected after pickup: unlocked message and tile no longer blocks movement.
+5. Trigger NPC dialogue with Ranger/Mechanic:
+   - Expected: quest flags continue to branch dialogue behavior correctly.
+   - Expected: resulting flags are reflected in debug overlay and persist after scene transitions.
+6. Enter a level scene, trigger a battle, then return to overworld:
+   - Expected: party HP/order remain consistent with persisted battle results.
+   - Expected: inventory (`workshop-pass`) remains present and does not reset.
+
+### Validation
+- `npm test` PASS
+  - rollback, dog behavior, grid stats, drone AI/scenario, player progress, game state model, save system, battle party persistence, dialogue system all passing.
+
+## Task #400 - Implement battle transition and state sync
+Date: 2026-03-11
+Workflow: Core Game Loop, Progression, and State Management
+
+### Summary
+- Implemented a complete `OverworldScene -> BattleScene -> OverworldScene` loop using a real encounter zone trigger in overworld exploration.
+- Refactored battle initialization to hydrate friendly battle units from centralized runtime game state (`src/state/gameState.js`) instead of hard-coded/local progress-only snapshots.
+- Wired battle damage/healing/rewards to sync through centralized game state and then serialize back into persisted `playerProgress` on battle completion.
+
+### Transition Loop Implemented
+1. Overworld trigger:
+- `src/scenes/OverworldScene.js` now creates a visible patrol tile marker at `(9,4)`.
+- Stepping on the marker starts battle encounter `overworld-first-drone` via `this.scene.start("BattleScene", ...)`.
+
+2. Battle initialization:
+- `src/scenes/BattleScene.js` now resolves initial friendly units by reading current party members/order/HP from `getGameState()` and merging that into encounter-friendly templates.
+- Enemy setup still comes from `src/battle/encounters.js` definitions.
+
+3. In-battle state sync:
+- Friendly damage writes through immediately with `setPartyMemberHealth(...)`.
+- Friendly healing (`stabilize` command) also writes through with `setPartyMemberHealth(...)`.
+- Victory rewards (`inventory` and `storyFlags` from encounter definition) are applied with `addInventoryItem(...)` and `setStoryFlags(...)`.
+
+4. Battle completion and return:
+- On `finishBattle`, battle reconciles final friendly HP to game state, applies outcome flags (`resolveKeyBattleOutcomeFlagForEncounter` -> `setStoryFlag`), then exports central game state back to persisted progress via `exportGameStateToPlayerProgress(...)`.
+- Encounter result history is still recorded in progress via `recordBattleOutcome(...)`.
+- Scene returns to `OverworldScene` with result metadata.
+
+### Progression Flag + Overworld Behavior
+- Added new key battle progression flag: `defeatedFirstDrone` (`KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED`).
+- Added encounter mapping `overworld-first-drone -> defeatedFirstDrone` in `src/state/playerProgress.js`.
+- Overworld behavior now depends on this outcome:
+  - Level 2 sign is locked until `defeatedFirstDrone` is true.
+  - Ranger dialogue has a post-clear branch when this flag is set.
+  - Overworld battle zone marker text/color reflects locked vs cleared state.
+
+### Files Updated
+- `src/scenes/OverworldScene.js`
+- `src/scenes/BattleScene.js`
+- `src/battle/encounters.js`
+- `src/state/playerProgress.js`
+- `src/data/overworldInteractionConfig.js`
+- `scripts/player-progress.test.mjs`
+
+### Manual QA Path (Overworld -> Battle -> Overworld)
+1. Start game and enter `OverworldScene`.
+2. Move to tile `(9,4)` (marked `Drone Patrol`) and step onto it.
+3. Confirm battle scene starts with encounter `Perimeter Drone Sweep`.
+4. During battle:
+- Take damage on protagonist or ally and confirm HP changes.
+- Use `stabilize` command on an injured friendly and confirm HP is restored.
+5. Win battle and return to overworld.
+6. Verify state consistency:
+- Overworld debug overlay reflects updated party HP.
+- Inventory includes reward item (`drone-scrap`).
+- Story flag `defeatedFirstDrone` is now true (observable via unlocked Level 2 sign behavior and ranger dialogue branch).
+7. Re-approach Level 2 sign:
+- Before victory: locked prompt.
+- After victory: transition allowed.
+
+### Validation
+- `npm test` PASS
+  - rollback, dog behavior, grid stats, drone AI/scenario, player progress, game state model, save system, battle party persistence, dialogue system.
+
+## Task #401 - Add save, load, and debug state inspection
+Date: 2026-03-11
+Workflow: Core Game Loop, Progression, and State Management
+
+### Summary
+- Added a runtime save/load helper module at `src/persistence/runtimeStateTools.js` to provide:
+  - `saveGame(game, options)`
+  - `loadGame(game)`
+  - `resolveResumeTarget(progressState)`
+  - `buildDebugStateSnapshot(options)`
+  - `logDebugStateSnapshot(options)`
+- Added explicit `saveGame`/`loadGame` aliases in `src/persistence/saveSystem.js` for stable persistence API naming.
+- Wired registry-level runtime actions in `src/main.js`:
+  - `game.registry.get("saveGame")`
+  - `game.registry.get("loadGame")`
+  - `game.registry.get("debugGameState")`
+- Updated `MainMenuScene` with explicit save/load/debug controls and a dedicated continue path that reloads persisted state before scene transition.
+- Updated `BattleScene` with dev hotkeys to save, load, and inspect central state during battle flow.
+- Added test coverage for runtime save/load and debug snapshot behavior in `scripts/runtime-state-tools.test.mjs`.
+
+### Save/Load Usage
+1. From Main Menu:
+- `Load Save / Continue` button: loads persisted save and starts the saved scene.
+- `L` or `F9`: same as continue/load.
+- `F6`: manual save from menu.
+
+2. During BattleScene:
+- `F6`: save current game state snapshot.
+- `F9`: load persisted save and transition to the saved scene.
+
+3. Automatic persistence:
+- Existing scene progress commits still persist through `setPlayerProgress` and local storage updates.
+
+### What is persisted
+- Party composition/order and health (`party.members`, `party.memberOrder`, HP/max HP)
+- Inventory item counts (`inventory.items`)
+- Story/quest and key battle flags (`questFlags`, `battleOutcomes.keyBattles`, plus encounter history)
+- Overworld resume metadata (`overworld.currentSceneKey`, `overworld.spawnPointId`, position)
+
+Persistence remains JSON-only and stores normalized data structures (no Phaser objects or transient engine references).
+
+### Debug inspection usage
+- Overworld already includes an on-screen debug overlay for party/inventory/flag signals.
+- Main Menu: press `I` to log a debug snapshot to console.
+- BattleScene: press `I` to log a debug snapshot to console.
+
+Debug snapshot includes:
+- `party`: member ids/names/levels/HP
+- `inventory`: item counts
+- `storyFlags`: selected subset of current story flags
+
+### Corrupt/missing save handling
+- `loadProgress`/`loadGame` normalize and fallback to a default initial profile when save data is missing or invalid JSON.
+
+### Validation
+- `npm test` PASS, including new `runtime-state-tools` persistence/rehydration test.
+
+## Tester Report - Workflow #40 (Core Game Loop, Progression, and State Management)
+Date: 2026-03-11 (UTC)
+Branch: workflow/40/dev
+Tester: TESTER agent
+
+### Tests Run
+1. `npm test`
+- Result: PASS
+- Output:
+  - Rollback test passed.
+  - Dog conditional behavior test passed.
+  - Battle grid stats test passed.
+  - Drone AI decision test passed.
+  - Drone test battle scenario test passed.
+  - Player progress state test passed.
+  - Game state model test passed.
+  - Save system persistence test passed.
+  - Runtime save/load state tools test passed.
+  - Battle party persistence test passed.
+  - Dialogue system test passed.
+
+### Acceptance Verdict By Task
+- Task #398: PASS
+  - Central engine-agnostic `src/state/gameState.js` exists and is imported by scenes/runtime.
+  - API includes init/read/subscription plus party/health/inventory/story-flag mutation helpers.
+  - No Phaser scene/DOM usage in the core state module.
+  - Integration and tests present (`OverworldScene`, `main.js`, `scripts/game-state-model.test.mjs`).
+  - STATUS documentation present with API + verification notes.
+
+- Task #399: PASS
+  - `OverworldScene` uses shared state for inventory and story flags.
+  - Overworld interactions (pickup + dialogue hook persistence) now write/read centralized state.
+  - On-screen state debug overlay + logs provide QA verification path.
+  - Return flow from battle/scene transitions uses persisted/shared state without unintended reset.
+  - STATUS documentation and manual QA path are present.
+
+- Task #400: PASS
+  - Overworld battle trigger transitions into `BattleScene`.
+  - Battle initialization reads party/order/HP from centralized game state.
+  - In-battle HP changes sync through shared state (`setPartyMemberHealth`).
+  - Battle completion writes HP/rewards/flags back and returns to overworld.
+  - Outcome flag (`defeatedFirstDrone`) drives overworld gating behavior.
+  - STATUS documentation and manual verification flow are present.
+
+- Task #401: PASS
+  - Save/load implemented via persistent localStorage-backed systems (`saveSystem`, runtime tools).
+  - Load path is wired into app entry/continue flow (`main.js`, `MainMenuScene`).
+  - Runtime test validates state rehydration of party/health/inventory/story flags.
+  - Debug inspection is available (Overworld overlay + `I` key logs in menu/battle).
+  - Missing/corrupt save fallback handling is implemented.
+  - STATUS documentation for usage and persisted fields is present.
+
+### Bugs Filed
+- None.
+
+### Integration / Regression Assessment
+- Workflow #40 features operate cohesively across overworld, battle, progression, persistence, and debug tooling.
+- No obvious regressions detected in automated tests or acceptance-criteria code review.
+
+### Overall Verdict
+CLEAN
+
+## QA Validation Report - Workflow #40 (Core Game Loop, Progression, and State Management)
+Date: 2026-03-11 (UTC)
+Branch: `workflow/40/dev`
+Validator: QA validation agent
+
+### Commits Reviewed (`git log --oneline main..HEAD`)
+- `57052fc` task/403: QA browser artifacts (screenshots + report)
+- `8af561c` task/401: add overworld save-load debug inspection controls
+- `e0a845f` bugfix: Canyon checkpoint interaction blocked by movement timeout at tile (6,3)
+- `c908126` task/409: supervisor safety-commit (Codex omitted git commit)
+- `e2328b0` bugfix: Supply cache route to tile (5,2) times out; workshop pass and checkpoint flag cannot be obtained
+- `0b6b4b4` bugfix: Workshop gate prompt path is blocked by position-update timeout at tile (9,8)
+- `8ffa361` task/407: supervisor safety-commit (Codex omitted git commit)
+- `b4a999d` bugfix: Overworld movement click to tile (7,4) times out, blocking Ranger progression
+- `31e50a1` bugfix: Overworld click-to-move does not move player
+- `603ecf5` bugfix: Overworld movement to Mechanic area (10,8) times out and progression cannot be verified
+- `7625ed4` task/403: QA browser artifacts (screenshots + report)
+- `c21866a` task/405: supervisor safety-commit (Codex omitted git commit)
+- `0f06c83` bugfix: Drone patrol battle transition renders black screen with runtime error
+- `55612ac` task/403: QA browser artifacts (screenshots + report)
+- `4b9af0e` task/402: supervisor safety-commit (Codex omitted git commit)
+- `fc014ef` task/401: add runtime save-load and debug state tools
+- `8abe613` task/400: implement overworld battle transition and state sync
+- `d7a18f9` task/399: integrate shared game state into overworld progression
+- `172a6bf` task/398: add central game state store and integrations
+
+### Diff Summary (`git diff main...HEAD --stat`)
+- 33 files changed, 2594 insertions(+), 142 deletions(-)
+- Includes state model (`src/state/gameState.js`), overworld/battle/main menu integration, persistence tools, and tests.
+
+### Test Commands Run and Output
+1. Command:
+```bash
+cat package.json | grep -A 40 '"scripts"'
+```
+Result: PASS
+- Scripts found: `dev`, `start`, `test`
+- `test` chain includes:
+  - `rollback.test.mjs`
+  - `dog-conditional-behavior.test.mjs`
+  - `battle-grid-stats.test.mjs`
+  - `drone-ai-decision.test.mjs`
+  - `drone-test-battle-scenario.test.mjs`
+  - `player-progress.test.mjs`
+  - `game-state-model.test.mjs`
+  - `save-system.test.mjs`
+  - `runtime-state-tools.test.mjs`
+  - `battle-party-persistence.test.mjs`
+  - `dialogue-system.test.mjs`
+
+2. Command:
+```bash
+npm install
+```
+Result: PASS
+Output:
+- `added 2 packages, and audited 3 packages in 8s`
+- `found 0 vulnerabilities`
+
+3. Command:
+```bash
+npm test
+```
+Result: PASS
+Output:
+- Rollback test passed.
+- Dog conditional behavior test passed.
+- Battle grid stats test passed.
+- Drone AI decision test passed.
+- Drone test battle scenario test passed.
+- Player progress state test passed.
+- Game state model test passed.
+- Save system persistence test passed.
+- Runtime save/load state tools test passed.
+- Battle party persistence test passed.
+- Dialogue system test passed.
+
+Skipped:
+- None.
+
+### Acceptance Verdicts
+- Define core game state model: PASS
+  - `src/state/gameState.js` exists, is imported (`OverworldScene`, `BattleScene`, `main.js`, runtime tools), documents and exposes init/read/mutate APIs for party, health, inventory, and story flags.
+  - Module is engine-agnostic (no Phaser scene calls inside).
+  - Scene integrations and dedicated tests (`scripts/game-state-model.test.mjs`) validate consistency.
+  - STATUS documentation for task/API/testing is present.
+
+- Integrate game state with overworld flow: PASS
+  - `OverworldScene` uses shared state for collected items and story flags (`addInventoryItem`, `setStoryFlags`, `hasStoryFlag`, `getInventoryCount`).
+  - NPC/dialogue/interactable progression now reads/writes central flags/inventory.
+  - Overworld debug overlay + logs verify updates.
+  - State persistence bridge (`persistGameStateSnapshot` + export/import path) preserves party/health/inventory across transitions.
+  - STATUS includes updated scenes/interactions and QA path.
+
+- Implement battle transition and state sync: PASS
+  - Overworld patrol tile trigger starts `BattleScene`.
+  - Battle initialization resolves friendly party/order/HP from shared game state (`getGameState`).
+  - In-battle HP changes sync to shared state (`setPartyMemberHealth`); victory rewards/flags sync (`addInventoryItem`, `setStoryFlag`, `setStoryFlags`).
+  - Battle completion returns to overworld with persisted effects via `exportGameStateToPlayerProgress`.
+  - Outcome flag affects overworld gating/dialogue (`OVERWORLD_FIRST_DRONE_DEFEATED`).
+  - STATUS includes transition flow and manual QA path.
+
+- Add save, load, and debug state inspection: PASS
+  - Save/load implemented with stable localStorage key `playerProgress` (`saveSystem`, `runtimeStateTools`).
+  - Load path wired into entry flow (`main.js`, `MainMenuScene` continue/load controls, scene hotkeys).
+  - Runtime state rehydration verified by tests (`runtime-state-tools.test.mjs`) for party/health/inventory/story flags.
+  - Debug inspection available (Overworld overlay + `I` console dump in menu/overworld/battle).
+  - Missing/corrupt save fallback implemented (`loadProgress`/`loadGame` fallback state).
+  - STATUS includes persisted fields and trigger instructions.
+
+### Workflow Goal Verification
+- Goal: Implement a cohesive game loop connecting overworld exploration, battle transitions, progression, and shared client-side state.
+- Verification result: PASS
+- Evidence: Central state store is authoritative across overworld/battle/persistence; transitions preserve party health/inventory/flags; progression flags drive overworld behavior; save/load/debug tooling is wired and tested.
+
+### Overall Verdict
+PASS

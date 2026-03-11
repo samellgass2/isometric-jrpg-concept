@@ -6,6 +6,8 @@ const OVERWORLD_DIALOGUE_FLAGS = Object.freeze({
   MECHANIC_INTRO_COMPLETE: "dialogue.mechanicIntroComplete",
   WORKSHOP_KEY_GRANTED: "quest.workshopKeyGranted",
   WORKSHOP_GATE_UNLOCKED: "quest.workshopGateUnlocked",
+  WORKSHOP_PASS_COLLECTED: "quest.workshopPassCollected",
+  CANYON_CHECKPOINT_UNLOCKED: "quest.canyonCheckpointUnlocked",
 });
 
 const OVERWORLD_NPC_DEFINITIONS = Object.freeze([
@@ -59,11 +61,20 @@ const OVERWORLD_NPC_DIALOGUE_TREES = Object.freeze({
         text: "Trails ahead are rough. Stay inside the marked paths.",
         next: [
           {
+            condition: { allFlags: [KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED] },
+            target: "drone-patrol-cleared",
+          },
+          {
             condition: { allFlags: [OVERWORLD_DIALOGUE_FLAGS.RANGER_TUTORIAL_COMPLETE] },
             target: "repeat-advice",
           },
           { target: "offer-guidance" },
         ],
+      },
+      "drone-patrol-cleared": {
+        id: "drone-patrol-cleared",
+        speakerId: "ranger",
+        text: "Perimeter signal is clean. Level 2 route is now authorized. Keep moving.",
       },
       "repeat-advice": {
         id: "repeat-advice",
@@ -221,11 +232,34 @@ const OVERWORLD_NPC_DIALOGUE_TREES = Object.freeze({
 
 const OVERWORLD_INTERACTABLE_DEFINITIONS = Object.freeze([
   {
+    id: "obj-workshop-pass-cache",
+    type: "pickup",
+    label: "Supply Cache",
+    texture: "obj-workshop-pass-cache",
+    tileX: 5,
+    tileY: 2,
+    collectedFlag: OVERWORLD_DIALOGUE_FLAGS.WORKSHOP_PASS_COLLECTED,
+    grantsStoryFlags: {
+      [OVERWORLD_DIALOGUE_FLAGS.CANYON_CHECKPOINT_UNLOCKED]: true,
+    },
+    inventoryReward: {
+      itemId: "workshop-pass",
+      amount: 1,
+    },
+    promptLocked: "You found a workshop pass in the supply cache.",
+    promptUnlocked: "The supply cache is empty.",
+    colors: {
+      frame: 0x263244,
+      lockedFill: 0x6687c9,
+      unlockedFill: 0x5f6b7d,
+    },
+  },
+  {
     id: "obj-workshop-gate",
     type: "gate",
     label: "Workshop Gate",
     texture: "obj-workshop-gate",
-    tileX: 10,
+    tileX: 9,
     tileY: 8,
     unlockFlag: OVERWORLD_DIALOGUE_FLAGS.WORKSHOP_GATE_UNLOCKED,
     promptLocked: "Workshop gate: locked. Ask Mechanic Ivo for access.",
@@ -233,6 +267,24 @@ const OVERWORLD_INTERACTABLE_DEFINITIONS = Object.freeze([
     colors: {
       frame: 0x263244,
       lockedFill: 0xb24a4a,
+      unlockedFill: 0x4a9f63,
+    },
+  },
+  {
+    id: "obj-canyon-checkpoint",
+    type: "gate",
+    label: "Canyon Checkpoint",
+    texture: "obj-canyon-checkpoint",
+    tileX: 6,
+    tileY: 2,
+    unlockFlag: OVERWORLD_DIALOGUE_FLAGS.CANYON_CHECKPOINT_UNLOCKED,
+    unlockItemId: "workshop-pass",
+    unlockItemCount: 1,
+    promptLocked: "Checkpoint lock: requires workshop pass from nearby cache.",
+    promptUnlocked: "Checkpoint unlocked. The route is now open.",
+    colors: {
+      frame: 0x2a3541,
+      lockedFill: 0x8e4343,
       unlockedFill: 0x4a9f63,
     },
   },

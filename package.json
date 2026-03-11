@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "start": "node scripts/dev-server.mjs",
-    "test": "node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/drone-ai-decision.test.mjs && node scripts/drone-test-battle-scenario.test.mjs && node scripts/player-progress.test.mjs && node scripts/save-system.test.mjs && node scripts/battle-party-persistence.test.mjs && node scripts/dialogue-system.test.mjs"
+    "test": "node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/drone-ai-decision.test.mjs && node scripts/drone-test-battle-scenario.test.mjs && node scripts/player-progress.test.mjs && node scripts/game-state-model.test.mjs && node scripts/save-system.test.mjs && node scripts/runtime-state-tools.test.mjs && node scripts/battle-party-persistence.test.mjs && node scripts/dialogue-system.test.mjs"
   },
   "repository": {
     "type": "git",

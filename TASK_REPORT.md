@@ -1,68 +1,38 @@
-# TASK REPORT
+# TASK 401 Report
 
-- Task ID: 393
-- Run ID: 694
-- Title: Implement NPC interaction and quest hook flow
-- Status: Completed
+Implemented client-side save/load controls and debug state inspection for `isometric-strategy-game`.
 
-## What Was Implemented
+## What was delivered
+- Added runtime persistence/debug helper module: `src/persistence/runtimeStateTools.js`.
+  - `saveGame(game, options)` serializes normalized progression derived from central game state.
+  - `loadGame(game)` restores persisted progression and rehydrates central game state.
+  - `resolveResumeTarget(progressState)` resolves scene/data for continue flows.
+  - `buildDebugStateSnapshot(options)` and `logDebugStateSnapshot(options)` expose party, inventory, and story flag subsets.
+- Added explicit save/load aliases in `src/persistence/saveSystem.js`:
+  - `saveGame(state)`
+  - `loadGame()`
+- Updated boot wiring in `src/main.js`:
+  - Added registry functions `saveGame`, `loadGame`, `debugGameState` for scene/menu access.
+- Updated main menu controls in `src/scenes/MainMenuScene.js`:
+  - New `Load Save / Continue` button and `L`/`F9` shortcut.
+  - Manual save shortcut `F6`.
+  - Debug snapshot shortcut `I`.
+- Updated battle flow controls in `src/scenes/BattleScene.js`:
+  - `F6` save, `F9` load-and-transition, `I` debug snapshot log.
+- Added runtime integration tests in `scripts/runtime-state-tools.test.mjs`.
+- Updated `STATUS.md` with operator/QA instructions for save/load/debug usage and persisted fields.
 
-1. Reusable NPC/dialogue/quest configuration
-- Added `src/data/overworldInteractionConfig.js`.
-- NPCs are now configured via data with:
-  - `id`, `name`, position/visual fields
-  - `dialogueEntryPoint`
-  - optional `questMetadata`
-- Dialogue trees are mapped by NPC id in structured objects.
-- Added structured quest-reactive interactable config (`obj-workshop-gate`) with `unlockFlag` and locked/unlocked prompts.
-
-2. Overworld interaction framework updates
-- Updated `src/scenes/OverworldScene.js` to consume config data.
-- NPC interactions consistently use existing overworld interaction mechanics:
-  - `Space/Enter` near interactable
-  - pointer tile interaction when adjacent
-- NPC conversations now start from configured `dialogueEntryPoint`.
-- Added generic interactable support in the same interaction loop as signs/NPCs.
-
-3. Quest hook flow + visible world-state change
-- Ranger dialogue can set `dialogue.rangerTutorialComplete`.
-- Mechanic dialogue checks that flag and can set:
-  - `quest.workshopKeyGranted`
-  - `quest.workshopGateUnlocked`
-- Workshop gate behavior changes after unlock flag:
-  - locked -> blocks path/collision + locked prompt + locked tint
-  - unlocked -> passable + unlocked prompt + unlocked tint
-
-4. Persisted quest flags in player state
-- Extended `src/state/playerProgress.js` with normalized `questFlags`.
-- Added helpers:
-  - `getQuestFlag`
-  - `setQuestFlag`
-  - `setQuestFlags`
-- Overworld dialogue hook events persist recognized dialogue/quest flags to progress.
-
-5. Test updates
-- Updated `scripts/player-progress.test.mjs` to validate quest flag persistence and serialization behavior.
-
-## Acceptance Criteria Coverage
-
-1. Two distinct NPCs with different dialogue entry points: PASS (`npc-ranger`, `npc-mechanic`).
-2. Consistent interaction mechanic opening dialogue UI: PASS (same confirm/select flow in overworld).
-3. Dialogue quest hook sets quest flag: PASS (`mechanic-grant-workshop-key`, ranger task hook).
-4. Subsequent interaction observes flag and alters behavior: PASS (mechanic branch + workshop gate unlock state).
-5. Structured reusable NPC/quest configuration: PASS (`src/data/overworldInteractionConfig.js`).
-6. STATUS document updated: PASS (`STATUS.md` updated with task entry and touched files).
-
-## Files Changed
-
-- `src/data/overworldInteractionConfig.js` (new)
-- `src/scenes/OverworldScene.js`
-- `src/state/playerProgress.js`
-- `scripts/player-progress.test.mjs`
+## Files changed
+- `src/persistence/runtimeStateTools.js` (new)
+- `src/persistence/saveSystem.js`
+- `src/main.js`
+- `src/scenes/MainMenuScene.js`
+- `src/scenes/BattleScene.js`
+- `scripts/runtime-state-tools.test.mjs` (new)
+- `package.json`
 - `STATUS.md`
 - `TASK_REPORT.md`
 
-## Validation
-
-- Command: `npm test`
-- Result: PASS
+## Verification
+- Ran `npm test` successfully.
+- All configured test scripts passed, including the new runtime save/load test.

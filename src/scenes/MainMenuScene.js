@@ -1,10 +1,13 @@
 import * as Phaser from "../../node_modules/phaser/dist/phaser.esm.js";
+import { logDebugStateSnapshot, resolveResumeTarget } from "../persistence/runtimeStateTools.js";
 
 class MainMenuScene extends Phaser.Scene {
   constructor() {
     super("MainMenuScene");
     this.startButton = null;
     this.startButtonLabel = null;
+    this.continueButton = null;
+    this.continueButtonLabel = null;
     this.droneTestButton = null;
     this.droneTestButtonLabel = null;
     this.startTriggered = false;
@@ -62,7 +65,7 @@ class MainMenuScene extends Phaser.Scene {
     };
 
     const mainStart = createMenuButton({
-      y: height / 2 - 8,
+      y: height / 2 - 48,
       label: "Start Game",
       fillColor: 0x2f6fff,
       strokeColor: 0xaec8ff,
@@ -72,8 +75,19 @@ class MainMenuScene extends Phaser.Scene {
     this.startButton = mainStart.button;
     this.startButtonLabel = mainStart.buttonLabel;
 
+    const continueGame = createMenuButton({
+      y: height / 2 + 24,
+      label: "Load Save / Continue",
+      fillColor: 0x2f7d5f,
+      strokeColor: 0xbaf6df,
+      hoverColor: 0x34976f,
+      onClick: () => this.continueGame(),
+    });
+    this.continueButton = continueGame.button;
+    this.continueButtonLabel = continueGame.buttonLabel;
+
     const droneTestStart = createMenuButton({
-      y: height / 2 + 72,
+      y: height / 2 + 96,
       label: "Drone Test Battle",
       fillColor: 0x7a3240,
       strokeColor: 0xffb4c4,
@@ -85,14 +99,29 @@ class MainMenuScene extends Phaser.Scene {
 
     this.input.keyboard.on("keydown-ENTER", () => this.startGame());
     this.input.keyboard.on("keydown-SPACE", () => this.startGame());
+    this.input.keyboard.on("keydown-L", () => this.continueGame());
     this.input.keyboard.on("keydown-T", () => this.startDroneTestBattle());
+    this.input.keyboard.on("keydown-I", () => this.logDebugState());
+    this.input.keyboard.on("keydown-F6", (event) => {
+      event?.preventDefault?.();
+      this.saveFromMenu();
+    });
+    this.input.keyboard.on("keydown-F9", (event) => {
+      event?.preventDefault?.();
+      this.continueGame();
+    });
 
     this.add
-      .text(centerX, height / 2 + 114, "Press Enter/Space to Start Game or T for Drone Test Battle", {
+      .text(
+        centerX,
+        height / 2 + 146,
+        "Enter/Space: Start  L/F9: Load Save  F6: Save  I: Dump Debug  T: Drone Test",
+        {
         color: "#b8cae6",
         fontFamily: "monospace",
         fontSize: "13px",
-      })
+        }
+      )
       .setOrigin(0.5);
 
     this.add
@@ -150,20 +179,48 @@ class MainMenuScene extends Phaser.Scene {
 
     this.startTriggered = true;
     const progress = this.game.registry.get("playerProgress");
-    const resumeSceneKey =
-      typeof progress?.overworld?.currentSceneKey === "string" &&
-      progress.overworld.currentSceneKey.trim()
-        ? progress.overworld.currentSceneKey
-        : "OverworldScene";
-    const resumeData =
-      resumeSceneKey === "OverworldScene"
-        ? { spawnPointId: progress?.overworld?.spawnPointId }
-        : {};
+    const { resumeSceneKey, resumeData } = resolveResumeTarget(progress);
 
     this.cameras.main.fadeOut(200, 0, 0, 0);
     this.time.delayedCall(210, () => {
       this.scene.start(resumeSceneKey, resumeData);
     });
+  }
+
+  continueGame() {
+    if (this.startTriggered) {
+      return;
+    }
+
+    const loadGame = this.game.registry.get("loadGame");
+    const progress = typeof loadGame === "function" ? loadGame() : this.game.registry.get("playerProgress");
+    const { resumeSceneKey, resumeData } = resolveResumeTarget(progress);
+    this.startTriggered = true;
+    this.cameras.main.fadeOut(200, 0, 0, 0);
+    this.time.delayedCall(210, () => {
+      this.scene.start(resumeSceneKey, resumeData);
+    });
+  }
+
+  saveFromMenu() {
+    const saveGame = this.game.registry.get("saveGame");
+    if (typeof saveGame !== "function") {
+      return;
+    }
+    const saved = saveGame({ currentSceneKey: this.scene.key });
+    console.log("[MainMenuScene] Manual save complete.", {
+      scene: saved?.overworld?.currentSceneKey,
+      spawnPointId: saved?.overworld?.spawnPointId,
+    });
+  }
+
+  logDebugState() {
+    const getDebugState = this.game.registry.get("debugGameState");
+    if (typeof getDebugState === "function") {
+      console.log("[MainMenuScene] Debug snapshot", getDebugState());
+      return;
+    }
+    logDebugStateSnapshot();
   }
 }
 
