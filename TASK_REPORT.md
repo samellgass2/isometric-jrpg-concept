@@ -1,35 +1,45 @@
-# Task 426 Report
+# Task 427 Report
 
 ## Summary
-Implemented a centralized XP/leveling subsystem and integrated it into battle completion flow.
+Integrated character progression so overworld and battle share the same authoritative party state for HP, level, XP, and stat growth.
 
-### What was added
-- New progression module: `src/progression/leveling.js`
-  - `getXpToNextLevel(level)`
-  - `applyLevelStatGrowth(character, options?)`
-  - `awardCharacterXP(character, xpAmount)`
-- New game-state XP actions: `src/state/gameState.js`
-  - `awardPartyMemberXP(memberId, xpAmount)`
-  - `awardPartyXP(memberIds, totalXP)`
-- Battle-end XP wiring: `src/scenes/BattleScene.js`
-  - On victory, XP reward total is resolved from `encounter.rewards.xp` if present, otherwise derived from enemy configuration.
-  - XP is awarded to each surviving friendly via state action `awardPartyXP`.
-  - Level-up messages are added to the battle log.
-- Added progression test harness: `scripts/leveling-progression.test.mjs`
-  - Demonstrates protagonist XP from level 1 to level 2+ with visible stat growth.
-  - Validates multi-level-up behavior and XP remainder bounds.
-- Updated `STATUS.md` with module names and trigger path from battle resolution.
+## Implemented
+- Added centralized battle party resolver in `src/state/gameState.js`:
+  - `buildBattlePartyFromEncounterTemplates(friendlyUnits)`
+  - Battle friendlies now come from shared state first, with missing non-drone members seeded from encounter templates.
+- Updated `src/scenes/BattleScene.js`:
+  - Replaced local merge/clone battle-party resolver with shared state resolver.
+  - Battle unit HUD/selection now shows `Lv` and `XP`.
+  - Added progression visibility hooks:
+    - battle log lines with `[Progression <stage>] ...`
+    - structured console logs (`[BattleScene] Progression snapshot`) at battle entry and post-resolution.
+- Updated `src/scenes/OverworldScene.js`:
+  - Overworld HUD now always reads protagonist HP/Lv/XP from central state.
+  - Debug panel now shows party Lv/XP/HP for all members.
+- Updated `src/state/gameState.js` XP award logic:
+  - Drone-flagged units are skipped for persistent XP gain.
+- Updated `src/persistence/runtimeStateTools.js` debug snapshot fields:
+  - Added `currentXP`, `xpToNextLevel`, `isDrone`.
+- Added/extended test coverage in `scripts/game-state-model.test.mjs`:
+  - Validates encounter roster resolution adds elephant and keeps drone non-persistent.
+  - Validates drone party member does not gain persistent XP.
 
 ## Acceptance Criteria Check
-1. Dedicated progression module exists and is scene-agnostic: PASS (`src/progression/leveling.js`).
-2. XP award updates XP, level, and stats with deterministic formula: PASS (`awardCharacterXP`, growth profiles and XP formula).
-3. Battle resolution invokes XP award for each surviving party member at battle end: PASS (`BattleScene.persistBattleProgress` + `awardPartyXP`).
-4. Multi-level gains from one large XP award are processed sequentially with bounded remainder XP: PASS (`while` level-up loop in `awardCharacterXP`).
-5. In-code test/debug harness for protagonist to level 2+ with stat increase: PASS (`scripts/leveling-progression.test.mjs`).
-6. STATUS updated with exact module/function references and trigger path: PASS (`STATUS.md`, Task 426 section).
+1. Battle entry stats match shared state: PASS
+   - Battle friendlies are now built by `buildBattlePartyFromEncounterTemplates(...)` from central state.
+2. XP/levels persist into overworld and subsequent encounters: PASS
+   - XP awards mutate shared state, overworld HUD/debug reads same state, and later battles rehydrate from state.
+3. No divergent independent stat copies in transition flow: PASS
+   - Removed BattleScene local party merge path; centralized in state model logic.
+4. Simple UI/logging to verify progression: PASS
+   - Overworld HUD/debug panel + battle progression logs and structured console output.
+5. Elephant/cheetah/dog progression and drone non-persistence behavior: PASS
+   - Encounter resolver seeds/persists non-drone party members; drones explicitly skipped for persistent XP.
+6. STATUS updated with touched modules and test guidance: PASS
+   - Added Task 427 section in `STATUS.md`.
 
 ## Validation
-- Ran `npm test` successfully.
+- Ran `npm test` successfully after changes.
 
 ## Commit
-- `task/426: add centralized XP and level-up progression system`
+- `task/427: unify progression state across overworld and battle`
