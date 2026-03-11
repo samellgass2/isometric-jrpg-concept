@@ -763,6 +763,7 @@ class OverworldScene extends Phaser.Scene {
     const isCollected = collectedFlag ? hasStoryFlag(collectedFlag) : false;
     const isUnlocked = unlockedByFlag || unlockedByItem || (type === "pickup" && isCollected);
     const tileKey = keyForTile(tileX, tileY);
+    const isPickup = type === "pickup";
 
     entity.setData("isUnlocked", isUnlocked);
     if (isUnlocked) {
@@ -773,9 +774,16 @@ class OverworldScene extends Phaser.Scene {
       }
     } else {
       entity.setTint(entity.getData("lockedColor"));
-      this.blockingInteractableTileSet.add(tileKey);
-      if (entity.body) {
-        entity.body.enable = true;
+      if (isPickup) {
+        this.blockingInteractableTileSet.delete(tileKey);
+        if (entity.body) {
+          entity.body.enable = false;
+        }
+      } else {
+        this.blockingInteractableTileSet.add(tileKey);
+        if (entity.body) {
+          entity.body.enable = true;
+        }
       }
     }
   }
