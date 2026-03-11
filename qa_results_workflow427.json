@@ -1,0 +1,83 @@
+{
+  "results": [
+    {
+      "id": 1,
+      "description": "Battle entry stats match shared state",
+      "status": "PASS",
+      "screenshot": "screenshots/02-battle-entry.png",
+      "notes": "Completed in 7833ms"
+    },
+    {
+      "id": 2,
+      "description": "XP/levels persist into overworld and subsequent encounters",
+      "status": "FAIL",
+      "screenshot": "screenshots/04-level2-entry.png",
+      "notes": "Timeout after 15152ms: Page.wait_for_function: Timeout 12000ms exceeded.",
+      "bug_title": "XP/levels persist into overworld and subsequent encounters timed out"
+    },
+    {
+      "id": 3,
+      "description": "No divergent independent stat copies in transition flow",
+      "status": "PASS",
+      "screenshot": "screenshots/06-transition-state-check.png",
+      "notes": "Completed in 459ms"
+    },
+    {
+      "id": 4,
+      "description": "Simple UI/logging exists to verify progression",
+      "status": "PASS",
+      "screenshot": "screenshots/07-battle-inspect-log.png",
+      "notes": "Completed in 1000ms"
+    },
+    {
+      "id": 5,
+      "description": "Elephant/cheetah/dog progression works and drones remain non-persistent for XP",
+      "status": "FAIL",
+      "screenshot": "screenshots/08-level2-after-battle.png",
+      "notes": "Elephant not present in persistent party during level-2 progression",
+      "bug_title": "Elephant/cheetah/dog progression works and drones remain non-persistent for XP failed"
+    },
+    {
+      "id": 6,
+      "description": "STATUS updated with touched modules and test guidance",
+      "status": "PASS",
+      "screenshot": "screenshots/09-final-state.png",
+      "notes": "Completed in 497ms"
+    }
+  ],
+  "console_events": [
+    {
+      "type": "log",
+      "text": "%c %c %c %c %c Phaser v3.90.0 (WebGL | Web Audio) %c https://phaser.io/v390 background: #ff0000 background: #ffff00 background: #00ff00 background: #00ffff color: #ffffff; background: #000000 background: transparent"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x18e40012f800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x18e40012f800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x18e40012f800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x18e40012f800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+      "type": "log",
+      "text": "%c %c %c %c %c Phaser v3.90.0 (WebGL | Web Audio) %c https://phaser.io/v390 background: #ff0000 background: #ffff00 background: #00ff00 background: #00ffff color: #ffffff; background: #000000 background: transparent"
+    },
+    {
+      "type": "log",
+      "text": "[BattleScene] Progression snapshot {stage: battle-entry, encounterId: overworld-first-drone, party: Array(2), awards: Array(0)}"
+    },
+    {
+      "type": "log",
+      "text": "[BattleScene] Debug snapshot {party: Array(3), inventory: Object, storyFlags: Object}"
+    }
+  ],
+  "page_errors": []
+}

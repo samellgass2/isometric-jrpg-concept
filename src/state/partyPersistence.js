@@ -1,5 +1,9 @@
 import { PLAYER_PROGRESS_STORAGE_KEY } from "../persistence/saveSystem.js";
 import {
+  normalizeCharacterModel,
+  serializeCharacterForPartyState,
+} from "../models/characterModels.js";
+import {
   normalizePlayerProgressState,
   removePartyMember,
   upsertPartyMember,
@@ -8,10 +12,14 @@ import {
 function cloneUnitConfig(unit) {
   return {
     ...unit,
+    baseStats: { ...(unit.baseStats ?? {}) },
+    currentStats: { ...(unit.currentStats ?? {}) },
     movement: { ...(unit.movement ?? {}) },
     attack: { ...(unit.attack ?? {}) },
     stats: { ...(unit.stats ?? {}) },
     abilities: Array.isArray(unit.abilities) ? [...unit.abilities] : [],
+    tags: Array.isArray(unit.tags) ? [...unit.tags] : [],
+    flags: { ...(unit.flags ?? {}) },
     spawn: unit.spawn ? { ...unit.spawn } : undefined,
   };
 }
@@ -35,17 +43,28 @@ export function mergePersistedPartyMemberIntoUnit(unitConfig, persistedMember) {
     return baseUnit;
   }
 
-  return {
+  const merged = normalizeCharacterModel({
     ...baseUnit,
     name: persistedMember.name || baseUnit.name,
     archetype: persistedMember.archetype ?? baseUnit.archetype,
     level: persistedMember.level ?? baseUnit.level,
+    currentXP: persistedMember.currentXP ?? baseUnit.currentXP ?? 0,
+    xpToNextLevel: persistedMember.xpToNextLevel ?? baseUnit.xpToNextLevel ?? 100,
     currentHp: persistedMember.currentHp,
+    baseStats: persistedMember.baseStats ?? baseUnit.baseStats,
+    currentStats: persistedMember.currentStats ?? baseUnit.currentStats,
     stats: {
       ...baseUnit.stats,
       maxHp: persistedMember.maxHp,
     },
-  };
+    flags: {
+      ...(baseUnit.flags ?? {}),
+      ...(persistedMember.flags ?? {}),
+      isPartyMember: true,
+    },
+  });
+
+  return merged ? { ...baseUnit, ...merged } : baseUnit;
 }
 
 export function resolveInitialFriendlyUnits(friendlyUnits, progressState, options = {}) {
@@ -83,14 +102,18 @@ export function resolveInitialFriendlyUnits(friendlyUnits, progressState, option
 }
 
 export function serializeUnitToPartyMember(unit) {
-  return {
-    id: unit.id,
-    name: unit.name,
-    archetype: unit.archetype ?? null,
-    level: unit.level ?? 1,
-    currentHp: Math.max(0, Math.floor(unit.currentHp)),
-    maxHp: Math.max(1, Math.floor(unit.stats?.maxHp ?? unit.currentHp ?? 1)),
-  };
+  const normalized = normalizeCharacterModel({
+    ...unit,
+    flags: {
+      ...(unit?.flags ?? {}),
+      isPartyMember: true,
+    },
+  });
+  if (!normalized) {
+    return null;
+  }
+
+  return serializeCharacterForPartyState(normalized);
 }
 
 export function reconcilePartyProgressWithBattleUnits(
@@ -105,7 +128,11 @@ export function reconcilePartyProgressWithBattleUnits(
   let next = normalizePlayerProgressState(previousState);
 
   friendlyUnits.forEach((unit) => {
-    next = upsertPartyMember(next, serializeUnitToPartyMember(unit));
+    const serialized = serializeUnitToPartyMember(unit);
+    if (!serialized) {
+      return;
+    }
+    next = upsertPartyMember(next, serialized);
   });
 
   next.party.memberOrder

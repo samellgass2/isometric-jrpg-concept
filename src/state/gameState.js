@@ -1,13 +1,13 @@
 import { normalizePlayerProgressState } from "./playerProgress.js";
+import {
+  createProtagonistCharacter,
+  normalizeCharacterCollection,
+  normalizeCharacterModel,
+  serializeCharacterForPartyState,
+} from "../models/characterModels.js";
+import { awardCharacterXP } from "../progression/leveling.js";
 
-const DEFAULT_PARTY_MEMBER = Object.freeze({
-  id: "protagonist",
-  name: "Protagonist",
-  archetype: "hero",
-  level: 1,
-  currentHp: 100,
-  maxHp: 100,
-});
+const DEFAULT_PARTY_MEMBER = Object.freeze(createProtagonistCharacter());
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -32,25 +32,55 @@ function toInteger(value, fallback = 0) {
 }
 
 function normalizePartyMember(member) {
-  if (!isPlainObject(member)) {
+  const normalized = normalizeCharacterModel({
+    ...(isPlainObject(member) ? member : {}),
+    flags: {
+      ...(member?.flags ?? {}),
+      isPartyMember: true,
+    },
+  });
+
+  if (!normalized) {
     return null;
   }
 
-  const id = normalizeId(member.id);
-  if (!id) {
-    return null;
+  return normalized;
+}
+
+function shouldPersistPartyTemplateMember(member) {
+  const normalized = normalizeCharacterModel(member);
+  if (!normalized) {
+    return false;
   }
 
-  const maxHp = Math.max(1, toInteger(member.maxHp, 100));
-  const currentHp = Math.max(0, Math.min(maxHp, toInteger(member.currentHp, maxHp)));
+  return normalized.flags?.isPartyMember === true && normalized.flags?.isDrone !== true;
+}
 
+function cloneEncounterUnitExtras(unit) {
   return {
-    id,
-    name: normalizeId(member.name) || id,
-    archetype: typeof member.archetype === "string" ? member.archetype : null,
-    level: Math.max(1, toInteger(member.level, 1)),
-    currentHp,
-    maxHp,
+    spawn: unit?.spawn ? { ...unit.spawn } : undefined,
+    color: unit?.color,
+  };
+}
+
+function mergeBattleTemplateWithPartyMember(template, partyMember) {
+  const normalizedMerged = normalizeCharacterModel({
+    ...(isPlainObject(template) ? template : {}),
+    ...(isPlainObject(partyMember) ? partyMember : {}),
+    flags: {
+      ...(template?.flags ?? {}),
+      ...(partyMember?.flags ?? {}),
+      isPartyMember: true,
+    },
+  });
+  if (!normalizedMerged) {
+    return null;
+  }
+
+  const extras = cloneEncounterUnitExtras(template);
+  return {
+    ...normalizedMerged,
+    ...extras,
   };
 }
 
@@ -59,22 +89,33 @@ function normalizePartyMembers(members) {
     return [cloneJson(DEFAULT_PARTY_MEMBER)];
   }
 
-  const seen = new Set();
-  const normalized = [];
-  members.forEach((member) => {
-    const next = normalizePartyMember(member);
-    if (!next || seen.has(next.id)) {
-      return;
-    }
-    seen.add(next.id);
-    normalized.push(next);
-  });
+  const normalized = normalizeCharacterCollection(
+    members.map((member) => ({
+      ...(isPlainObject(member) ? member : {}),
+      flags: {
+        ...(member?.flags ?? {}),
+        isPartyMember: true,
+      },
+    }))
+  );
 
   if (normalized.length === 0) {
     return [cloneJson(DEFAULT_PARTY_MEMBER)];
   }
 
   return normalized;
+}
+
+function normalizeEnemies(enemies) {
+  return normalizeCharacterCollection(
+    (Array.isArray(enemies) ? enemies : []).map((enemy) => ({
+      ...(isPlainObject(enemy) ? enemy : {}),
+      flags: {
+        ...(enemy?.flags ?? {}),
+        isPartyMember: false,
+      },
+    }))
+  );
 }
 
 function normalizePartyOrder(order, members) {
@@ -146,6 +187,9 @@ function createDefaultState() {
     inventory: {
       items: {},
     },
+    battle: {
+      enemies: [],
+    },
     storyFlags: {},
   };
 }
@@ -162,6 +206,9 @@ function normalizeGameState(state = {}) {
     },
     inventory: {
       items: normalizeInventoryItems(source.inventory?.items),
+    },
+    battle: {
+      enemies: normalizeEnemies(source.battle?.enemies),
     },
     storyFlags: normalizeStoryFlags(source.storyFlags),
   };
@@ -247,6 +294,91 @@ class GameStateStore {
     });
   }
 
+  buildBattlePartyFromEncounterTemplates(friendlyUnits = []) {
+    if (!Array.isArray(friendlyUnits) || friendlyUnits.length === 0) {
+      return [];
+    }
+
+    const ensuredMembers = [];
+    this.update((current) => {
+      const existingById = new Map(current.party.members.map((member) => [member.id, member]));
+      const membersToAppend = [];
+
+      friendlyUnits.forEach((unitTemplate) => {
+        const normalizedTemplate = normalizeCharacterModel({
+          ...(isPlainObject(unitTemplate) ? unitTemplate : {}),
+          flags: {
+            ...(unitTemplate?.flags ?? {}),
+            isPartyMember: true,
+          },
+        });
+        if (!normalizedTemplate) {
+          return;
+        }
+
+        const persisted = existingById.get(normalizedTemplate.id);
+        if (persisted) {
+          const merged = mergeBattleTemplateWithPartyMember(unitTemplate, persisted);
+          if (merged) {
+            ensuredMembers.push(merged);
+          }
+          return;
+        }
+
+        if (shouldPersistPartyTemplateMember(normalizedTemplate)) {
+          membersToAppend.push(normalizedTemplate);
+          const merged = mergeBattleTemplateWithPartyMember(unitTemplate, normalizedTemplate);
+          if (merged) {
+            ensuredMembers.push(merged);
+          }
+          return;
+        }
+
+        const merged = mergeBattleTemplateWithPartyMember(unitTemplate, normalizedTemplate);
+        if (merged) {
+          ensuredMembers.push(merged);
+        }
+      });
+
+      if (membersToAppend.length === 0) {
+        return current;
+      }
+
+      const members = [...current.party.members, ...membersToAppend];
+      const memberOrder = [...current.party.memberOrder];
+      membersToAppend.forEach((member) => {
+        if (!memberOrder.includes(member.id)) {
+          memberOrder.push(member.id);
+        }
+      });
+
+      return {
+        ...current,
+        party: {
+          members,
+          memberOrder,
+        },
+      };
+    });
+
+    return ensuredMembers;
+  }
+
+  setBattleEnemies(enemies = []) {
+    const normalized = normalizeEnemies(enemies);
+    return this.update((current) => ({
+      ...current,
+      battle: {
+        ...current.battle,
+        enemies: normalized,
+      },
+    }));
+  }
+
+  getBattleEnemies() {
+    return cloneJson(this.state.battle.enemies);
+  }
+
   removePartyMember(memberId) {
     const id = normalizeId(memberId);
     if (!id) {
@@ -276,9 +408,20 @@ class GameStateStore {
         }
 
         const currentHp = Math.max(0, Math.min(member.maxHp, member.currentHp + normalizedDelta));
+        const nextCurrentStats = {
+          ...(member.currentStats ?? {}),
+          hp: currentHp,
+          maxHp: member.maxHp,
+        };
         return {
           ...member,
           currentHp,
+          currentStats: nextCurrentStats,
+          stats: {
+            ...(member.stats ?? {}),
+            hp: currentHp,
+            maxHp: member.maxHp,
+          },
         };
       });
 
@@ -310,6 +453,16 @@ class GameStateStore {
           ...member,
           maxHp,
           currentHp,
+          currentStats: {
+            ...(member.currentStats ?? {}),
+            maxHp,
+            hp: currentHp,
+          },
+          stats: {
+            ...(member.stats ?? {}),
+            maxHp,
+            hp: currentHp,
+          },
         };
       });
 
@@ -321,6 +474,113 @@ class GameStateStore {
         },
       };
     });
+  }
+
+  awardPartyMemberXP(memberId, xpAmount = 0) {
+    const id = normalizeId(memberId);
+    const normalizedXP = Math.max(0, toInteger(xpAmount, 0));
+    if (!id || normalizedXP === 0) {
+      return {
+        state: this.snapshot(),
+        awardResult: null,
+      };
+    }
+
+    let appliedAward = null;
+    const state = this.update((current) => {
+      const members = current.party.members.map((member) => {
+        if (member.id !== id) {
+          return member;
+        }
+
+        if (member.flags?.isDrone === true) {
+          return member;
+        }
+
+        const result = awardCharacterXP(member, normalizedXP);
+        if (!result?.character) {
+          return member;
+        }
+
+        appliedAward = {
+          memberId: id,
+          ...result,
+        };
+        return result.character;
+      });
+
+      return {
+        ...current,
+        party: {
+          ...current.party,
+          members,
+        },
+      };
+    });
+
+    return {
+      state,
+      awardResult: appliedAward,
+    };
+  }
+
+  awardPartyXP(memberIds = [], totalXP = 0) {
+    const normalizedXP = Math.max(0, toInteger(totalXP, 0));
+    if (normalizedXP === 0) {
+      return {
+        state: this.snapshot(),
+        awards: [],
+      };
+    }
+
+    const idSet = new Set(
+      (Array.isArray(memberIds) ? memberIds : [])
+        .map((memberId) => normalizeId(memberId))
+        .filter(Boolean)
+    );
+    if (idSet.size === 0) {
+      return {
+        state: this.snapshot(),
+        awards: [],
+      };
+    }
+
+    let awards = [];
+    const state = this.update((current) => {
+      const members = current.party.members.map((member) => {
+        if (!idSet.has(member.id)) {
+          return member;
+        }
+
+        if (member.flags?.isDrone === true) {
+          return member;
+        }
+
+        const result = awardCharacterXP(member, normalizedXP);
+        if (!result?.character) {
+          return member;
+        }
+
+        awards.push({
+          memberId: member.id,
+          ...result,
+        });
+        return result.character;
+      });
+
+      return {
+        ...current,
+        party: {
+          ...current.party,
+          members,
+        },
+      };
+    });
+
+    return {
+      state,
+      awards,
+    };
   }
 
   addInventoryItem(itemId, amount = 1) {
@@ -443,6 +703,9 @@ function createGameStateFromPlayerProgress(progressState, options = {}) {
         ...(isPlainObject(options.inventoryItems) ? options.inventoryItems : {}),
       },
     },
+    battle: {
+      enemies: options.enemies,
+    },
     storyFlags,
   });
 }
@@ -454,7 +717,9 @@ function applyGameStateToPlayerProgress(gameState, previousProgressState) {
   return normalizePlayerProgressState({
     ...base,
     party: {
-      members: normalizedGameState.party.members,
+      members: normalizedGameState.party.members
+        .map((member) => serializeCharacterForPartyState(member))
+        .filter(Boolean),
       memberOrder: normalizedGameState.party.memberOrder,
     },
     inventory: {
@@ -517,6 +782,10 @@ export function addPartyMember(member) {
   return gameStateStore.addPartyMember(member);
 }
 
+export function buildBattlePartyFromEncounterTemplates(friendlyUnits = []) {
+  return gameStateStore.buildBattlePartyFromEncounterTemplates(friendlyUnits);
+}
+
 export function removePartyMember(memberId) {
   return gameStateStore.removePartyMember(memberId);
 }
@@ -533,6 +802,22 @@ export function adjustPartyMemberHealth(memberId, delta = 0) {
  */
 export function setPartyMemberHealth(memberId, health) {
   return gameStateStore.setPartyMemberHealth(memberId, health);
+}
+
+export function awardPartyMemberXP(memberId, xpAmount = 0) {
+  return gameStateStore.awardPartyMemberXP(memberId, xpAmount);
+}
+
+export function awardPartyXP(memberIds = [], totalXP = 0) {
+  return gameStateStore.awardPartyXP(memberIds, totalXP);
+}
+
+export function setBattleEnemies(enemies = []) {
+  return gameStateStore.setBattleEnemies(enemies);
+}
+
+export function getBattleEnemies() {
+  return gameStateStore.getBattleEnemies();
 }
 
 export function addInventoryItem(itemId, amount = 1) {

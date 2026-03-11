@@ -244,12 +244,8 @@ class OverworldScene extends Phaser.Scene {
       this.playerDisplayName = protagonist.name;
     }
 
-    const hp = Number.isFinite(data.playerHp)
-      ? data.playerHp
-      : protagonist?.currentHp ?? this.playerStats.hp;
-    const maxHp = Number.isFinite(data.playerMaxHp)
-      ? data.playerMaxHp
-      : protagonist?.maxHp ?? this.playerStats.maxHp;
+    const hp = protagonist?.currentHp ?? this.playerStats.hp;
+    const maxHp = protagonist?.maxHp ?? this.playerStats.maxHp;
     this.playerStats.maxHp = Math.max(1, Math.floor(maxHp));
     this.playerStats.hp = Phaser.Math.Clamp(Math.floor(hp), 0, this.playerStats.maxHp);
 
@@ -266,9 +262,19 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
+    const protagonist = getPartyMember("protagonist");
+    if (protagonist) {
+      this.playerDisplayName = protagonist.name || this.playerDisplayName;
+      this.playerStats.maxHp = Math.max(1, Math.floor(protagonist.maxHp));
+      this.playerStats.hp = Phaser.Math.Clamp(Math.floor(protagonist.currentHp), 0, this.playerStats.maxHp);
+    }
+
     const tile = this.getPlayerTile();
     const tileLabel = tile ? `(${tile.x}, ${tile.y})` : "(n/a)";
-    const hudKey = `${this.playerDisplayName}|${this.playerStats.hp}|${this.playerStats.maxHp}|${tileLabel}`;
+    const level = protagonist?.level ?? 1;
+    const currentXP = protagonist?.currentXP ?? 0;
+    const xpToNextLevel = protagonist?.xpToNextLevel ?? 100;
+    const hudKey = `${this.playerDisplayName}|${this.playerStats.hp}|${this.playerStats.maxHp}|${level}|${currentXP}|${xpToNextLevel}|${tileLabel}`;
     if (!force && hudKey === this.hudLastKey) {
       return;
     }
@@ -276,9 +282,9 @@ class OverworldScene extends Phaser.Scene {
     this.hudLastKey = hudKey;
     this.hudOverlay.setData({
       context: "OVERWORLD",
-      primary: `Unit: ${this.playerDisplayName}`,
+      primary: `Unit: ${this.playerDisplayName} Lv${level}`,
       secondary: `HP: ${this.playerStats.hp}/${this.playerStats.maxHp}`,
-      tertiary: `Tile: ${tileLabel}`,
+      tertiary: `XP: ${currentXP}/${xpToNextLevel} | Tile: ${tileLabel}`,
     });
   }
 
@@ -315,7 +321,10 @@ class OverworldScene extends Phaser.Scene {
     const snapshot = getGameState();
     const protagonist = snapshot.party.members.find((member) => member.id === "protagonist") ?? null;
     const partySummary = snapshot.party.members
-      .map((member) => `${member.id}:${member.currentHp}/${member.maxHp}`)
+      .map(
+        (member) =>
+          `${member.id}:Lv${member.level} XP${member.currentXP}/${member.xpToNextLevel} HP${member.currentHp}/${member.maxHp}${member.flags?.isDrone ? " DRN" : ""}`
+      )
       .join(", ");
     const inventoryEntries = Object.entries(snapshot.inventory.items)
       .slice(0, 6)
@@ -326,7 +335,7 @@ class OverworldScene extends Phaser.Scene {
     const firstDroneDefeated = hasStoryFlag(KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED) ? "ON" : "OFF";
     const workshopPassCount = getInventoryCount("workshop-pass");
     const debugLines = [
-      `State Party:${snapshot.party.members.length} Protagonist:${protagonist?.currentHp ?? "?"}/${protagonist?.maxHp ?? "?"}`,
+      `State Party:${snapshot.party.members.length} Protagonist:Lv${protagonist?.level ?? "?"} XP${protagonist?.currentXP ?? "?"}/${protagonist?.xpToNextLevel ?? "?"} HP${protagonist?.currentHp ?? "?"}/${protagonist?.maxHp ?? "?"}`,
       `Party Members ${partySummary || "none"}`,
       `Inventory ${inventorySummary}`,
       `Flags Drone:${firstDroneDefeated} Gate:${gateUnlocked} Checkpoint:${checkpointUnlocked}`,

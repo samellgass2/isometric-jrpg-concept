@@ -7,6 +7,7 @@ import {
   zookeeperDefenderDroneUnit,
   zookeeperScoutDroneUnit,
 } from "../battle/units/animalUnits.js";
+import { createProtagonistCharacter, normalizeCharacterModel } from "../models/characterModels.js";
 import { getEffectiveCombatStats, isDogDangerBuffActive, resolveAttack } from "../battle/combatResolver.js";
 import { getEncounterDefinition } from "../battle/encounters.js";
 import {
@@ -32,8 +33,12 @@ import {
 } from "../persistence/runtimeStateTools.js";
 import {
   addInventoryItem,
+  awardPartyXP,
+  buildBattlePartyFromEncounterTemplates,
   exportGameStateToPlayerProgress,
+  getBattleEnemies,
   getGameState,
+  setBattleEnemies,
   setPartyMemberHealth,
   setStoryFlag,
   setStoryFlags,
@@ -87,7 +92,7 @@ class BattleScene extends Phaser.Scene {
     this.hudOverlay = null;
     this.loadedProgress = null;
     this.encounterFriendlyTemplateIds = [];
-    this.encounterRewards = { inventory: [], storyFlags: {} };
+    this.encounterRewards = { xp: 0, inventory: [], storyFlags: {} };
     this.devShortcutListeners = [];
   }
 
@@ -99,6 +104,7 @@ class BattleScene extends Phaser.Scene {
     this.encounterTriggerDescription = encounterData.triggerDescription;
     this.encounterRewards = {
       inventory: Array.isArray(encounterData.rewards?.inventory) ? encounterData.rewards.inventory : [],
+      xp: encounterData.rewards?.xp,
       storyFlags:
         encounterData.rewards?.storyFlags && typeof encounterData.rewards.storyFlags === "object"
           ? encounterData.rewards.storyFlags
@@ -123,6 +129,7 @@ class BattleScene extends Phaser.Scene {
     this.updateSelectionPanel();
     this.addLog(`Encounter: ${this.encounterName}`);
     this.addLog("Objective: Defeat all enemies.");
+    this.logPartyProgressSnapshot("battle-entry");
     if (this.encounterTriggerDescription) {
       this.addLog(`Triggered by: ${this.encounterTriggerDescription}`);
     }
@@ -189,7 +196,9 @@ class BattleScene extends Phaser.Scene {
       }
     });
 
+    const spawnedEnemies = [];
     encounterData.enemyUnits.forEach((unitConfig) => {
+      spawnedEnemies.push(unitConfig);
       this.spawnUnit(
         unitConfig,
         "enemy",
@@ -198,6 +207,7 @@ class BattleScene extends Phaser.Scene {
         unitConfig.color ?? 0xc45656
       );
     });
+    setBattleEnemies(spawnedEnemies);
 
     if (!this.protagonist) {
       this.protagonist = this.getFriendlyUnits()[0] ?? null;
@@ -242,55 +252,27 @@ class BattleScene extends Phaser.Scene {
       return [];
     }
 
-    const stateSnapshot = getGameState();
-    const members = Array.isArray(stateSnapshot.party?.members) ? stateSnapshot.party.members : [];
-    const memberOrder = Array.isArray(stateSnapshot.party?.memberOrder)
-      ? stateSnapshot.party.memberOrder
-      : members.map((member) => member.id);
+    const resolved = buildBattlePartyFromEncounterTemplates(friendlyUnits);
+    if (resolved.length > 0) {
+      return resolved;
+    }
 
-    const templateById = new Map(friendlyUnits.map((unit) => [unit.id, unit]));
-    const memberById = new Map(members.map((member) => [member.id, member]));
-    const orderedIds = memberOrder.filter((id) => templateById.has(id) && memberById.has(id));
-    const idsToUse = orderedIds.length > 0 ? orderedIds : friendlyUnits.map((unit) => unit.id);
-
-    return idsToUse
-      .filter((id) => templateById.has(id))
-      .map((id) => {
-        const template = templateById.get(id);
-        const member = memberById.get(id);
-        if (!member) {
-          return {
-            ...template,
-            movement: { ...(template.movement ?? {}) },
-            attack: { ...(template.attack ?? {}) },
-            stats: { ...(template.stats ?? {}) },
-            abilities: Array.isArray(template.abilities) ? [...template.abilities] : [],
-          };
-        }
-
-        return {
-          ...template,
-          movement: { ...(template.movement ?? {}) },
-          attack: { ...(template.attack ?? {}) },
-          stats: {
-            ...(template.stats ?? {}),
-            maxHp: member.maxHp,
-          },
-          abilities: Array.isArray(template.abilities) ? [...template.abilities] : [],
-          name: member.name || template.name,
-          archetype: member.archetype ?? template.archetype,
-          level: member.level ?? template.level,
-          currentHp: member.currentHp,
-        };
-      });
+    return friendlyUnits
+      .map((template) => normalizeCharacterModel(template))
+      .filter(Boolean);
   }
 
   resolveEncounterData(data) {
     const encounterId = typeof data.encounterId === "string" ? data.encounterId : null;
     const definition = encounterId ? getEncounterDefinition(encounterId) : null;
     const fallback = this.getDefaultEncounter();
+    const persistedEnemies = getBattleEnemies();
+    const enemyFallback = persistedEnemies.length > 0 ? persistedEnemies : fallback.enemyUnits;
     if (!definition) {
-      return fallback;
+      return {
+        ...fallback,
+        enemyUnits: enemyFallback,
+      };
     }
 
     return {
@@ -299,8 +281,8 @@ class BattleScene extends Phaser.Scene {
       triggerDescription: definition.triggerDescription ?? "",
       obstacles: Array.isArray(definition.obstacles) ? definition.obstacles : fallback.obstacles,
       friendlyUnits: Array.isArray(definition.friendlyUnits) ? definition.friendlyUnits : fallback.friendlyUnits,
-      enemyUnits: Array.isArray(definition.enemyUnits) ? definition.enemyUnits : fallback.enemyUnits,
-      rewards: definition.rewards ?? { inventory: [], storyFlags: {} },
+      enemyUnits: Array.isArray(definition.enemyUnits) ? definition.enemyUnits : enemyFallback,
+      rewards: definition.rewards ?? { xp: 0, inventory: [], storyFlags: {} },
     };
   }
 
@@ -312,16 +294,9 @@ class BattleScene extends Phaser.Scene {
       obstacles: [...OBSTACLES],
       friendlyUnits: [
         {
-          id: "protagonist",
-          name: "Protagonist",
-          archetype: "hero",
-          movement: { tilesPerTurn: 4 },
-          attack: { range: 1, baseDamage: 22, canAttackOverObstacles: false },
-          stats: { maxHp: 120, defense: 14 },
-          abilities: [],
+          ...createProtagonistCharacter({ currentHp: 32 }),
           spawn: { x: 2, y: 4 },
           color: 0x6aa9ff,
-          currentHp: 32,
         },
         { ...elephantUnit, spawn: { x: 5, y: 3 }, color: 0xb5b5b5 },
         { ...cheetahUnit, spawn: { x: 1, y: 2 }, color: 0xe8c26e },
@@ -348,10 +323,45 @@ class BattleScene extends Phaser.Scene {
         },
       ],
       rewards: {
+        xp: 0,
         inventory: [],
         storyFlags: {},
       },
     };
+  }
+
+  resolveEnemyXPYield(enemyUnit) {
+    if (!enemyUnit || typeof enemyUnit !== "object") {
+      return 0;
+    }
+
+    const explicitXP = Number(enemyUnit.xpReward ?? enemyUnit.xpYield);
+    if (Number.isFinite(explicitXP)) {
+      return Math.max(0, Math.floor(explicitXP));
+    }
+
+    const level = Math.max(1, Math.floor(Number(enemyUnit.level) || 1));
+    const maxHp = Math.max(1, Math.floor(Number(enemyUnit.stats?.maxHp) || 1));
+    const attack = Math.max(0, Math.floor(Number(enemyUnit.attack?.baseDamage) || 0));
+    const defense = Math.max(0, Math.floor(Number(enemyUnit.stats?.defense) || 0));
+    return Math.max(10, Math.floor(level * 20 + maxHp * 0.2 + attack * 0.6 + defense * 0.4));
+  }
+
+  resolveEncounterXPRewardTotal() {
+    const rewardXP = this.encounterRewards?.xp;
+    if (Number.isFinite(rewardXP)) {
+      return Math.max(0, Math.floor(rewardXP));
+    }
+    if (rewardXP && typeof rewardXP === "object") {
+      const totalXP = Number(rewardXP.totalXP);
+      if (Number.isFinite(totalXP)) {
+        return Math.max(0, Math.floor(totalXP));
+      }
+    }
+
+    return this.units
+      .filter((unit) => unit.faction === "enemy")
+      .reduce((total, enemyUnit) => total + this.resolveEnemyXPYield(enemyUnit), 0);
   }
 
   spawnUnit(config, faction, tileX, tileY, color) {
@@ -379,6 +389,10 @@ class BattleScene extends Phaser.Scene {
       role: config.role ?? null,
       archetype: config.archetype ?? null,
       aiBehavior: config.aiBehavior ?? null,
+      level: Number.isFinite(config.level) ? Math.max(1, Math.floor(config.level)) : 1,
+      currentXP: Number.isFinite(config.currentXP) ? Math.max(0, Math.floor(config.currentXP)) : 0,
+      xpToNextLevel: Number.isFinite(config.xpToNextLevel) ? Math.max(1, Math.floor(config.xpToNextLevel)) : 100,
+      flags: { ...(config.flags ?? {}) },
       movement: { ...config.movement },
       attack: { ...config.attack },
       stats: { ...config.stats },
@@ -499,7 +513,7 @@ class BattleScene extends Phaser.Scene {
 
     const active = this.getActiveUnitForHud();
     const activeUnitLabel = active
-      ? `${active.name} (${active.currentHp}/${active.stats.maxHp} HP)`
+      ? `${active.name} Lv${active.level} ${active.currentHp}/${active.stats.maxHp} HP XP ${active.currentXP}/${active.xpToNextLevel}`
       : "none";
     this.hudOverlay.setData({
       context: "BATTLE",
@@ -1177,6 +1191,7 @@ class BattleScene extends Phaser.Scene {
     if (this.battleResolved) {
       return;
     }
+    setBattleEnemies([]);
 
     this.battleResolved = true;
     this.playerTurn = false;
@@ -1201,6 +1216,8 @@ class BattleScene extends Phaser.Scene {
   }
 
   persistBattleProgress(result) {
+    this.logPartyProgressSnapshot("pre-battle-result");
+
     this.units
       .filter((unit) => unit.faction === "friendly")
       .forEach((unit) => {
@@ -1215,6 +1232,24 @@ class BattleScene extends Phaser.Scene {
       setStoryFlag(keyBattleFlag, true);
     }
     if (result === "victory") {
+      const survivingFriendlyIds = this.units
+        .filter((unit) => unit.faction === "friendly" && unit.alive && unit.currentHp > 0)
+        .map((unit) => unit.id);
+      const totalXPReward = this.resolveEncounterXPRewardTotal();
+      if (survivingFriendlyIds.length > 0 && totalXPReward > 0) {
+        const xpAwards = awardPartyXP(survivingFriendlyIds, totalXPReward).awards ?? [];
+        if (xpAwards.length > 0) {
+          this.addLog(`Party gained ${totalXPReward} XP.`);
+          xpAwards.forEach((award) => {
+            if (!award || award.levelsGained <= 0 || !award.character) {
+              return;
+            }
+            this.addLog(`${award.character.name} reached Lv ${award.character.level}.`);
+          });
+          this.logPartyProgressSnapshot("post-xp-award", xpAwards);
+        }
+      }
+
       this.encounterRewards.inventory.forEach((reward) => {
         if (!reward || typeof reward.itemId !== "string") {
           return;
@@ -1238,6 +1273,45 @@ class BattleScene extends Phaser.Scene {
       return updateOverworldPosition(next, next?.overworld?.position, {
         currentSceneKey: this.returnSceneKey,
       });
+    });
+
+    if (result !== "victory") {
+      this.logPartyProgressSnapshot("post-battle-result");
+    }
+  }
+
+  logPartyProgressSnapshot(stage, xpAwards = []) {
+    const snapshot = getGameState();
+    const party = Array.isArray(snapshot.party?.members) ? snapshot.party.members : [];
+    const friendlyPartyById = new Map(party.map((member) => [member.id, member]));
+    const battleFriendlies = this.units.filter((unit) => unit.faction === "friendly");
+    const summary = battleFriendlies.map((unit) => {
+      const persisted = friendlyPartyById.get(unit.id);
+      const level = persisted?.level ?? unit.level ?? 1;
+      const currentXP = persisted?.currentXP ?? unit.currentXP ?? 0;
+      const xpToNextLevel = persisted?.xpToNextLevel ?? unit.xpToNextLevel ?? 100;
+      const currentHp = persisted?.currentHp ?? unit.currentHp;
+      const maxHp = persisted?.maxHp ?? unit.stats?.maxHp;
+      const isDrone = persisted?.flags?.isDrone === true || unit.flags?.isDrone === true;
+
+      return `${unit.id}(Lv${level} XP ${currentXP}/${xpToNextLevel} HP ${currentHp}/${maxHp}${isDrone ? " DRONE(non-persistent-xp)" : ""})`;
+    });
+
+    const awardSummary = xpAwards
+      .map((award) => `${award?.memberId ?? "unknown"}:+${award?.awardedXP ?? 0}xp`)
+      .join(", ");
+    const line = `[Progression ${stage}] ${summary.join(" | ")}${awardSummary ? ` | awards ${awardSummary}` : ""}`;
+    this.addLog(line);
+    console.log("[BattleScene] Progression snapshot", {
+      stage,
+      encounterId: this.encounterId,
+      party: summary,
+      awards: xpAwards.map((award) => ({
+        memberId: award?.memberId,
+        awardedXP: award?.awardedXP,
+        levelsGained: award?.levelsGained,
+        isDrone: award?.character?.flags?.isDrone === true,
+      })),
     });
   }
 
@@ -1292,6 +1366,7 @@ class BattleScene extends Phaser.Scene {
 
     const effective = getEffectiveCombatStats(selected, { protagonist: this.protagonist });
     const hpLine = `HP ${selected.currentHp}/${selected.stats.maxHp}`;
+    const progressionLine = `LV ${selected.level} | XP ${selected.currentXP}/${selected.xpToNextLevel}`;
     const coreLine = `Move ${selected.movement.tilesPerTurn} | Range ${selected.attack.range} | DMG ${effective.damage} | DEF ${effective.defense}`;
 
     let abilityLine = "Ability: -";
@@ -1304,7 +1379,7 @@ class BattleScene extends Phaser.Scene {
     }
 
     this.selectionPanelText.setText(
-      `Selected: ${selected.name}\n${hpLine}\n${coreLine}\n${abilityLine}\n${cursorLine}`
+      `Selected: ${selected.name}\n${hpLine}\n${progressionLine}\n${coreLine}\n${abilityLine}\n${cursorLine}`
     );
 
     const modeLabel = this.mode === "idle" ? "idle" : this.mode;
