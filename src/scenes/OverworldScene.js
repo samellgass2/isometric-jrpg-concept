@@ -8,6 +8,12 @@ import {
   updateOverworldPosition,
 } from "../state/playerProgress.js";
 import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
+import {
+  DialogueController,
+  DialogueEvents,
+  DialogueFlagStore,
+  createDialogueTree,
+} from "../systems/dialogue/index.js";
 
 const TILE_SIZE = 48;
 const MAP_WIDTH = 16;
@@ -48,6 +54,149 @@ const NPC_DEFINITIONS = [
     dialogue: "Mechanic Ivo: Placeholder line... my workshop will open in a later build.",
   },
 ];
+
+const DIALOGUE_FLAGS = Object.freeze({
+  RANGER_TUTORIAL_COMPLETE: "dialogue.rangerTutorialComplete",
+  MECHANIC_INTRO_COMPLETE: "dialogue.mechanicIntroComplete",
+});
+
+const NPC_DIALOGUE_TREES = Object.freeze({
+  "npc-ranger": createDialogueTree({
+    id: "npc-ranger-overworld-dialogue",
+    npcId: "npc-ranger",
+    speakers: {
+      ranger: { name: "Ranger Sol", portraitKey: "npc-ranger" },
+      player: { name: "Pathfinder" },
+    },
+    startNodeId: "opening",
+    nodes: {
+      opening: {
+        id: "opening",
+        speakerId: "ranger",
+        text: "Trails ahead are rough. Stay inside the marked paths.",
+        next: [
+          {
+            condition: { allFlags: [DIALOGUE_FLAGS.RANGER_TUTORIAL_COMPLETE] },
+            target: "repeat-advice",
+          },
+          { target: "offer-guidance" },
+        ],
+      },
+      "repeat-advice": {
+        id: "repeat-advice",
+        speakerId: "ranger",
+        text: "You already know the route. Keep your pace steady and watch the minimap.",
+      },
+      "offer-guidance": {
+        id: "offer-guidance",
+        speakerId: "player",
+        text: "Need anything from me before I head out?",
+        choices: [
+          {
+            id: "ask-for-task",
+            text: "Any task I should prioritize?",
+            next: "task-response",
+          },
+          {
+            id: "leave-now",
+            text: "I am ready to move.",
+            next: "farewell",
+          },
+        ],
+      },
+      "task-response": {
+        id: "task-response",
+        speakerId: "ranger",
+        text: "Clear the training ambush marker first. Report back once it is handled.",
+        hooks: [
+          {
+            id: "ranger-task-issued",
+            once: true,
+            setFlags: {
+              [DIALOGUE_FLAGS.RANGER_TUTORIAL_COMPLETE]: true,
+            },
+            emitEvent: {
+              name: "quest:ranger-task-issued",
+              payload: { questId: "overworld-training-ambush" },
+            },
+          },
+        ],
+        next: "farewell",
+      },
+      farewell: {
+        id: "farewell",
+        speakerId: "ranger",
+        text: "Stay alert out there.",
+      },
+    },
+  }),
+  "npc-mechanic": createDialogueTree({
+    id: "npc-mechanic-overworld-dialogue",
+    npcId: "npc-mechanic",
+    speakers: {
+      mechanic: { name: "Mechanic Ivo", portraitKey: "npc-mechanic" },
+      player: { name: "Pathfinder" },
+    },
+    startNodeId: "opening",
+    nodes: {
+      opening: {
+        id: "opening",
+        speakerId: "mechanic",
+        text: "Workshop is still closed, but I can still log your field reports.",
+        next: [
+          {
+            condition: { allFlags: [KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED] },
+            target: "canyon-cleared",
+          },
+          { target: "status-check" },
+        ],
+      },
+      "canyon-cleared": {
+        id: "canyon-cleared",
+        speakerId: "mechanic",
+        text: "You cleared Canyon Crossing. Bring me salvage and I will tune your gear.",
+      },
+      "status-check": {
+        id: "status-check",
+        speakerId: "player",
+        text: "Anything I should know before I leave?",
+        choices: [
+          {
+            id: "ask-upgrades",
+            text: "When do upgrades unlock?",
+            next: "upgrade-response",
+          },
+          {
+            id: "close-chat",
+            text: "No questions for now.",
+            next: "short-farewell",
+          },
+        ],
+      },
+      "upgrade-response": {
+        id: "upgrade-response",
+        speakerId: "mechanic",
+        text: "Beat the canyon gauntlet first. That gives me enough diagnostics to calibrate.",
+        hooks: [
+          {
+            id: "mechanic-intro-complete",
+            once: true,
+            setFlags: {
+              [DIALOGUE_FLAGS.MECHANIC_INTRO_COMPLETE]: true,
+            },
+            callbackId: "onMechanicIntroComplete",
+          },
+        ],
+        next: "short-farewell",
+      },
+      "short-farewell": {
+        id: "short-farewell",
+        speakerId: "mechanic",
+        text: "Come back when you need repairs.",
+      },
+    },
+  }),
+});
 
 const LEVEL_SIGN_DEFINITIONS = [
   {
@@ -127,9 +276,15 @@ class OverworldScene extends Phaser.Scene {
     this.dialogueBox = null;
     this.dialogueText = null;
     this.dialogueHintText = null;
+    this.dialogueChoiceText = null;
     this.activeDialogueNpcId = null;
     this.activeDialogueSignId = null;
     this.awaitingSignEnterChoice = false;
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+    this.dialogueController = null;
+    this.dialogueFlagStore = null;
+    this.dialogueUnsubscribeFns = [];
     this.pointerPath = [];
     this.pointerPathTiles = [];
     this.npcTileSet = new Set();
@@ -159,6 +314,7 @@ class OverworldScene extends Phaser.Scene {
 
     this.npcGroup = this.physics.add.staticGroup();
     this.signGroup = this.physics.add.staticGroup();
+    this.initializeDialogueSystem(progress);
 
     this.renderTerrain();
     this.renderCollisionOverlay();
@@ -194,6 +350,9 @@ class OverworldScene extends Phaser.Scene {
       spawnPointId: requestedSpawnPointId,
       currentSceneKey: this.scene.key,
     });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyDialogueSystem());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyDialogueSystem());
   }
 
   createHudOverlay(data = {}) {
@@ -416,6 +575,58 @@ class OverworldScene extends Phaser.Scene {
     return normalizePlayerProgressState(loadProgress());
   }
 
+  initializeDialogueSystem(progressState) {
+    const initialFlags = {
+      [KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED]: getBattleOutcomeFlag(
+        progressState,
+        KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED
+      ),
+      [KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED]: getBattleOutcomeFlag(
+        progressState,
+        KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED
+      ),
+    };
+
+    this.dialogueFlagStore = new DialogueFlagStore(initialFlags);
+    this.dialogueController = new DialogueController({
+      flagStore: this.dialogueFlagStore,
+      callbackMap: {
+        onMechanicIntroComplete: () => {
+          this.events.emit("dialogue:mechanic-intro-complete", {
+            npcId: "npc-mechanic",
+            flag: DIALOGUE_FLAGS.MECHANIC_INTRO_COMPLETE,
+          });
+        },
+      },
+    });
+
+    this.dialogueUnsubscribeFns = [
+      this.dialogueController.on(DialogueEvents.NODE_CHANGED, (snapshot) =>
+        this.renderNpcDialogueSnapshot(snapshot)
+      ),
+      this.dialogueController.on(DialogueEvents.HOOK_TRIGGERED, (payload) => {
+        this.events.emit("dialogue:quest-hook", payload);
+      }),
+      this.dialogueController.on("quest:ranger-task-issued", (payload) => {
+        this.events.emit("dialogue:ranger-task-issued", payload);
+      }),
+      this.dialogueController.on(DialogueEvents.ENDED, () => {
+        if (this.activeDialogueNpcId) {
+          this.hideDialogue({ keepSignPrompt: false, endNpcConversation: false });
+        }
+      }),
+    ];
+  }
+
+  destroyDialogueSystem() {
+    this.dialogueUnsubscribeFns.forEach((unsubscribe) => unsubscribe?.());
+    this.dialogueUnsubscribeFns = [];
+    this.dialogueController = null;
+    this.dialogueFlagStore = null;
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+  }
+
   commitProgress(updater) {
     const setPlayerProgress = this.game?.registry?.get("setPlayerProgress");
     const current = this.getProgressState();
@@ -490,33 +701,12 @@ class OverworldScene extends Phaser.Scene {
       npc.setDataEnabled();
       npc.setData("npcId", npcConfig.id);
       npc.setData("name", npcConfig.name);
-      npc.setData("dialogue", this.resolveNpcDialogue(npcConfig));
+      npc.setData("dialogueTree", NPC_DIALOGUE_TREES[npcConfig.id] ?? null);
       npc.refreshBody();
       this.characterLayer.add(npc);
       this.npcEntities.push(npc);
       this.npcTileSet.add(keyForTile(npcConfig.tileX, npcConfig.tileY));
     });
-  }
-
-  resolveNpcDialogue(npcConfig) {
-    const baseDialogue = npcConfig?.dialogue || `${npcConfig?.name ?? "NPC"}: Placeholder dialogue.`;
-    const progress = this.progressSnapshot;
-
-    if (
-      npcConfig?.id === "npc-ranger" &&
-      getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL1_TRAINING_AMBUSH_CLEARED)
-    ) {
-      return "Ranger Sol: Nice work in the training ambush. Head to Canyon Crossing when you're ready.";
-    }
-
-    if (
-      npcConfig?.id === "npc-mechanic" &&
-      getBattleOutcomeFlag(progress, KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED)
-    ) {
-      return "Mechanic Ivo: You cleared the canyon gauntlet. I can tune your gear next time you visit.";
-    }
-
-    return baseDialogue;
   }
 
   createLevelSigns() {
@@ -593,9 +783,19 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
+    if (event.action === InputActions.MOVE_UP) {
+      this.handleDialogueChoiceNavigation(-1);
+      return;
+    }
+
+    if (event.action === InputActions.MOVE_DOWN) {
+      this.handleDialogueChoiceNavigation(1);
+      return;
+    }
+
     if (event.action === InputActions.CANCEL) {
       if (this.dialogueBox?.visible) {
-        this.hideDialogue();
+        this.handleCancelAction();
       }
       this.clearPointerPath();
     }
@@ -659,7 +859,13 @@ class OverworldScene extends Phaser.Scene {
         this.confirmLevelSignSelection();
         return;
       }
-      this.hideDialogue();
+
+      if (this.activeDialogueNpcId) {
+        this.confirmNpcDialogueStep();
+        return;
+      }
+
+      this.hideDialogue({ keepSignPrompt: false });
       return;
     }
 
@@ -674,7 +880,51 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    this.showDialogue(nearbyNpc);
+    this.startNpcDialogueConversation(nearbyNpc);
+  }
+
+  handleCancelAction() {
+    if (this.activeDialogueSignId && this.awaitingSignEnterChoice) {
+      this.hideDialogue({ keepSignPrompt: false });
+      return;
+    }
+
+    if (!this.activeDialogueNpcId || !this.dialogueController?.isActive()) {
+      this.hideDialogue({ keepSignPrompt: false, endNpcConversation: false });
+      return;
+    }
+
+    if (this.dialogueController.canGoBack()) {
+      this.dialogueController.goBack();
+      return;
+    }
+
+    this.dialogueController.endConversation("cancelled");
+  }
+
+  handleDialogueChoiceNavigation(direction) {
+    if (!this.dialogueBox?.visible || !this.activeDialogueNpcId) {
+      return;
+    }
+
+    this.moveDialogueChoice(direction);
+  }
+
+  confirmNpcDialogueStep() {
+    if (!this.dialogueController?.isActive()) {
+      this.hideDialogue({ keepSignPrompt: false, endNpcConversation: false });
+      return;
+    }
+
+    if (this.activeDialogueChoices.length > 0) {
+      const selected = this.activeDialogueChoices[this.activeDialogueChoiceIndex];
+      if (selected?.id) {
+        this.dialogueController.selectChoice(selected.id);
+      }
+      return;
+    }
+
+    this.dialogueController.advance();
   }
 
   clearPointerPath() {
@@ -769,7 +1019,7 @@ class OverworldScene extends Phaser.Scene {
 
   createDialogueUi() {
     this.dialogueBox = this.add
-      .rectangle(400, 540, 760, 96, 0x111827, 0.9)
+      .rectangle(400, 532, 760, 116, 0x111827, 0.9)
       .setStrokeStyle(2, 0x7ea8ff, 1)
       .setScrollFactor(0)
       .setDepth(UI_DEPTH)
@@ -786,8 +1036,19 @@ class OverworldScene extends Phaser.Scene {
       .setDepth(UI_DEPTH)
       .setVisible(false);
 
+    this.dialogueChoiceText = this.add
+      .text(32, 550, "", {
+        color: "#e8f2ff",
+        fontFamily: "monospace",
+        fontSize: "13px",
+        wordWrap: { width: 730, useAdvancedWrap: true },
+      })
+      .setScrollFactor(0)
+      .setDepth(UI_DEPTH)
+      .setVisible(false);
+
     this.dialogueHintText = this.add
-      .text(32, 568, "Press Space or Enter to close", {
+      .text(32, 580, "Press Space or Enter to close", {
         color: "#c5d9ff",
         fontFamily: "monospace",
         fontSize: "12px",
@@ -896,21 +1157,93 @@ class OverworldScene extends Phaser.Scene {
     }
 
     this.clearPointerPath();
-    this.showDialogue(npc);
+    this.startNpcDialogueConversation(npc);
     return true;
   }
 
-  showDialogue(npc) {
-    const npcName = npc.getData("name") || "NPC";
-    const npcDialogue = npc.getData("dialogue") || `${npcName}: Placeholder dialogue.`;
-    this.activeDialogueNpcId = npc.getData("npcId") || null;
+  startNpcDialogueConversation(npc) {
+    if (!this.dialogueController) {
+      return;
+    }
+
+    const npcId = npc.getData("npcId") || null;
+    const dialogueTree = npc.getData("dialogueTree");
+    if (!npcId || !dialogueTree) {
+      this.dialogueText.setText("This NPC does not have a dialogue tree yet.");
+      this.dialogueHintText.setText("Press Space or Enter to close");
+      this.dialogueBox.setVisible(true);
+      this.dialogueText.setVisible(true);
+      this.dialogueChoiceText.setVisible(false);
+      this.dialogueHintText.setVisible(true);
+      return;
+    }
+
+    this.activeDialogueNpcId = npcId;
     this.activeDialogueSignId = null;
     this.awaitingSignEnterChoice = false;
-    this.dialogueText.setText(npcDialogue);
-    this.dialogueHintText.setText("Press Space or Enter to close");
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
+    this.dialogueController.startConversation({
+      npcId,
+      tree: dialogueTree,
+      context: {
+        sceneKey: this.scene.key,
+        playerTile: this.getPlayerTile(),
+      },
+    });
+  }
+
+  renderNpcDialogueSnapshot(snapshot) {
+    if (!snapshot || !snapshot.node) {
+      return;
+    }
+
+    const speakerName = snapshot.speaker?.name || snapshot.node.speakerId || "NPC";
+    this.activeDialogueChoices = Array.isArray(snapshot.choices) ? [...snapshot.choices] : [];
+    if (this.activeDialogueChoiceIndex >= this.activeDialogueChoices.length) {
+      this.activeDialogueChoiceIndex = 0;
+    }
+
+    this.activeDialogueSignId = null;
+    this.awaitingSignEnterChoice = false;
+    this.dialogueText.setText(`${speakerName}: ${snapshot.node.text ?? ""}`);
+    this.dialogueChoiceText.setText(this.buildDialogueChoiceText());
+    this.dialogueHintText.setText(this.buildDialogueHintText());
     this.dialogueBox.setVisible(true);
     this.dialogueText.setVisible(true);
+    this.dialogueChoiceText.setVisible(this.activeDialogueChoices.length > 0);
     this.dialogueHintText.setVisible(true);
+  }
+
+  buildDialogueChoiceText() {
+    if (!this.activeDialogueChoices || this.activeDialogueChoices.length === 0) {
+      return "";
+    }
+
+    return this.activeDialogueChoices
+      .map((choice, index) => {
+        const prefix = index === this.activeDialogueChoiceIndex ? ">" : " ";
+        return `${prefix} ${index + 1}. ${choice.text ?? choice.id ?? "Choice"}`;
+      })
+      .join("   ");
+  }
+
+  buildDialogueHintText() {
+    if (this.activeDialogueChoices.length > 0) {
+      return "Up/Down: choose  Enter/Space: confirm  Esc: go back/close";
+    }
+    return "Enter/Space: next  Esc: go back/close";
+  }
+
+  moveDialogueChoice(direction) {
+    if (!this.activeDialogueChoices || this.activeDialogueChoices.length === 0) {
+      return;
+    }
+
+    const count = this.activeDialogueChoices.length;
+    const nextIndex = Phaser.Math.Wrap(this.activeDialogueChoiceIndex + direction, 0, count);
+    this.activeDialogueChoiceIndex = nextIndex;
+    this.dialogueChoiceText.setText(this.buildDialogueChoiceText());
   }
 
   showLevelSignPrompt(sign) {
@@ -919,12 +1252,16 @@ class OverworldScene extends Phaser.Scene {
     this.activeDialogueNpcId = null;
     this.activeDialogueSignId = sign.getData("signId") || null;
     this.awaitingSignEnterChoice = true;
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
     this.dialogueText.setText(
       `${signPrompt}\nPress Enter to travel to ${signLabel}. Tap/click the sign tile again to confirm. Space closes.`
     );
+    this.dialogueChoiceText.setText("");
     this.dialogueHintText.setText("Enter or sign-tile tap: travel  Space: close");
     this.dialogueBox.setVisible(true);
     this.dialogueText.setVisible(true);
+    this.dialogueChoiceText.setVisible(false);
     this.dialogueHintText.setVisible(true);
   }
 
@@ -962,12 +1299,22 @@ class OverworldScene extends Phaser.Scene {
     this.transitionToLevel(sign);
   }
 
-  hideDialogue() {
+  hideDialogue(options = {}) {
+    const keepSignPrompt = options.keepSignPrompt === true;
+    const endNpcConversation = options.endNpcConversation !== false;
+
+    if (endNpcConversation && this.activeDialogueNpcId && this.dialogueController?.isActive()) {
+      this.dialogueController.endConversation("closed");
+    }
+
     this.activeDialogueNpcId = null;
-    this.activeDialogueSignId = null;
-    this.awaitingSignEnterChoice = false;
+    this.activeDialogueSignId = keepSignPrompt ? this.activeDialogueSignId : null;
+    this.awaitingSignEnterChoice = keepSignPrompt && this.awaitingSignEnterChoice;
+    this.activeDialogueChoices = [];
+    this.activeDialogueChoiceIndex = 0;
     this.dialogueBox.setVisible(false);
     this.dialogueText.setVisible(false);
+    this.dialogueChoiceText.setVisible(false);
     this.dialogueHintText.setVisible(false);
   }
 

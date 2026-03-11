@@ -1,39 +1,51 @@
 # Task Report
 
-- Task ID: 339
-- Run ID: 581
-- Title: Integrate drones into battles and add test scenario
+- Task ID: 391
+- Run ID: 692
+- Title: Implement core dialogue system primitives
 - Status: Completed
 
 ## Summary
-Integrated a dedicated zookeeper drone battle scenario that is directly launchable from the main menu, and added automated validation for encounter wiring plus drone move-then-attack progression.
+Implemented a reusable dialogue framework under `src/systems/dialogue` and integrated it into `OverworldScene` NPC interactions. The system supports dialogue trees, speaker metadata, branching choices, conditional routes from flags, quest hooks (event/callback + flag writes), conversation history navigation, and scene-agnostic event-driven integration.
 
 ## Changes Made
-- Added new encounter config in `src/battle/encounters.js`:
-  - Encounter ID: `drone-test-battle`
-  - Name: `Drone Test Battle`
-  - Friendly side: protagonist + guardian dog
-  - Enemy side: defender, scout, and controller zookeeper drones
-  - Includes explicit obstacle layout and spawn coordinates for a readable AI behavior showcase.
-- Updated `src/scenes/MainMenuScene.js`:
-  - Added `Drone Test Battle` menu button.
-  - Added keyboard shortcut `T` to launch the test encounter.
-  - Starts `BattleScene` with `encounterId: "drone-test-battle"` and returns to `MainMenuScene` after battle resolution.
-- Added `scripts/drone-test-battle-scenario.test.mjs`:
-  - Verifies the encounter exists and is clearly named.
-  - Verifies at least one friendly unit and multiple drone enemy types are present.
-  - Simulates drone AI decisions to confirm move behavior when out of range and attack behavior once in range.
-  - Confirms attack resolution applies positive damage for visible HP changes.
-- Updated `package.json` test script to include `scripts/drone-test-battle-scenario.test.mjs` in `npm test`.
-- Updated `STATUS.md` with run instructions and behavior walkthrough for the drone encounter.
+- Added dialogue system module files:
+  - `src/systems/dialogue/DialogueFlagStore.js`
+  - `src/systems/dialogue/dialoguePrimitives.js`
+  - `src/systems/dialogue/DialogueController.js`
+  - `src/systems/dialogue/index.js`
+- Dialogue tree primitives now support:
+  - nodes with `text`, `speakerId`, and optional `next`
+  - branching `choices`
+  - conditional transitions using flags (`allFlags` / `anyFlags` / `noneFlags` or predicate)
+  - quest hooks on node/choice entry (set/clear flags, emit events, invoke callback map)
+- Implemented scene-agnostic dialogue controller API:
+  - `startConversation({ npcId, tree, context })`
+  - `advance()`
+  - `selectChoice(choiceId)`
+  - `goBack()`
+  - `endConversation(reason)`
+  - event interface via `on/off` for started/node-changed/hook-triggered/ended and custom hook events
+- Integrated overworld NPCs to use dialogue trees:
+  - Replaced static one-line NPC text handling in `src/scenes/OverworldScene.js`
+  - Added per-NPC dialogue trees with conditional branches and quest hooks
+  - Added input-driven conversation navigation:
+    - `Enter/Space` confirm/advance
+    - `Up/Down` choice navigation
+    - `Esc` back or close
+  - Scene receives hook signals via emitted events (`dialogue:quest-hook`, `dialogue:ranger-task-issued`, etc.)
+- Added automated validation:
+  - New `scripts/dialogue-system.test.mjs`
+  - Updated `package.json` `test` script to include the new dialogue test
+- Updated `STATUS.md` with module locations and expected scene usage pattern.
 
 ## Acceptance Test Check
-1. Clearly named battle configuration with player + multiple drone types: PASS (`drone-test-battle`).
-2. Drone placement and visual distinction in the scenario: PASS (fixed spawn positions + per-drone colors).
-3. Autonomous drone actions and visible feedback: PASS (`BattleScene` logs movement/attacks/hold; HP changes shown by existing UI/log flow).
-4. Stable completion on victory/defeat: PASS (existing `BattleScene.evaluateBattleOutcome` + `finishBattle` flow unchanged and exercised by scenario).
-5. Simple documented activation method: PASS (main menu button and `T` shortcut, documented in `STATUS.md`).
-6. STATUS walkthrough of expected drone behaviors: PASS.
+1. Dialogue data structure with nodes/speaker/text/choices + conditional branches + quest hooks: PASS.
+2. Controller API supports start/advance/back/select/end: PASS.
+3. Core dialogue logic is scene-agnostic and callback/event driven: PASS.
+4. Quest hooks read/write lightweight in-memory flags via `DialogueFlagStore`: PASS.
+5. Core files placed under dedicated `src/systems/dialogue` and exported via `index.js`: PASS.
+6. `STATUS.md` updated with high-level usage details and file locations: PASS.
 
 ## Validation
 - Ran: `npm test`
@@ -46,3 +58,4 @@ Integrated a dedicated zookeeper drone battle scenario that is directly launchab
   - Player progress state test passed.
   - Save system persistence test passed.
   - Battle party persistence test passed.
+  - Dialogue system test passed.

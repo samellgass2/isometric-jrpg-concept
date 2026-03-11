@@ -1,5 +1,47 @@
 # Status
 
+- Task: Implement core dialogue system primitives (TASK_ID=391, RUN_ID=692)
+- State: Completed
+- Notes: Added a reusable, scene-agnostic dialogue framework and integrated it into overworld NPC interactions.
+
+  Dialogue system primitives:
+  - `src/systems/dialogue/DialogueFlagStore.js`
+    - Lightweight in-memory flag store with `getFlag`, `setFlag`, `setFlags`, `hasAll`, `hasAny`, `snapshot`, and reset helpers.
+  - `src/systems/dialogue/dialoguePrimitives.js`
+    - Dialogue tree model helpers and validation:
+      - `createDialogueTree(...)` for structured tree creation (`nodes`, `speakerId`, `text`, `choices`, conditional `next` branches).
+      - `isDialogueConditionMet(...)` and `resolveConditionalTarget(...)` for flag-gated branching.
+      - `resolveSpeakerMeta(...)` and `getDialogueNode(...)` utilities.
+  - `src/systems/dialogue/DialogueController.js`
+    - Scene-agnostic runtime API:
+      - `startConversation({ npcId, tree, context })`
+      - `advance()`
+      - `selectChoice(choiceId)`
+      - `goBack()`
+      - `endConversation(reason)`
+    - Emits events via `on/off`:
+      - `dialogue:started`, `dialogue:node-changed`, `dialogue:hook-triggered`, `dialogue:ended`
+      - plus custom hook events (e.g. quest trigger names) defined in dialogue data.
+    - Executes quest hooks when nodes/choices are reached:
+      - flag writes/clears
+      - custom event emission
+      - callback dispatch through `callbackMap`.
+  - `src/systems/dialogue/index.js`
+    - Re-export surface so scenes and other systems can import dialogue primitives from one module.
+
+  Overworld integration usage:
+  - `src/scenes/OverworldScene.js` now instantiates `DialogueFlagStore` + `DialogueController` during `create(...)`.
+  - NPCs carry dialogue trees (`npc.setData("dialogueTree", ...)`) instead of raw text strings.
+  - Scene starts conversations by NPC id and tree, then drives progression with the controller API:
+    - `Enter/Space`: advance or confirm selected choice
+    - `Up/Down`: navigate current node choices
+    - `Esc`: go to previous node (if history exists) or end conversation
+  - Quest hooks from dialogue nodes/choices emit scene events (`dialogue:quest-hook`, `dialogue:ranger-task-issued`) for external systems.
+
+  Validation:
+  - Added `scripts/dialogue-system.test.mjs` and wired it into `npm test`.
+  - The test covers conditional branches, choices, hook-triggered flag writes, callback/event hooks, backtracking, and conversation termination.
+
 - Task: Integrate drones into battles and add test scenario (TASK_ID=339, RUN_ID=581)
 - State: Completed
 - Notes: Added a dedicated debug encounter path for zookeeper drone combat verification, with both manual playtest flow and automated scenario coverage.
