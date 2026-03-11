@@ -33,7 +33,7 @@ const MAP_HEIGHT = 12;
 const PLAYER_SPEED = 180;
 const MAP_PIXEL_WIDTH = MAP_WIDTH * TILE_SIZE;
 const MAP_PIXEL_HEIGHT = MAP_HEIGHT * TILE_SIZE;
-const INTERACTION_DISTANCE = TILE_SIZE * 0.9;
+const INTERACTION_DISTANCE = TILE_SIZE * 1.5;
 const UI_DEPTH = 40;
 const ARRIVAL_THRESHOLD = 4;
 const SIGN_INTERACTION_DISTANCE = TILE_SIZE;
@@ -959,18 +959,18 @@ class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    const nearbyInteractable = this.findNearbyInteractable();
-    if (nearbyInteractable) {
-      this.tryInteractWithInteractable(nearbyInteractable);
-      return;
-    }
-
     const nearbyNpc = this.findNearbyNpc();
-    if (!nearbyNpc) {
+    if (nearbyNpc) {
+      this.startNpcDialogueConversation(nearbyNpc);
       return;
     }
 
-    this.startNpcDialogueConversation(nearbyNpc);
+    const nearbyInteractable = this.findNearbyInteractable();
+    if (!nearbyInteractable) {
+      return;
+    }
+
+    this.tryInteractWithInteractable(nearbyInteractable);
   }
 
   handleCancelAction() {

@@ -259,7 +259,7 @@ const OVERWORLD_INTERACTABLE_DEFINITIONS = Object.freeze([
     type: "gate",
     label: "Workshop Gate",
     texture: "obj-workshop-gate",
-    tileX: 10,
+    tileX: 9,
     tileY: 8,
     unlockFlag: OVERWORLD_DIALOGUE_FLAGS.WORKSHOP_GATE_UNLOCKED,
     promptLocked: "Workshop gate: locked. Ask Mechanic Ivo for access.",
