@@ -36,6 +36,11 @@ const seedProgress = normalizePlayerProgressState({
       },
     ],
   },
+  inventory: {
+    items: {
+      "workshop-pass": 1,
+    },
+  },
   questFlags: {
     "quest.workshopGateUnlocked": true,
   },
@@ -44,6 +49,7 @@ const seedProgress = normalizePlayerProgressState({
 const fromProgress = createGameStateFromPlayerProgress(seedProgress);
 assert.equal(fromProgress.party.members[0].name, "Pathfinder");
 assert.equal(fromProgress.storyFlags["quest.workshopGateUnlocked"], true);
+assert.equal(fromProgress.inventory.items["workshop-pass"], 1);
 
 const initial = initGameState(fromProgress);
 assert.equal(initial.party.members.length, 1);
@@ -94,5 +100,6 @@ assert.ok(publishCount >= 6);
 const exportedProgress = applyGameStateToPlayerProgress(getGameState(), createInitialPlayerProgressState());
 assert.equal(exportedProgress.party.members.some((member) => member.id === "protagonist"), true);
 assert.equal(exportedProgress.questFlags["quest.workshopGateUnlocked"], true);
+assert.equal(exportedProgress.inventory.items["workshop-pass"], 1);
 
 console.log("Game state model test passed.");

@@ -26,6 +26,7 @@ assert.deepEqual(initial.battleOutcomes.keyBattles, {
   [KEY_BATTLE_OUTCOME_FLAGS.LEVEL2_CANYON_GAUNTLET_CLEARED]: false,
 });
 assert.deepEqual(initial.battleOutcomes.encounterResults, {});
+assert.deepEqual(initial.inventory.items, {});
 assert.deepEqual(initial.questFlags, {});
 
 const moved = updateOverworldPosition(initial, { x: 7, y: 9 }, { spawnPointId: "level-1-return" });
@@ -83,6 +84,12 @@ const withQuestFlags = setQuestFlags(withQuestFlag, {
 assert.equal(getQuestFlag(withQuestFlags, "dialogue.rangerTutorialComplete"), true);
 
 const legacyNormalized = normalizePlayerProgressState({
+  inventory: {
+    items: {
+      "workshop-pass": 2,
+      "empty-token": 0,
+    },
+  },
   battleOutcomes: {
     "level-1-training-ambush": { result: "victory", recordedAt: "2026-03-09T05:00:00.000Z" },
   },
@@ -99,6 +106,8 @@ assert.deepEqual(legacyNormalized.battleOutcomes.encounterResults["level-1-train
   result: "victory",
   recordedAt: "2026-03-09T05:00:00.000Z",
 });
+assert.equal(legacyNormalized.inventory.items["workshop-pass"], 2);
+assert.equal(legacyNormalized.inventory.items["empty-token"], undefined);
 assert.equal(legacyNormalized.questFlags["quest.alpha-complete"], true);
 assert.equal(legacyNormalized.questFlags["quest.beta-complete"], false);
 

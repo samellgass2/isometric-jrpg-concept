@@ -1882,3 +1882,63 @@ Verdict: PASS
 
 ### Overall Verdict
 CLEAN
+
+## Task #399 - Integrate game state with overworld flow
+Date: 2026-03-11
+Workflow: Core Game Loop, Progression, and State Management
+
+### Summary
+- Integrated `OverworldScene` with the shared state API (`src/state/gameState.js`) as the authoritative source for story flags, inventory, and party snapshot reads.
+- Extended persisted player progress schema to include `inventory.items`, then wired game-state import/export so inventory no longer resets when moving between overworld/levels/battles.
+- Refactored overworld interactable gating to evaluate unlock conditions from centralized state (`hasStoryFlag`, `getInventoryCount`) instead of local ad-hoc state.
+
+### Updated Files
+- `src/scenes/OverworldScene.js`
+  - Added direct shared-state integration for:
+    - Inventory updates on pickup (`addInventoryItem`).
+    - Story-flag writes for interaction outcomes (`setStoryFlags`).
+    - Story-flag/inventory reads for interactable unlock checks (`hasStoryFlag`, `getInventoryCount`).
+  - Added `persistGameStateSnapshot()` bridge to export central game state back into persisted progress after overworld state mutations.
+  - Added lightweight on-screen debug state overlay + console logs so QA can verify story flag/item updates live.
+- `src/data/overworldInteractionConfig.js`
+  - Added new progression flags and interactables:
+    - `obj-workshop-pass-cache` pickup grants `workshop-pass` item and progression flags.
+    - `obj-canyon-checkpoint` gate unlocks via shared state (`unlockFlag` and `unlockItemId`).
+- `src/state/playerProgress.js`
+  - Added normalized/persisted `inventory.items` schema support.
+- `src/state/gameState.js`
+  - `createGameStateFromPlayerProgress` now hydrates inventory from persisted progress.
+  - `applyGameStateToPlayerProgress` now writes shared-state inventory back into persisted progress.
+- Tests updated:
+  - `scripts/player-progress.test.mjs`
+  - `scripts/game-state-model.test.mjs`
+
+### Shared-State Progression Implemented
+- Pickup progression:
+  - Interact with `Supply Cache` (`obj-workshop-pass-cache`) to collect `workshop-pass`.
+  - This writes to central inventory (`inventory.items['workshop-pass']`) and sets central story flags.
+- NPC/story-gated progression preserved:
+  - Existing mechanic/ranger dialogue hooks still function, now persisted through centralized state export path.
+- Path gating:
+  - `Canyon Checkpoint` (`obj-canyon-checkpoint`) unlock checks now read centralized state (flag/item) instead of local scene variables.
+
+### Manual QA Verification
+1. Start game in `OverworldScene`.
+2. Observe state debug overlay in top-left showing party HP, pass count, and gate/checkpoint flags.
+3. Interact with `Supply Cache` at tile `(5,2)`:
+   - Expected: dialogue message confirms pickup.
+   - Expected: debug overlay `Pass` count increments to `1`.
+   - Expected: console log shows pickup + resulting flags.
+4. Interact with `Canyon Checkpoint` at tile `(6,2)`:
+   - Expected before pickup: locked message.
+   - Expected after pickup: unlocked message and tile no longer blocks movement.
+5. Trigger NPC dialogue with Ranger/Mechanic:
+   - Expected: quest flags continue to branch dialogue behavior correctly.
+   - Expected: resulting flags are reflected in debug overlay and persist after scene transitions.
+6. Enter a level scene, trigger a battle, then return to overworld:
+   - Expected: party HP/order remain consistent with persisted battle results.
+   - Expected: inventory (`workshop-pass`) remains present and does not reset.
+
+### Validation
+- `npm test` PASS
+  - rollback, dog behavior, grid stats, drone AI/scenario, player progress, game state model, save system, battle party persistence, dialogue system all passing.

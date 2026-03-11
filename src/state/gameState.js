@@ -438,7 +438,10 @@ function createGameStateFromPlayerProgress(progressState, options = {}) {
       memberOrder: progress.party?.memberOrder,
     },
     inventory: {
-      items: options.inventoryItems ?? {},
+      items: {
+        ...progress.inventory?.items,
+        ...(isPlainObject(options.inventoryItems) ? options.inventoryItems : {}),
+      },
     },
     storyFlags,
   });
@@ -453,6 +456,9 @@ function applyGameStateToPlayerProgress(gameState, previousProgressState) {
     party: {
       members: normalizedGameState.party.members,
       memberOrder: normalizedGameState.party.memberOrder,
+    },
+    inventory: {
+      items: normalizedGameState.inventory.items,
     },
     questFlags: Object.entries(normalizedGameState.storyFlags).reduce((acc, [flagKey, value]) => {
       if (value === true || value === false) {
