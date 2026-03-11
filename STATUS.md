@@ -2063,3 +2063,65 @@ Debug snapshot includes:
 
 ### Validation
 - `npm test` PASS, including new `runtime-state-tools` persistence/rehydration test.
+
+## Tester Report - Workflow #40 (Core Game Loop, Progression, and State Management)
+Date: 2026-03-11 (UTC)
+Branch: workflow/40/dev
+Tester: TESTER agent
+
+### Tests Run
+1. `npm test`
+- Result: PASS
+- Output:
+  - Rollback test passed.
+  - Dog conditional behavior test passed.
+  - Battle grid stats test passed.
+  - Drone AI decision test passed.
+  - Drone test battle scenario test passed.
+  - Player progress state test passed.
+  - Game state model test passed.
+  - Save system persistence test passed.
+  - Runtime save/load state tools test passed.
+  - Battle party persistence test passed.
+  - Dialogue system test passed.
+
+### Acceptance Verdict By Task
+- Task #398: PASS
+  - Central engine-agnostic `src/state/gameState.js` exists and is imported by scenes/runtime.
+  - API includes init/read/subscription plus party/health/inventory/story-flag mutation helpers.
+  - No Phaser scene/DOM usage in the core state module.
+  - Integration and tests present (`OverworldScene`, `main.js`, `scripts/game-state-model.test.mjs`).
+  - STATUS documentation present with API + verification notes.
+
+- Task #399: PASS
+  - `OverworldScene` uses shared state for inventory and story flags.
+  - Overworld interactions (pickup + dialogue hook persistence) now write/read centralized state.
+  - On-screen state debug overlay + logs provide QA verification path.
+  - Return flow from battle/scene transitions uses persisted/shared state without unintended reset.
+  - STATUS documentation and manual QA path are present.
+
+- Task #400: PASS
+  - Overworld battle trigger transitions into `BattleScene`.
+  - Battle initialization reads party/order/HP from centralized game state.
+  - In-battle HP changes sync through shared state (`setPartyMemberHealth`).
+  - Battle completion writes HP/rewards/flags back and returns to overworld.
+  - Outcome flag (`defeatedFirstDrone`) drives overworld gating behavior.
+  - STATUS documentation and manual verification flow are present.
+
+- Task #401: PASS
+  - Save/load implemented via persistent localStorage-backed systems (`saveSystem`, runtime tools).
+  - Load path is wired into app entry/continue flow (`main.js`, `MainMenuScene`).
+  - Runtime test validates state rehydration of party/health/inventory/story flags.
+  - Debug inspection is available (Overworld overlay + `I` key logs in menu/battle).
+  - Missing/corrupt save fallback handling is implemented.
+  - STATUS documentation for usage and persisted fields is present.
+
+### Bugs Filed
+- None.
+
+### Integration / Regression Assessment
+- Workflow #40 features operate cohesively across overworld, battle, progression, persistence, and debug tooling.
+- No obvious regressions detected in automated tests or acceptance-criteria code review.
+
+### Overall Verdict
+CLEAN
