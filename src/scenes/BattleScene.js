@@ -112,9 +112,9 @@ class BattleScene extends Phaser.Scene {
     this.createGrid();
     this.createObstacles();
     this.createUnits(encounterData);
+    this.createUi();
     this.createCursorIndicator();
     this.snapCursorToStartingTile();
-    this.createUi();
     this.setupInput();
     this.setupDevShortcuts();
     this.refreshDogBuffVisuals();
