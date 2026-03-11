@@ -19,6 +19,7 @@ import {
   setStoryFlags,
 } from "../state/gameState.js";
 import { loadProgress, saveProgress } from "../persistence/saveSystem.js";
+import { logDebugStateSnapshot, resolveResumeTarget } from "../persistence/runtimeStateTools.js";
 import { DialogueController, DialogueEvents, DialogueFlagStore } from "../systems/dialogue/index.js";
 import {
   OVERWORLD_DIALOGUE_FLAGS,
@@ -154,6 +155,8 @@ class OverworldScene extends Phaser.Scene {
     this.overworldBattleZoneMarker = null;
     this.overworldBattleZoneLabel = null;
     this.overworldBattleZoneTriggered = false;
+    this.devShortcutListeners = [];
+    this.stateDebugVisible = true;
   }
 
   create(data) {
@@ -185,6 +188,7 @@ class OverworldScene extends Phaser.Scene {
     this.createOverworldBattleZone();
     this.createLevelSigns();
     this.setupInputManager();
+    this.setupDevShortcuts();
     this.createDialogueOverlay();
     this.createHudOverlay(data);
     this.createStateDebugOverlay();
@@ -199,10 +203,10 @@ class OverworldScene extends Phaser.Scene {
       .setDepth(UI_DEPTH);
 
     this.add
-      .text(16, 40, "Move: Arrows/WASD or Mouse Click  Interact: Space/Enter", {
+      .text(16, 40, "Move: Arrows/WASD/Mouse  Interact: Space/Enter  F6: Save  F9: Load  I: Inspect  F3: Debug UI", {
         color: "#d7e0ef",
         fontFamily: "monospace",
-        fontSize: "14px",
+        fontSize: "13px",
       })
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
@@ -295,6 +299,7 @@ class OverworldScene extends Phaser.Scene {
       })
       .setScrollFactor(0)
       .setDepth(UI_DEPTH + 2);
+    this.stateDebugText.setVisible(this.stateDebugVisible);
     this.syncStateDebugOverlay(true);
   }
 
@@ -302,28 +307,113 @@ class OverworldScene extends Phaser.Scene {
     if (!this.stateDebugText) {
       return;
     }
+    if (!this.stateDebugVisible) {
+      this.stateDebugText.setVisible(false);
+      return;
+    }
 
     const snapshot = getGameState();
     const protagonist = snapshot.party.members.find((member) => member.id === "protagonist") ?? null;
-    const itemCount = getInventoryCount("workshop-pass");
-    const gateUnlocked = hasStoryFlag(OVERWORLD_DIALOGUE_FLAGS.WORKSHOP_GATE_UNLOCKED);
-    const checkpointUnlocked = hasStoryFlag(OVERWORLD_DIALOGUE_FLAGS.CANYON_CHECKPOINT_UNLOCKED);
-    const firstDroneDefeated = hasStoryFlag(KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED);
-    const debugValue = [
-      `Party:${snapshot.party.members.length}`,
-      `HP:${protagonist?.currentHp ?? "?"}/${protagonist?.maxHp ?? "?"}`,
-      `Pass:${itemCount}`,
-      `Drone:${firstDroneDefeated ? "ON" : "OFF"}`,
-      `Gate:${gateUnlocked ? "ON" : "OFF"}`,
-      `Checkpoint:${checkpointUnlocked ? "ON" : "OFF"}`,
-    ].join(" | ");
+    const partySummary = snapshot.party.members
+      .map((member) => `${member.id}:${member.currentHp}/${member.maxHp}`)
+      .join(", ");
+    const inventoryEntries = Object.entries(snapshot.inventory.items)
+      .slice(0, 6)
+      .map(([itemId, count]) => `${itemId}x${count}`);
+    const inventorySummary = inventoryEntries.length > 0 ? inventoryEntries.join(", ") : "empty";
+    const gateUnlocked = hasStoryFlag(OVERWORLD_DIALOGUE_FLAGS.WORKSHOP_GATE_UNLOCKED) ? "ON" : "OFF";
+    const checkpointUnlocked = hasStoryFlag(OVERWORLD_DIALOGUE_FLAGS.CANYON_CHECKPOINT_UNLOCKED) ? "ON" : "OFF";
+    const firstDroneDefeated = hasStoryFlag(KEY_BATTLE_OUTCOME_FLAGS.OVERWORLD_FIRST_DRONE_DEFEATED) ? "ON" : "OFF";
+    const workshopPassCount = getInventoryCount("workshop-pass");
+    const debugLines = [
+      `State Party:${snapshot.party.members.length} Protagonist:${protagonist?.currentHp ?? "?"}/${protagonist?.maxHp ?? "?"}`,
+      `Party Members ${partySummary || "none"}`,
+      `Inventory ${inventorySummary}`,
+      `Flags Drone:${firstDroneDefeated} Gate:${gateUnlocked} Checkpoint:${checkpointUnlocked}`,
+      `Workshop Pass:${workshopPassCount} | I console dump | F6 save | F9 load | F3 toggle`,
+    ];
+    const debugValue = debugLines.join("\n");
 
     if (!force && debugValue === this.stateDebugLastKey) {
       return;
     }
 
     this.stateDebugLastKey = debugValue;
-    this.stateDebugText.setText(`State ${debugValue}`);
+    this.stateDebugText.setVisible(true);
+    this.stateDebugText.setText(debugValue);
+  }
+
+  setupDevShortcuts() {
+    const keyboard = this.input?.keyboard;
+    if (!keyboard) {
+      return;
+    }
+
+    const onSave = (event) => {
+      event?.preventDefault?.();
+      const saveGame = this.game.registry.get("saveGame");
+      const saved = typeof saveGame === "function" ? saveGame({ currentSceneKey: this.scene.key }) : null;
+      console.log("[OverworldScene] Save complete.", {
+        scene: saved?.overworld?.currentSceneKey,
+        partySize: saved?.party?.members?.length ?? 0,
+      });
+      this.syncStateDebugOverlay(true);
+    };
+
+    const onLoad = (event) => {
+      event?.preventDefault?.();
+      const loadGame = this.game.registry.get("loadGame");
+      const loaded = typeof loadGame === "function" ? loadGame() : this.getProgressState();
+      const { resumeSceneKey, resumeData } = resolveResumeTarget(loaded, this.scene.key);
+      console.log("[OverworldScene] Loaded save.", {
+        resumeSceneKey,
+        spawnPointId: resumeData?.spawnPointId ?? null,
+      });
+      this.isTransitioning = true;
+      this.scene.start(resumeSceneKey, resumeData);
+    };
+
+    const onInspect = () => {
+      const debugState = this.game.registry.get("debugGameState");
+      const snapshot = typeof debugState === "function" ? debugState() : logDebugStateSnapshot();
+      console.log("[OverworldScene] Debug snapshot", snapshot);
+      this.syncStateDebugOverlay(true);
+    };
+
+    const onToggleDebug = (event) => {
+      event?.preventDefault?.();
+      this.stateDebugVisible = !this.stateDebugVisible;
+      this.syncStateDebugOverlay(true);
+    };
+
+    keyboard.on("keydown-F6", onSave);
+    keyboard.on("keydown-F9", onLoad);
+    keyboard.on("keydown-I", onInspect);
+    keyboard.on("keydown-F3", onToggleDebug);
+
+    this.devShortcutListeners = [
+      { event: "keydown-F6", handler: onSave },
+      { event: "keydown-F9", handler: onLoad },
+      { event: "keydown-I", handler: onInspect },
+      { event: "keydown-F3", handler: onToggleDebug },
+    ];
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownDevShortcuts());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.teardownDevShortcuts());
+  }
+
+  teardownDevShortcuts() {
+    if (!this.devShortcutListeners.length) {
+      return;
+    }
+
+    const keyboard = this.input?.keyboard;
+    if (keyboard) {
+      this.devShortcutListeners.forEach(({ event, handler }) => {
+        keyboard.off(event, handler);
+      });
+    }
+    this.devShortcutListeners = [];
   }
 
   persistGameStateSnapshot() {

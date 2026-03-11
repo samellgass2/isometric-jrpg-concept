@@ -1,5 +1,44 @@
 ## Status
 
+- Task: Add save, load, and debug state inspection (TASK_ID=401, RUN_ID=722)
+- State: Completed
+- Notes: Extended runtime save/load workflows and in-scene debugging so progression state can be persisted/restored and inspected during overworld and battle testing.
+
+  Save/load implementation:
+  - Save key remains stable: `playerProgress` in browser `localStorage` (`src/persistence/saveSystem.js`).
+  - Runtime save helper (`saveGame`) serializes only normalized progress/state data (party members + HP, inventory items, quest/story flags, overworld scene + position/spawn metadata) and avoids engine references (`src/persistence/runtimeStateTools.js`, `src/state/playerProgress.js`, `src/state/gameState.js`).
+  - Runtime load helper (`loadGame`) safely rehydrates from storage with fallback to default initial state on missing/corrupt data, then hydrates registry + central state store.
+  - Main entry path supports loading immediately from menu:
+    - Main menu button: `Load Save / Continue`
+    - Keyboard: `L` or `F9`
+
+  Dev controls (no code edits required):
+  - Main menu (`src/scenes/MainMenuScene.js`):
+    - `F6`: save current runtime state
+    - `F9` / `L`: load save and continue from saved scene
+    - `I`: log debug snapshot (party, inventory, subset of story flags)
+  - Overworld (`src/scenes/OverworldScene.js`):
+    - `F6`: save
+    - `F9`: load and re-enter resume target scene/spawn data
+    - `I`: log debug snapshot to console
+    - `F3`: toggle expanded on-screen debug overlay showing party HP, inventory summary, and key story flags
+  - Battle (`src/scenes/BattleScene.js`):
+    - `F6`: save
+    - `F9`: load and resume to saved scene
+    - `I`: log debug snapshot to console and add battle log confirmation
+
+  Persisted data coverage:
+  - Party: member IDs/order, names/archetypes, level, `currentHp`, `maxHp`
+  - Inventory: item counts map
+  - Story progression: `questFlags`, battle outcome flags, and normalized story flag map used by dialogue/encounter gates
+  - Overworld resume: current scene key, tile position, spawn point metadata
+
+  Manual verification flow:
+  1. Start game, move in overworld, trigger at least one state change (e.g., dialogue flag or inventory reward), then press `F6`.
+  2. Refresh browser tab (or close/reopen), choose `Load Save / Continue` (or press `F9`) from menu.
+  3. Confirm restored scene/spawn and that party HP, inventory, and story-driven gates/dialogue/battle behavior match pre-save state.
+  4. In overworld or battle, press `I` and inspect console snapshot for party/inventory/flags.
+
 - Task: Define core game state model (TASK_ID=398, RUN_ID=705)
 - State: Completed
 - Notes: Added a centralized, engine-agnostic game state store at `src/state/gameState.js` for party, health, inventory, and story flags.
