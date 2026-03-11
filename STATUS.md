@@ -2372,3 +2372,54 @@ Date: 2026-03-11 (UTC)
 ### Known Limitations
 - Audio keys (`sfx-overworld-step`, `sfx-overworld-dialogue-open`, `sfx-overworld-interact`, `sfx-overworld-item-pickup`) must exist in the loaded Phaser audio cache to produce audible output.
 - The current manager intentionally no-ops on missing keys, so wiring is safe even before final audio assets are imported.
+
+## Task 414 - Battle Hit, Ability, and Turn Feedback FX (RUN_ID=730)
+Date: 2026-03-11 (UTC)
+
+### Summary
+- Added core battle action feedback in `src/scenes/BattleScene.js` using the shared `AudioManager` only (no direct `this.sound.add(...)` calls in battle logic).
+- Added distinct battle SFX hook points for basic hits, damage taken, ability activation (`stabilize`), turn transitions, and victory/defeat outcomes.
+- Added short-lived visual FX for impact, damage, ability use, and turn-side changes without altering battle resolution order.
+
+### Audio Hook Points (BattleScene)
+- `create(...)`
+  - Plays battle BGM through shared manager using `BATTLE_AUDIO_KEYS.music` (`music-battle`).
+- `playAttackImpactFeedback(...)`
+  - Triggers basic attack hit SFX via `BATTLE_AUDIO_KEYS.hit` (`sfx-battle-hit`).
+- `attackTarget(...)`
+  - On non-zero damage, triggers damage SFX via `BATTLE_AUDIO_KEYS.damage` (`sfx-battle-damage`).
+- `playAbilityFeedback(...)` / `useStabilizeAction(...)`
+  - Triggers ability SFX via `BATTLE_AUDIO_KEYS.ability` (`sfx-battle-ability`) when `stabilize` is used.
+- `showTurnTransitionCue(...)`
+  - Triggers turn-change cue via `BATTLE_AUDIO_KEYS.turnShift` (`sfx-battle-turn-shift`) for player/enemy side swaps.
+- `finishBattle(result)`
+  - Triggers outcome SFX via `BATTLE_AUDIO_KEYS.victory` or `BATTLE_AUDIO_KEYS.defeat`.
+
+### Visual Feedback Added
+- Basic attack impact:
+  - `playAttackImpactFeedback(...)` adds a short slash-like impact flash between attacker/target and a quick target snap jitter.
+- Damage taken (separate from HP/state updates):
+  - `playDamageFeedback(...)` adds target white flash pulse, stroke emphasis, camera shake, and expanding burst ring.
+  - Defeat damage path uses stronger shake + larger burst.
+- Ability use (`stabilize`):
+  - `playAbilityFeedback(...)` adds aura/ring pulse, temporary sprite glow pulse, and a floating ability tag.
+- Turn transitions:
+  - `createTurnCueBanner()` + `showTurnTransitionCue(...)` add a centered transient banner (`PLAYER TURN` / `ENEMY TURN`) with subtle camera shake.
+- Battle result:
+  - `finishBattle(...)` now includes a brief camera flash tuned by result (victory/defeat).
+
+### Turn and Battle Loop Safety
+- FX are tween-based and non-blocking; battle resolution and turn sequencing remain synchronous and unchanged.
+- Existing battle outcome/persistence logic is untouched; FX hooks are layered around existing state updates.
+- Added `cleanupBattleFx()` and scene shutdown/destroy listeners to stop/remove transient FX tweens and UI cue text safely.
+
+### Music Transition Notes
+- Battle scene continues using shared `AudioManager.playMusic("music-battle")` on entry.
+- Overworld scene already stops overworld music before battle entry and before level transitions (`audioManager.stopMusic()`), preventing overlap and allowing clean track handoff.
+
+### How To Add New Ability Feedback
+- Add new ability SFX key to `BATTLE_AUDIO_KEYS` in `BattleScene.js`.
+- In the ability execution path (where HP/buffs/state are applied), call:
+  - `this.playBattleSfx(<new-key>, { volume: ... })`
+  - `this.playAbilityFeedback(casterUnit, { label: "Ability Name" })`
+- If a target-specific visual is needed, also call `this.playDamageFeedback(targetUnit, { wasDefeated: false })` or create a sibling helper following the same tween cleanup pattern via `rememberTween(...)`.

@@ -51,6 +51,15 @@ const OBSTACLES = [
 ];
 const DEFAULT_RETURN_SCENE_KEY = "OverworldScene";
 const COMMAND_OPTIONS = Object.freeze(["move", "attack", "stabilize", "end-turn"]);
+const BATTLE_AUDIO_KEYS = Object.freeze({
+  music: "music-battle",
+  hit: "sfx-battle-hit",
+  ability: "sfx-battle-ability",
+  damage: "sfx-battle-damage",
+  turnShift: "sfx-battle-turn-shift",
+  victory: "sfx-battle-victory",
+  defeat: "sfx-battle-defeat",
+});
 
 function keyFor(x, y) {
   return `${x},${y}`;
@@ -90,11 +99,13 @@ class BattleScene extends Phaser.Scene {
     this.encounterRewards = { inventory: [], storyFlags: {} };
     this.devShortcutListeners = [];
     this.audioManager = null;
+    this.turnCueBanner = null;
+    this.activeFxTweens = new Set();
   }
 
   create(data = {}) {
     this.audioManager = this.game.registry.get("audioManager") ?? null;
-    this.audioManager?.playMusic("music-battle", { loop: true });
+    this.audioManager?.playMusic(BATTLE_AUDIO_KEYS.music, { loop: true });
 
     this.loadedProgress = this.getProgressState();
     const encounterData = this.resolveEncounterData(data);
@@ -117,6 +128,7 @@ class BattleScene extends Phaser.Scene {
     this.createObstacles();
     this.createUnits(encounterData);
     this.createUi();
+    this.createTurnCueBanner();
     this.createCursorIndicator();
     this.snapCursorToStartingTile();
     this.setupInput();
@@ -130,6 +142,11 @@ class BattleScene extends Phaser.Scene {
     if (this.encounterTriggerDescription) {
       this.addLog(`Triggered by: ${this.encounterTriggerDescription}`);
     }
+
+    this.showTurnTransitionCue(this.playerTurn, { playAudio: false, labelPrefix: "Turn Start" });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanupBattleFx());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanupBattleFx());
   }
 
   createGrid() {
@@ -455,6 +472,23 @@ class BattleScene extends Phaser.Scene {
       .setDepth(UI_DEPTH);
   }
 
+  createTurnCueBanner() {
+    const { width } = this.scale;
+    this.turnCueBanner = this.add
+      .text(width / 2, 84, "", {
+        color: "#f4f8ff",
+        fontFamily: "monospace",
+        fontSize: "24px",
+        backgroundColor: "#0f1a2ccf",
+        padding: { x: 12, y: 5 },
+      })
+      .setOrigin(0.5)
+      .setDepth(UI_DEPTH + 20)
+      .setAlpha(0)
+      .setScale(0.86)
+      .setVisible(false);
+  }
+
   createHudOverlay() {
     this.hudOverlay = new HUDOverlay(this, { x: 790, y: 12, width: 260, depth: UI_DEPTH + 25 });
     this.hudOverlay.create();
@@ -605,6 +639,226 @@ class BattleScene extends Phaser.Scene {
       this.inputManager.destroy();
       this.inputManager = null;
     }
+  }
+
+  playBattleSfx(eventKey, options = {}) {
+    if (!eventKey) {
+      return null;
+    }
+    return this.audioManager?.playSfx(eventKey, options) ?? null;
+  }
+
+  rememberTween(tween) {
+    if (!tween) {
+      return;
+    }
+    this.activeFxTweens.add(tween);
+    tween.once?.("complete", () => {
+      this.activeFxTweens.delete(tween);
+    });
+  }
+
+  cleanupBattleFx() {
+    this.activeFxTweens.forEach((tween) => {
+      tween?.stop?.();
+      tween?.remove?.();
+    });
+    this.activeFxTweens.clear();
+    if (this.turnCueBanner) {
+      this.turnCueBanner.destroy();
+      this.turnCueBanner = null;
+    }
+  }
+
+  showTurnTransitionCue(isPlayerTurn, options = {}) {
+    if (this.battleResolved || !this.turnCueBanner) {
+      return;
+    }
+
+    const labelPrefix = typeof options.labelPrefix === "string" && options.labelPrefix ? `${options.labelPrefix}: ` : "";
+    const phaseLabel = isPlayerTurn ? "PLAYER TURN" : "ENEMY TURN";
+    const fillColor = isPlayerTurn ? "#d6ebff" : "#ffd6d6";
+    const panelColor = isPlayerTurn ? "#123154cf" : "#4e1a1acf";
+
+    this.turnCueBanner.setText(`${labelPrefix}${phaseLabel}`);
+    this.turnCueBanner.setColor(fillColor);
+    this.turnCueBanner.setBackgroundColor(panelColor);
+    this.turnCueBanner.setVisible(true);
+    this.turnCueBanner.setAlpha(0);
+    this.turnCueBanner.setScale(0.86);
+
+    if (options.playAudio !== false) {
+      this.playBattleSfx(BATTLE_AUDIO_KEYS.turnShift, { volume: 0.78 });
+    }
+    this.cameras.main.shake(100, 0.0017, true);
+
+    const cueTween = this.tweens.add({
+      targets: this.turnCueBanner,
+      alpha: { from: 0, to: 1 },
+      scale: { from: 0.86, to: 1 },
+      duration: 140,
+      yoyo: true,
+      hold: 240,
+      ease: "Sine.Out",
+      onComplete: () => {
+        this.turnCueBanner?.setVisible(false);
+      },
+    });
+    this.rememberTween(cueTween);
+  }
+
+  playDamageFeedback(unit, { wasDefeated = false } = {}) {
+    if (!unit?.sprite) {
+      return;
+    }
+
+    unit.sprite.setStrokeStyle(3, 0xffffff, 1);
+    const originalColor = unit.alive ? unit.baseColor : 0x222222;
+    unit.sprite.setFillStyle(0xffffff, 1);
+
+    const pulseTween = this.tweens.add({
+      targets: unit.sprite,
+      scaleX: { from: 1, to: 1.08 },
+      scaleY: { from: 1, to: 1.08 },
+      duration: 80,
+      yoyo: true,
+      ease: "Quad.Out",
+      onComplete: () => {
+        const targetAlpha = unit.alive ? 1 : 0.4;
+        unit.sprite.setScale(1, 1);
+        unit.sprite.setFillStyle(originalColor, targetAlpha);
+        unit.sprite.setStrokeStyle(2, unit.faction === "friendly" ? 0xc9d7ff : 0xffc3c3, 1);
+      },
+    });
+    this.rememberTween(pulseTween);
+
+    this.cameras.main.shake(wasDefeated ? 170 : 110, wasDefeated ? 0.0032 : 0.0022, true);
+
+    const burst = this.add.circle(unit.sprite.x, unit.sprite.y, 8, wasDefeated ? 0xff8b8b : 0xffffff, 0.72);
+    burst.setDepth(18);
+    const burstTween = this.tweens.add({
+      targets: burst,
+      radius: wasDefeated ? 58 : 42,
+      alpha: { from: 0.72, to: 0 },
+      duration: wasDefeated ? 300 : 210,
+      ease: "Quad.Out",
+      onComplete: () => burst.destroy(),
+    });
+    this.rememberTween(burstTween);
+  }
+
+  playAttackImpactFeedback(attacker, defender) {
+    if (!attacker?.sprite || !defender?.sprite) {
+      return;
+    }
+
+    this.playBattleSfx(BATTLE_AUDIO_KEYS.hit, { volume: 0.86 });
+
+    const impactX = (attacker.sprite.x + defender.sprite.x) / 2;
+    const impactY = (attacker.sprite.y + defender.sprite.y) / 2;
+    const impactFlash = this.add.rectangle(impactX, impactY, 16, 16, 0xffd98f, 0.85).setDepth(17);
+    impactFlash.setAngle(45);
+
+    const flashTween = this.tweens.add({
+      targets: impactFlash,
+      scaleX: { from: 0.35, to: 2.4 },
+      scaleY: { from: 0.35, to: 0.18 },
+      alpha: { from: 0.85, to: 0 },
+      duration: 160,
+      ease: "Cubic.Out",
+      onComplete: () => impactFlash.destroy(),
+    });
+    this.rememberTween(flashTween);
+
+    const snapTween = this.tweens.add({
+      targets: defender.sprite,
+      x: {
+        from: defender.sprite.x,
+        to: defender.sprite.x + Phaser.Math.Between(-4, 4),
+      },
+      y: {
+        from: defender.sprite.y,
+        to: defender.sprite.y + Phaser.Math.Between(-3, 3),
+      },
+      duration: 50,
+      yoyo: true,
+      repeat: 2,
+      ease: "Quad.InOut",
+      onComplete: () => {
+        defender.sprite.x = defender.tileX * TILE_SIZE + TILE_SIZE / 2;
+        defender.sprite.y = defender.tileY * TILE_SIZE + TILE_SIZE / 2;
+        defender.buffIcon.x = defender.sprite.x - 12;
+        defender.buffIcon.y = defender.sprite.y - 24;
+      },
+    });
+    this.rememberTween(snapTween);
+  }
+
+  playAbilityFeedback(unit, { label = "Ability" } = {}) {
+    if (!unit?.sprite) {
+      return;
+    }
+
+    this.playBattleSfx(BATTLE_AUDIO_KEYS.ability, { volume: 0.92 });
+
+    const aura = this.add.circle(unit.sprite.x, unit.sprite.y, 18, 0x66d5ff, 0.24).setDepth(16);
+    const ring = this.add.circle(unit.sprite.x, unit.sprite.y, 10, 0xb2f2ff, 0).setDepth(17);
+    ring.setStrokeStyle(3, 0xb2f2ff, 0.95);
+
+    const auraTween = this.tweens.add({
+      targets: aura,
+      scale: { from: 0.7, to: 1.8 },
+      alpha: { from: 0.24, to: 0 },
+      duration: 360,
+      ease: "Sine.Out",
+      onComplete: () => aura.destroy(),
+    });
+    this.rememberTween(auraTween);
+
+    const ringTween = this.tweens.add({
+      targets: ring,
+      scale: { from: 0.8, to: 1.7 },
+      alpha: { from: 1, to: 0 },
+      duration: 260,
+      ease: "Quad.Out",
+      onComplete: () => ring.destroy(),
+    });
+    this.rememberTween(ringTween);
+
+    const glowTween = this.tweens.add({
+      targets: unit.sprite,
+      alpha: { from: 1, to: 0.45 },
+      scaleX: { from: 1, to: 1.07 },
+      scaleY: { from: 1, to: 1.07 },
+      duration: 110,
+      yoyo: true,
+      ease: "Sine.InOut",
+      onComplete: () => {
+        unit.sprite.setAlpha(unit.alive ? 1 : 0.4);
+        unit.sprite.setScale(1, 1);
+      },
+    });
+    this.rememberTween(glowTween);
+
+    const abilityTag = this.add
+      .text(unit.sprite.x, unit.sprite.y - TILE_SIZE / 2 + 3, label, {
+        color: "#e0f7ff",
+        fontFamily: "monospace",
+        fontSize: "11px",
+        backgroundColor: "#0f2a35cc",
+        padding: { x: 3, y: 1 },
+      })
+      .setDepth(UI_DEPTH + 6)
+      .setOrigin(0.5);
+    const tagTween = this.tweens.add({
+      targets: abilityTag,
+      y: abilityTag.y - 14,
+      alpha: { from: 1, to: 0 },
+      duration: 480,
+      ease: "Cubic.Out",
+      onComplete: () => abilityTag.destroy(),
+    });
+    this.rememberTween(tagTween);
   }
 
   handleInputAction(event) {
@@ -868,6 +1122,7 @@ class BattleScene extends Phaser.Scene {
     const previousHp = unit.currentHp;
     unit.currentHp = Math.min(unit.stats.maxHp, unit.currentHp + healAmount);
     unit.stats.hp = unit.currentHp;
+    this.playAbilityFeedback(unit, { label: "Stabilize" });
     unit.hasActed = true;
     this.mode = "idle";
     this.clearHighlights();
@@ -1035,8 +1290,13 @@ class BattleScene extends Phaser.Scene {
       protagonist: this.protagonist,
     });
 
+    this.playAttackImpactFeedback(attacker, defender);
+
     defender.currentHp = Math.max(0, defender.currentHp - result.damage);
     defender.stats.hp = defender.currentHp;
+    if (result.damage > 0) {
+      this.playBattleSfx(BATTLE_AUDIO_KEYS.damage, { volume: 0.8 });
+    }
     if (defender.faction === "friendly") {
       setPartyMemberHealth(defender.id, {
         currentHp: defender.currentHp,
@@ -1052,7 +1312,10 @@ class BattleScene extends Phaser.Scene {
       defender.alive = false;
       defender.sprite.setFillStyle(0x222222, 0.4);
       defender.buffIcon.setVisible(false);
+      this.playDamageFeedback(defender, { wasDefeated: true });
       this.addLog(`${defender.name} was defeated.`);
+    } else {
+      this.playDamageFeedback(defender, { wasDefeated: false });
     }
 
     if (this.evaluateBattleOutcome()) {
@@ -1084,6 +1347,8 @@ class BattleScene extends Phaser.Scene {
     this.clearHighlights();
     this.selectedUnitId = null;
     this.updateSelectionPanel();
+    this.showTurnTransitionCue(false);
+    this.addLog(`Turn ${this.turn}: enemy phase.`);
     this.runEnemyTurn();
   }
 
@@ -1154,6 +1419,7 @@ class BattleScene extends Phaser.Scene {
     this.refreshDogBuffVisuals();
     this.updateTurnHeader();
     this.addLog(`Turn ${this.turn}: your phase.`);
+    this.showTurnTransitionCue(true);
     this.syncHudOverlay();
   }
 
@@ -1189,6 +1455,9 @@ class BattleScene extends Phaser.Scene {
     this.currentActingUnitId = null;
 
     const completionLabel = result === "victory" ? "Victory" : "Defeat";
+    const outcomeAudio = result === "victory" ? BATTLE_AUDIO_KEYS.victory : BATTLE_AUDIO_KEYS.defeat;
+    this.playBattleSfx(outcomeAudio, { volume: 0.95 });
+    this.cameras.main.flash(220, result === "victory" ? 145 : 190, result === "victory" ? 218 : 80, 90, true);
     this.addLog(`${completionLabel}. Returning...`);
     this.updateTurnHeader();
     this.updateSelectionPanel();
