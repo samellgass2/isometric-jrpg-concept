@@ -5,6 +5,7 @@ import {
   normalizeCharacterModel,
   serializeCharacterForPartyState,
 } from "../models/characterModels.js";
+import { awardCharacterXP } from "../progression/leveling.js";
 
 const DEFAULT_PARTY_MEMBER = Object.freeze(createProtagonistCharacter());
 
@@ -368,6 +369,105 @@ class GameStateStore {
     });
   }
 
+  awardPartyMemberXP(memberId, xpAmount = 0) {
+    const id = normalizeId(memberId);
+    const normalizedXP = Math.max(0, toInteger(xpAmount, 0));
+    if (!id || normalizedXP === 0) {
+      return {
+        state: this.snapshot(),
+        awardResult: null,
+      };
+    }
+
+    let appliedAward = null;
+    const state = this.update((current) => {
+      const members = current.party.members.map((member) => {
+        if (member.id !== id) {
+          return member;
+        }
+
+        const result = awardCharacterXP(member, normalizedXP);
+        if (!result?.character) {
+          return member;
+        }
+
+        appliedAward = {
+          memberId: id,
+          ...result,
+        };
+        return result.character;
+      });
+
+      return {
+        ...current,
+        party: {
+          ...current.party,
+          members,
+        },
+      };
+    });
+
+    return {
+      state,
+      awardResult: appliedAward,
+    };
+  }
+
+  awardPartyXP(memberIds = [], totalXP = 0) {
+    const normalizedXP = Math.max(0, toInteger(totalXP, 0));
+    if (normalizedXP === 0) {
+      return {
+        state: this.snapshot(),
+        awards: [],
+      };
+    }
+
+    const idSet = new Set(
+      (Array.isArray(memberIds) ? memberIds : [])
+        .map((memberId) => normalizeId(memberId))
+        .filter(Boolean)
+    );
+    if (idSet.size === 0) {
+      return {
+        state: this.snapshot(),
+        awards: [],
+      };
+    }
+
+    let awards = [];
+    const state = this.update((current) => {
+      const members = current.party.members.map((member) => {
+        if (!idSet.has(member.id)) {
+          return member;
+        }
+
+        const result = awardCharacterXP(member, normalizedXP);
+        if (!result?.character) {
+          return member;
+        }
+
+        awards.push({
+          memberId: member.id,
+          ...result,
+        });
+        return result.character;
+      });
+
+      return {
+        ...current,
+        party: {
+          ...current.party,
+          members,
+        },
+      };
+    });
+
+    return {
+      state,
+      awards,
+    };
+  }
+
   addInventoryItem(itemId, amount = 1) {
     const id = normalizeId(itemId);
     const normalizedAmount = Math.max(0, toInteger(amount, 1));
@@ -583,6 +683,14 @@ export function adjustPartyMemberHealth(memberId, delta = 0) {
  */
 export function setPartyMemberHealth(memberId, health) {
   return gameStateStore.setPartyMemberHealth(memberId, health);
+}
+
+export function awardPartyMemberXP(memberId, xpAmount = 0) {
+  return gameStateStore.awardPartyMemberXP(memberId, xpAmount);
+}
+
+export function awardPartyXP(memberIds = [], totalXP = 0) {
+  return gameStateStore.awardPartyXP(memberIds, totalXP);
 }
 
 export function setBattleEnemies(enemies = []) {

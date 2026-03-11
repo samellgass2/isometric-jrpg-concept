@@ -2302,3 +2302,25 @@ Primary model files:
 - `src/state/gameState.js`
 - `src/state/playerProgress.js`
 - `src/state/partyPersistence.js`
+
+## Task 426 - Implement XP Gain and Level-Up Logic
+Date: 2026-03-11
+
+Summary:
+- Added centralized progression module at `src/progression/leveling.js`.
+- Core exported progression functions:
+  - `getXpToNextLevel(level)` for level threshold calculation.
+  - `applyLevelStatGrowth(character)` for deterministic stat growth per level.
+  - `awardCharacterXP(character, xpAmount)` for XP awards with multi-level-up processing.
+- Added state-level XP actions in `src/state/gameState.js`:
+  - `awardPartyMemberXP(memberId, xpAmount)` for a single member.
+  - `awardPartyXP(memberIds, totalXP)` for awarding XP to multiple members in one battle resolution.
+- Wired battle-end progression in `src/scenes/BattleScene.js`:
+  - On victory, `persistBattleProgress` now computes encounter XP from `rewards.xp` when present or falls back to enemy-derived XP.
+  - XP is awarded to each surviving friendly via `awardPartyXP(...)`.
+  - Level-up outcomes are surfaced in battle log lines.
+- Updated battle party hydration (`resolveInitialFriendlyUnits`) so persisted progression stats (HP/attack/defense/speed, XP, level) flow back into battle units.
+- Added in-code leveling harness `scripts/leveling-progression.test.mjs` and included it in `npm test`.
+
+Trigger path:
+- Battle completes -> `BattleScene.finishBattle("victory")` -> `BattleScene.persistBattleProgress(...)` -> `awardPartyXP(...)` -> `awardCharacterXP(...)`.

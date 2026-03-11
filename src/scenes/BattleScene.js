@@ -33,6 +33,7 @@ import {
 } from "../persistence/runtimeStateTools.js";
 import {
   addInventoryItem,
+  awardPartyXP,
   exportGameStateToPlayerProgress,
   getBattleEnemies,
   getGameState,
@@ -90,7 +91,7 @@ class BattleScene extends Phaser.Scene {
     this.hudOverlay = null;
     this.loadedProgress = null;
     this.encounterFriendlyTemplateIds = [];
-    this.encounterRewards = { inventory: [], storyFlags: {} };
+    this.encounterRewards = { xp: 0, inventory: [], storyFlags: {} };
     this.devShortcutListeners = [];
   }
 
@@ -102,6 +103,7 @@ class BattleScene extends Phaser.Scene {
     this.encounterTriggerDescription = encounterData.triggerDescription;
     this.encounterRewards = {
       inventory: Array.isArray(encounterData.rewards?.inventory) ? encounterData.rewards.inventory : [],
+      xp: encounterData.rewards?.xp,
       storyFlags:
         encounterData.rewards?.storyFlags && typeof encounterData.rewards.storyFlags === "object"
           ? encounterData.rewards.storyFlags
@@ -275,19 +277,33 @@ class BattleScene extends Phaser.Scene {
           };
         }
 
+        const attackPower = Number(member.currentStats?.attackPower);
+        const defense = Number(member.currentStats?.defense);
+        const speed = Number(member.currentStats?.speed);
         const normalizedMerged = normalizeCharacterModel({
           ...template,
-          movement: { ...(template.movement ?? {}) },
-          attack: { ...(template.attack ?? {}) },
+          movement: {
+            ...(template.movement ?? {}),
+            tilesPerTurn: Number.isFinite(speed) ? Math.max(1, Math.floor(speed)) : template.movement?.tilesPerTurn,
+          },
+          attack: {
+            ...(template.attack ?? {}),
+            baseDamage: Number.isFinite(attackPower) ? Math.max(0, Math.floor(attackPower)) : template.attack?.baseDamage,
+          },
           stats: {
             ...(template.stats ?? {}),
             maxHp: member.maxHp,
+            defense: Number.isFinite(defense) ? Math.max(0, Math.floor(defense)) : template.stats?.defense,
           },
           abilities: Array.isArray(template.abilities) ? [...template.abilities] : [],
           name: member.name || template.name,
           archetype: member.archetype ?? template.archetype,
           level: member.level ?? template.level,
           currentHp: member.currentHp,
+          currentXP: member.currentXP,
+          xpToNextLevel: member.xpToNextLevel,
+          baseStats: member.baseStats ?? template.baseStats,
+          currentStats: member.currentStats ?? template.currentStats,
         });
 
         return normalizedMerged ?? {
@@ -327,7 +343,7 @@ class BattleScene extends Phaser.Scene {
       obstacles: Array.isArray(definition.obstacles) ? definition.obstacles : fallback.obstacles,
       friendlyUnits: Array.isArray(definition.friendlyUnits) ? definition.friendlyUnits : fallback.friendlyUnits,
       enemyUnits: Array.isArray(definition.enemyUnits) ? definition.enemyUnits : enemyFallback,
-      rewards: definition.rewards ?? { inventory: [], storyFlags: {} },
+      rewards: definition.rewards ?? { xp: 0, inventory: [], storyFlags: {} },
     };
   }
 
@@ -368,10 +384,45 @@ class BattleScene extends Phaser.Scene {
         },
       ],
       rewards: {
+        xp: 0,
         inventory: [],
         storyFlags: {},
       },
     };
+  }
+
+  resolveEnemyXPYield(enemyUnit) {
+    if (!enemyUnit || typeof enemyUnit !== "object") {
+      return 0;
+    }
+
+    const explicitXP = Number(enemyUnit.xpReward ?? enemyUnit.xpYield);
+    if (Number.isFinite(explicitXP)) {
+      return Math.max(0, Math.floor(explicitXP));
+    }
+
+    const level = Math.max(1, Math.floor(Number(enemyUnit.level) || 1));
+    const maxHp = Math.max(1, Math.floor(Number(enemyUnit.stats?.maxHp) || 1));
+    const attack = Math.max(0, Math.floor(Number(enemyUnit.attack?.baseDamage) || 0));
+    const defense = Math.max(0, Math.floor(Number(enemyUnit.stats?.defense) || 0));
+    return Math.max(10, Math.floor(level * 20 + maxHp * 0.2 + attack * 0.6 + defense * 0.4));
+  }
+
+  resolveEncounterXPRewardTotal() {
+    const rewardXP = this.encounterRewards?.xp;
+    if (Number.isFinite(rewardXP)) {
+      return Math.max(0, Math.floor(rewardXP));
+    }
+    if (rewardXP && typeof rewardXP === "object") {
+      const totalXP = Number(rewardXP.totalXP);
+      if (Number.isFinite(totalXP)) {
+        return Math.max(0, Math.floor(totalXP));
+      }
+    }
+
+    return this.units
+      .filter((unit) => unit.faction === "enemy")
+      .reduce((total, enemyUnit) => total + this.resolveEnemyXPYield(enemyUnit), 0);
   }
 
   spawnUnit(config, faction, tileX, tileY, color) {
@@ -1236,6 +1287,23 @@ class BattleScene extends Phaser.Scene {
       setStoryFlag(keyBattleFlag, true);
     }
     if (result === "victory") {
+      const survivingFriendlyIds = this.units
+        .filter((unit) => unit.faction === "friendly" && unit.alive && unit.currentHp > 0)
+        .map((unit) => unit.id);
+      const totalXPReward = this.resolveEncounterXPRewardTotal();
+      if (survivingFriendlyIds.length > 0 && totalXPReward > 0) {
+        const xpAwards = awardPartyXP(survivingFriendlyIds, totalXPReward).awards ?? [];
+        if (xpAwards.length > 0) {
+          this.addLog(`Party gained ${totalXPReward} XP.`);
+          xpAwards.forEach((award) => {
+            if (!award || award.levelsGained <= 0 || !award.character) {
+              return;
+            }
+            this.addLog(`${award.character.name} reached Lv ${award.character.level}.`);
+          });
+        }
+      }
+
       this.encounterRewards.inventory.forEach((reward) => {
         if (!reward || typeof reward.itemId !== "string") {
           return;
