@@ -2353,3 +2353,72 @@ How testers can verify:
 3. Return to Overworld and confirm HUD/debug overlay now shows updated `Lv/XP/HP`.
 4. Trigger a second encounter from overworld/levels and confirm the same updated values are used at battle entry for protagonist and participating party animals (elephant, cheetah, dog).
 5. Confirm drone units appear in progression logs with `DRONE(non-persistent-xp)` and are not promoted through persistent party XP awards.
+
+## Tester Report - Workflow #43 (Character Data Models, Leveling, and Progression)
+Date: 2026-03-11
+Branch: `workflow/43/dev`
+Tester: TESTER agent
+
+### Tests Run
+1. Dependency install (pre-flight)
+   - Command: `npm install`
+   - Output:
+     - `added 2 packages, and audited 3 packages in 13s`
+     - `found 0 vulnerabilities`
+
+2. Full automated test suite
+   - Command: `npm test`
+   - Output:
+     - `> workspace@1.0.0 test`
+     - `> node scripts/rollback.test.mjs && node scripts/dog-conditional-behavior.test.mjs && node scripts/battle-grid-stats.test.mjs && node scripts/drone-ai-decision.test.mjs && node scripts/drone-test-battle-scenario.test.mjs && node scripts/player-progress.test.mjs && node scripts/game-state-model.test.mjs && node scripts/leveling-progression.test.mjs && node scripts/save-system.test.mjs && node scripts/runtime-state-tools.test.mjs && node scripts/battle-party-persistence.test.mjs && node scripts/dialogue-system.test.mjs`
+     - `Rollback test passed.`
+     - `Dog conditional behavior test passed.`
+     - `Battle grid stats test passed.`
+     - `Drone AI decision test passed.`
+     - `Drone test battle scenario test passed.`
+     - `Player progress state test passed.`
+     - `Game state model test passed.`
+     - `Leveling progression test passed.`
+     - `Save system persistence test passed.`
+     - `Runtime save/load state tools test passed.`
+     - `Battle party persistence test passed.`
+     - `Dialogue system test passed.`
+
+### Acceptance Verification
+
+#### Task #425: Define character and progression data models
+Verdict: PASS
+- AC1 PASS: Shared character model includes required fields (`id`, `name`, `level`, `currentXP`, `xpToNextLevel`, `baseStats`, `currentStats`) in `src/models/characterModels.js`.
+- AC2 PASS: Shared factories/configs exist for protagonist, elephant, cheetah, dog(s), and drone types in `src/models/characterModels.js` and are consumed in `src/battle/units/animalUnits.js`.
+- AC3 PASS: Central state exposes normalized character-based party/enemy collections in `src/state/gameState.js` (`party.members`, `battle.enemies`, `setBattleEnemies`, `getBattleEnemies`).
+- AC4 PASS: Overworld/battle modules consume shared character shape via shared state and normalization (`src/scenes/OverworldScene.js`, `src/scenes/BattleScene.js`, `src/state/gameState.js`).
+- AC5 PASS: Existing scene/controller modules use model factories/helpers (not raw hardcoded core-character blobs), including `src/battle/units/animalUnits.js`, `src/battle/encounters.js`, and `src/scenes/BattleScene.js`.
+- AC6 PASS: STATUS entry exists with character model summary and primary files.
+
+#### Task #426: Implement XP gain and level-up logic
+Verdict: PASS
+- AC1 PASS: Dedicated progression module exports XP/leveling functions in `src/progression/leveling.js`.
+- AC2 PASS: XP awarding updates XP, applies deterministic level/stat growth, and updates thresholds (`awardCharacterXP`, `applyLevelStatGrowth`, `getXpToNextLevel`).
+- AC3 PASS: Battle resolution awards XP to each eligible surviving party member on victory via `awardPartyXP(...)` in `src/scenes/BattleScene.js`.
+- AC4 PASS: Multi-level gains in one XP grant are processed in sequence and XP remains bounded under final threshold (`while` loop in `awardCharacterXP`).
+- AC5 PASS: In-code harness exists and is executed via `scripts/leveling-progression.test.mjs` (protagonist reaches level 2+ with asserted stat growth).
+- AC6 PASS: STATUS documents XP flow, module, and trigger path.
+
+#### Task #427: Integrate progression across overworld and battles
+Verdict: PASS
+- AC1 PASS: Battle entry friendlies are resolved from central state (`buildBattlePartyFromEncounterTemplates`), preserving level/HP/stats at transition.
+- AC2 PASS: Battle victory updates party XP/levels in global state and persists back to progress; subsequent encounters rehydrate from shared state.
+- AC3 PASS: Scene/controller flow uses centralized state/model pipeline for progression-critical stats; no conflicting independent progression authority identified.
+- AC4 PASS: Tester-visible progression hooks exist in HUD/debug/logs (Overworld HUD/debug overlay + Battle progression logs/selection panel).
+- AC5 PASS: Elephant, cheetah, dog, protagonist, and drones are modeled with shared structure; drones are explicitly flagged and skipped for persistent XP awards in `src/state/gameState.js`.
+- AC6 PASS: STATUS documents overworld-battle progression integration, touched modules, and tester verification path.
+
+### Integration / Regression Check
+- Workflow #43 feature set works cohesively with existing global state and battle resolution.
+- No regressions were observed from automated suite or source integration review.
+
+### Bugs Filed
+- None.
+
+### Overall Verdict
+CLEAN
