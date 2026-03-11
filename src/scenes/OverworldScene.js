@@ -157,9 +157,13 @@ class OverworldScene extends Phaser.Scene {
     this.overworldBattleZoneTriggered = false;
     this.devShortcutListeners = [];
     this.stateDebugVisible = true;
+    this.audioManager = null;
   }
 
   create(data) {
+    this.audioManager = this.game.registry.get("audioManager") ?? null;
+    this.audioManager?.playMusic("music-overworld", { loop: true });
+
     const progress = this.getProgressState();
     this.progressSnapshot = progress;
     const requestedSpawnPointId =

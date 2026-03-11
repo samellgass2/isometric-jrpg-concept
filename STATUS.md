@@ -2282,3 +2282,54 @@ Skipped:
 
 ### Overall Verdict
 PASS
+
+## Task 412 - Core Audio Management System (RUN_ID=728)
+Date: 2026-03-11 (UTC)
+
+### Summary
+- Added shared audio system at `src/audio/AudioManager.js`.
+- Integrated a singleton `AudioManager` in `src/main.js` during boot and stored it in `game.registry` as `audioManager`.
+- Wired scene music flow so main menu, overworld, and battle scenes read the same manager instance from registry.
+
+### Audio Manager API
+- `playSfx(key, options = {})`
+  - Plays one-shot SFX safely.
+  - Auto-destroys temporary sound instances on completion.
+- `playMusic(key, options = {})`
+  - Starts loopable background music.
+  - Reuses current track when key matches unless `restartIfSame` is true.
+  - Stops and replaces existing music when track key changes.
+- `stopMusic()`
+  - Stops and clears current music track.
+- `setVolume({ music, sfx })`
+  - Sets master music and SFX levels (clamped 0.0-1.0).
+- `getVolume()`
+  - Returns current `{ music, sfx }` values.
+
+### Shared Access Pattern
+- Boot-time initialization in `src/main.js`:
+  - `game.registry.set("audioManager", audioManager)`
+  - `game.registry.set("setAudioVolume", (levels) => audioManager.setVolume(levels))`
+  - `game.registry.set("getAudioVolume", () => audioManager.getVolume())`
+- Scene usage pattern:
+  - `const audioManager = this.game.registry.get("audioManager")`
+  - Use `audioManager.playMusic(...)` / `audioManager.playSfx(...)` for all runtime audio.
+
+### Integrated Scene Usage
+- `src/scenes/MainMenuScene.js`
+  - Triggers `music-main-menu` in `create()`.
+  - Uses `playSfx("sfx-ui-confirm")` on start/continue/test actions.
+- `src/scenes/OverworldScene.js`
+  - Triggers `music-overworld` in `create()`.
+- `src/scenes/BattleScene.js`
+  - Triggers `music-battle` in `create()`.
+
+### Defensive Behavior
+- Audio calls are no-op safe when Phaser sound is unavailable.
+- Missing/invalid audio keys are caught and logged via warnings instead of throwing.
+- Manager cleans up current music on destroy.
+
+### Usage Guidance For Future Features
+- Do not call `scene.sound.add(...)` directly in scenes.
+- Always retrieve the shared `audioManager` from registry and call manager methods.
+- Add audio assets/keys in scene preload or boot pipelines as needed; manager gracefully handles missing keys.

@@ -89,9 +89,13 @@ class BattleScene extends Phaser.Scene {
     this.encounterFriendlyTemplateIds = [];
     this.encounterRewards = { inventory: [], storyFlags: {} };
     this.devShortcutListeners = [];
+    this.audioManager = null;
   }
 
   create(data = {}) {
+    this.audioManager = this.game.registry.get("audioManager") ?? null;
+    this.audioManager?.playMusic("music-battle", { loop: true });
+
     this.loadedProgress = this.getProgressState();
     const encounterData = this.resolveEncounterData(data);
     this.encounterId = encounterData.id;

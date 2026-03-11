@@ -11,9 +11,13 @@ class MainMenuScene extends Phaser.Scene {
     this.droneTestButton = null;
     this.droneTestButtonLabel = null;
     this.startTriggered = false;
+    this.audioManager = null;
   }
 
   create() {
+    this.audioManager = this.game.registry.get("audioManager") ?? null;
+    this.audioManager?.playMusic("music-main-menu", { loop: true });
+
     const { width, height } = this.scale;
     const centerX = width / 2;
 
@@ -163,6 +167,7 @@ class MainMenuScene extends Phaser.Scene {
     }
 
     this.startTriggered = true;
+    this.audioManager?.playSfx("sfx-ui-confirm");
     this.cameras.main.fadeOut(160, 0, 0, 0);
     this.time.delayedCall(170, () => {
       this.scene.start("BattleScene", {
@@ -178,6 +183,7 @@ class MainMenuScene extends Phaser.Scene {
     }
 
     this.startTriggered = true;
+    this.audioManager?.playSfx("sfx-ui-confirm");
     const progress = this.game.registry.get("playerProgress");
     const { resumeSceneKey, resumeData } = resolveResumeTarget(progress);
 
@@ -196,6 +202,7 @@ class MainMenuScene extends Phaser.Scene {
     const progress = typeof loadGame === "function" ? loadGame() : this.game.registry.get("playerProgress");
     const { resumeSceneKey, resumeData } = resolveResumeTarget(progress);
     this.startTriggered = true;
+    this.audioManager?.playSfx("sfx-ui-confirm");
     this.cameras.main.fadeOut(200, 0, 0, 0);
     this.time.delayedCall(210, () => {
       this.scene.start(resumeSceneKey, resumeData);
