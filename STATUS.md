@@ -1,3 +1,130 @@
+# QA Validation Summary (Workflow #39)
+
+- Project: `isometric-strategy-game`
+- Branch: `workflow/39/dev`
+- Validator: QA agent
+- Date: 2026-03-11 (UTC)
+
+## Commits Reviewed (`main..HEAD`)
+
+- `4e93956` rescued qa_browser
+- `d8858d3` task/394: supervisor safety-commit (Codex omitted git commit)
+- `3b418c1` task/393: implement npc interaction quest hooks
+- `cd32d3f` task/392: integrate reusable dialogue overlay into overworld
+- `5dccaf3` task/391: implement dialogue system primitives and overworld integration
+
+## Diff Summary Reviewed
+
+- Command:
+```bash
+git diff main...HEAD --stat
+```
+- Result: 35 files changed, 2123 insertions, 155 deletions (including dialogue system, overworld scene/UI integration, NPC config, player progress quest flags, tests, screenshots, and status artifacts).
+
+## Validation Commands Run
+
+1. Command:
+```bash
+cat package.json | grep -A 40 '"scripts"'
+```
+Output:
+- Found scripts: `dev`, `start`, `test` (no separate `build`/`lint` scripts configured).
+
+2. Command:
+```bash
+if [ -d node_modules ]; then echo 'node_modules present'; else echo 'node_modules absent'; fi && npm test
+```
+Output:
+- `node_modules absent`
+- `npm test` PASS:
+  - Rollback test passed.
+  - Dog conditional behavior test passed.
+  - Battle grid stats test passed.
+  - Drone AI decision test passed.
+  - Drone test battle scenario test passed.
+  - Player progress state test passed.
+  - Save system persistence test passed.
+  - Battle party persistence test passed.
+  - Dialogue system test passed.
+
+3. Command:
+```bash
+npm install
+```
+Output:
+- `added 2 packages, and audited 3 packages in 18s`
+- `found 0 vulnerabilities`
+
+4. Command:
+```bash
+npm test
+```
+Output:
+- PASS (same 9 tests passed as above).
+
+5. Focused quest-flow validation command:
+```bash
+node --input-type=module <<'EOF'
+import { DialogueController, DialogueFlagStore } from './src/systems/dialogue/index.js';
+import { OVERWORLD_NPC_DIALOGUE_TREES, OVERWORLD_DIALOGUE_FLAGS } from './src/data/overworldInteractionConfig.js';
+
+const flagStore = new DialogueFlagStore();
+const controller = new DialogueController({ flagStore });
+
+controller.startConversation({ npcId: 'npc-ranger', tree: OVERWORLD_NPC_DIALOGUE_TREES['npc-ranger'] });
+controller.advance();
+controller.selectChoice('ask-for-task');
+controller.advance();
+controller.advance();
+
+controller.startConversation({ npcId: 'npc-mechanic', tree: OVERWORLD_NPC_DIALOGUE_TREES['npc-mechanic'] });
+const firstAdvance = controller.advance();
+
+console.log('mechanicNodeAfterAdvance=' + firstAdvance?.nodeId);
+console.log('rangerFlag=' + flagStore.getFlag(OVERWORLD_DIALOGUE_FLAGS.RANGER_TUTORIAL_COMPLETE));
+console.log('gateUnlockedFlag=' + flagStore.getFlag(OVERWORLD_DIALOGUE_FLAGS.WORKSHOP_GATE_UNLOCKED));
+EOF
+```
+Output:
+- `mechanicNodeAfterAdvance=grant-key`
+- `rangerFlag=true`
+- `gateUnlockedFlag=true`
+
+## Acceptance Verdicts
+
+### Task 1: Implement core dialogue system primitives
+- Acceptance 1: PASS
+- Acceptance 2: PASS
+- Acceptance 3: PASS
+- Acceptance 4: PASS
+- Acceptance 5: PASS
+- Acceptance 6: PASS
+- Task Verdict: PASS
+
+### Task 2: Integrate dialogue UI into overworld scene
+- Acceptance 1: PASS
+- Acceptance 2: PASS
+- Acceptance 3: PASS
+- Acceptance 4: PASS
+- Acceptance 5: PASS
+- Acceptance 6: PASS
+- Task Verdict: PASS
+
+### Task 3: Implement NPC interaction and quest hook flow
+- Acceptance 1: PASS
+- Acceptance 2: PASS
+- Acceptance 3: PASS
+- Acceptance 4: PASS
+- Acceptance 5: PASS
+- Acceptance 6: PASS
+- Task Verdict: PASS
+
+## Overall Workflow Goal Verdict
+
+- Goal: Narrative, Dialogue System, and NPC Interaction Framework
+- Verdict: **PASS**
+- Rationale: Core reusable dialogue primitives, scene-agnostic controller/events, overworld dialogue UI with branching choices, NPC-specific structured dialogue configs, and quest-flag-driven behavior changes are implemented and validated by automated tests and direct flow checks.
+
 # Status
 
 - Task: Implement NPC interaction and quest hook flow (TASK_ID=393, RUN_ID=694)
