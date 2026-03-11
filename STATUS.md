@@ -2486,6 +2486,25 @@ Date: 2026-03-11 (UTC)
 - If dedicated stingers are added to the asset pipeline, keep key usage centralized via `TRANSITION_STINGER_KEYS`.
 - Keep transition durations under ~250ms for state changes that happen frequently to preserve game flow.
 
+## Task 415 Follow-Up - Additional Result Overlay Transition Polish
+
+### Added UI Transition Effect
+- `src/ui/BattleResultOverlay.js`
+  - Added a dedicated battle result overlay component for major battle completion state changes.
+  - Uses a short tween chain (`fade/scale in -> hold -> fade/scale out`) and runs automatically without input.
+  - Includes built-in tween cleanup and guarded completion behavior.
+
+### Scene Integration
+- `src/scenes/BattleScene.js`
+  - Added `createBattleResultOverlay()` and `showBattleResultOverlay(result, onComplete)`.
+  - `finishBattle(result)` now shows a tweened `VICTORY`/`DEFEAT` panel before calling `transitionToScene(...)` back to overworld/return scene.
+  - Return handoff remains state-safe (same payload path and battle outcome persistence), with a fallback delayed completion guard to avoid getting stuck in intermediate transition state.
+
+### How To Extend
+- To add encounter-specific messaging, pass richer subtitle text from `finishBattle(result)` into `showBattleResultOverlay(...)`.
+- Keep overlay timing short (`~170ms in / ~330ms hold / ~190ms out`) so the cue is clear but does not interrupt gameplay flow.
+- Reuse the same overlay class for other major modal state changes (e.g., mission complete or game over) instead of duplicating per-scene tween logic.
+
 ## Tester Report - Workflow #41 (Audio, Visual FX, and Feedback Polish Pass)
 Date: 2026-03-11 (UTC)
 Branch: `workflow/41/dev`

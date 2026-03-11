@@ -18,6 +18,7 @@ import {
 import { decideDroneAction } from "../battle/ai/droneDecisionController.js";
 import InputManager, { InputActions } from "../input/InputManager.js";
 import HUDOverlay from "../ui/HUDOverlay.js";
+import BattleResultOverlay from "../ui/BattleResultOverlay.js";
 import {
   resolveKeyBattleOutcomeFlagForEncounter,
   normalizePlayerProgressState,
@@ -106,6 +107,7 @@ class BattleScene extends Phaser.Scene {
     this.audioManager = null;
     this.turnCueBanner = null;
     this.activeFxTweens = new Set();
+    this.battleResultOverlay = null;
   }
 
   create(data = {}) {
@@ -476,6 +478,8 @@ class BattleScene extends Phaser.Scene {
       })
       .setScrollFactor(0)
       .setDepth(UI_DEPTH);
+
+    this.createBattleResultOverlay();
   }
 
   createTurnCueBanner() {
@@ -674,6 +678,58 @@ class BattleScene extends Phaser.Scene {
       this.turnCueBanner.destroy();
       this.turnCueBanner = null;
     }
+    this.battleResultOverlay?.destroy();
+    this.battleResultOverlay = null;
+  }
+
+  createBattleResultOverlay() {
+    this.battleResultOverlay = new BattleResultOverlay(this, {
+      depth: UI_DEPTH + 60,
+      width: 432,
+      height: 136,
+    });
+    this.battleResultOverlay.create();
+  }
+
+  showBattleResultOverlay(result, onComplete) {
+    if (!this.battleResultOverlay) {
+      onComplete?.();
+      return;
+    }
+
+    const isVictory = result === "victory";
+    const title = isVictory ? "VICTORY" : "DEFEAT";
+    const subtitle = isVictory ? "Encounter resolved. Returning..." : "Retreating to regroup...";
+    const panelColor = isVictory ? 0x193524 : 0x3a1b1b;
+    const borderColor = isVictory ? 0x9df5c3 : 0xffb2b2;
+    const titleColor = isVictory ? "#eafff3" : "#ffe2e2";
+
+    let completed = false;
+    const finishOnce = () => {
+      if (completed) {
+        return;
+      }
+      completed = true;
+      onComplete?.();
+    };
+
+    const totalDuration = this.battleResultOverlay.show(
+      {
+        title,
+        subtitle,
+        panelColor,
+        borderColor,
+        titleColor,
+      },
+      {
+        enterDuration: 170,
+        holdDuration: 330,
+        exitDuration: 190,
+        onComplete: finishOnce,
+      }
+    );
+
+    this.time.delayedCall(totalDuration + 120, finishOnce);
   }
 
   showTurnTransitionCue(isPlayerTurn, options = {}) {
@@ -1469,8 +1525,7 @@ class BattleScene extends Phaser.Scene {
     this.updateSelectionPanel();
     this.syncHudOverlay();
     this.persistBattleProgress(result);
-
-    this.time.delayedCall(420, () => {
+    this.showBattleResultOverlay(result, () => {
       transitionToScene(this, {
         targetSceneKey: this.returnSceneKey,
         fadeOutDuration: 180,
@@ -1479,9 +1534,9 @@ class BattleScene extends Phaser.Scene {
         exitStingerVolume: 0.76,
         entryFadeInDuration: 220,
         data: {
-        ...this.returnSceneData,
-        battleResult: result,
-        lastEncounterId: this.encounterId,
+          ...this.returnSceneData,
+          battleResult: result,
+          lastEncounterId: this.encounterId,
         },
       });
     });
